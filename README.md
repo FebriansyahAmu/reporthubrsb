@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ReportHub RSB
 
-## Getting Started
+Aplikasi **SaaS pelaporan & cetak** untuk melengkapi cetakan report yang tidak
+disediakan SIMRS **SIMGOS**. Aplikasi membaca **langsung** dari database SIMGOS
+(stored procedure & query **read-only**) lalu menyajikannya dalam UI modern serta
+output cetak.
 
-First, run the development server:
+> 🚨 **HIGH ALERT — READ-ONLY.** Dilarang menambah tabel, mengubah struktur, atau
+> menulis data apa pun ke database SIMGOS. Semua state milik aplikasi (user, audit,
+> konfigurasi) disimpan di **database aplikasi terpisah**. Detail: [docs/03-database-prisma.md](docs/03-database-prisma.md).
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Tech Stack
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+**Next.js 16** (App Router) · **React 19** · **TypeScript** · **Prisma** ·
+**MySQL** · **Tailwind CSS v4** · **Framer Motion** · **Zod**
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Fitur (fase ini)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Kunjungan Pasien** — daftar/list kunjungan pasien.
+- **Report**
+  - **Laporan Kunjungan Pasien** — rekap kunjungan dengan filter.
+  - **Cetak Resume Medik** — cari kunjungan yang sudah selesai, lalu cetak.
 
-## Learn More
+## Dokumentasi
 
-To learn more about Next.js, take a look at the following resources:
+Perencanaan & desain lengkap ada di folder [`docs/`](docs/README.md):
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Dokumen                                                     | Isi                                                |
+| ----------------------------------------------------------- | -------------------------------------------------- |
+| [docs/README.md](docs/README.md)                            | Ikhtisar, HIGH ALERT, scope                        |
+| [01-arsitektur.md](docs/01-arsitektur.md)                   | Arsitektur sistem, dual-database, layering         |
+| [02-tech-stack-struktur.md](docs/02-tech-stack-struktur.md) | Stack & struktur folder                            |
+| [03-database-prisma.md](docs/03-database-prisma.md)         | Multi-DB SIMGOS, guard read-only, stored procedure |
+| [04-backend-layering.md](docs/04-backend-layering.md)       | Layer API/Validation/Service/DAL                   |
+| [05-frontend-design.md](docs/05-frontend-design.md)         | Design system & UI                                 |
+| [06-security-konvensi.md](docs/06-security-konvensi.md)     | Keamanan & konvensi                                |
+| [07-roadmap.md](docs/07-roadmap.md)                         | Roadmap bertahap                                   |
+| [workflows/](docs/workflows/)                               | Workflow tiap fitur                                |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Developer
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Febriansyah Dirgantara Amu
