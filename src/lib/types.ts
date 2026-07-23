@@ -101,6 +101,7 @@ export type AntreanStatus =
 
 export type AntreanBpjs = {
   id: string;
+  tanggal: string; // YYYY-MM-DD tanggal kunjungan/antrean
   kodeBooking: string;
   noAntrean: string;
   namaPasien: string;

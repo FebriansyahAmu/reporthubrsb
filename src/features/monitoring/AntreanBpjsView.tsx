@@ -19,21 +19,22 @@ import {
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { InputWithIcon, Label, Select } from "@/components/ui/Field";
+import { Input, InputWithIcon, Label, Select } from "@/components/ui/Field";
 import { StatCard } from "@/components/ui/StatCard";
 import { TableSkeleton } from "@/components/ui/Skeleton";
+import { Pagination } from "@/components/ui/Pagination";
 import { EmptyState, ErrorState } from "@/components/feedback/States";
 import { cn } from "@/lib/cn";
 import { useDebounce } from "@/lib/useDebounce";
 import { useAsyncData } from "@/lib/useAsyncData";
-import { formatDurasi, formatJam } from "@/lib/format";
+import { formatDate, formatDurasi, formatJam } from "@/lib/format";
 import {
   ANTREAN_STATUS_LABEL,
   TASK_META,
   type AntreanBpjs,
   type AntreanStatus,
 } from "@/lib/types";
-import { completedCount, getAntreanBpjs, POLI_BPJS } from "@/lib/mock/bpjs";
+import { completedCount, getAntreanBpjs, POLI_BPJS, TODAY_STR } from "@/lib/mock/bpjs";
 import { TaskTracker } from "./TaskTracker";
 import { TaskTimeline } from "./TaskTimeline";
 import { AntreanPipeline } from "./AntreanPipeline";
@@ -47,18 +48,20 @@ const STATUS_TONE: Record<AntreanStatus, "success" | "accent" | "danger"> = {
 };
 
 export function AntreanBpjsView() {
+  const [tanggal, setTanggal] = useState(TODAY_STR);
   const [searchInput, setSearchInput] = useState("");
   const [poli, setPoli] = useState<string>("ALL");
   const [status, setStatus] = useState<AntreanStatus | "ALL">("ALL");
   const [tahap, setTahap] = useState<number | "ALL">("ALL");
+  const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   const search = useDebounce(searchInput, 350);
 
   const filter = useMemo(
-    () => ({ search, poli, status, tahap }),
-    [search, poli, status, tahap],
+    () => ({ tanggal, search, poli, status, tahap, page, pageSize: 10 }),
+    [tanggal, search, poli, status, tahap, page],
   );
 
   const { result, loading, error, reload } = useAsyncData(
@@ -67,9 +70,19 @@ export function AntreanBpjsView() {
   );
 
   const data = result?.data ?? [];
+  const meta = result?.meta ?? null;
   const summary = result?.summary ?? null;
   const pipeline = result?.pipeline ?? [];
   const updatedAt = result?.updatedAt ?? null;
+
+  // Reset ke halaman 1 (dan tutup baris) saat filter selain page berubah — pola render-phase.
+  const filterKey = `${tanggal}|${search}|${poli}|${status}|${tahap}`;
+  const [prevKey, setPrevKey] = useState(filterKey);
+  if (prevKey !== filterKey) {
+    setPrevKey(filterKey);
+    setPage(1);
+    setExpandedId(null);
+  }
 
   // Auto-refresh berkala (reload dipanggil di callback timer → aman).
   useEffect(() => {
@@ -79,9 +92,14 @@ export function AntreanBpjsView() {
   }, [autoRefresh, reload]);
 
   const hasFilter =
-    !!search || poli !== "ALL" || status !== "ALL" || tahap !== "ALL";
+    tanggal !== TODAY_STR ||
+    !!search ||
+    poli !== "ALL" ||
+    status !== "ALL" ||
+    tahap !== "ALL";
 
   function resetFilters() {
+    setTanggal(TODAY_STR);
     setSearchInput("");
     setPoli("ALL");
     setStatus("ALL");
@@ -155,7 +173,17 @@ export function AntreanBpjsView() {
 
       {/* Filter */}
       <Card className="p-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div>
+            <Label htmlFor="tanggal">Tanggal</Label>
+            <Input
+              id="tanggal"
+              type="date"
+              value={tanggal}
+              max={TODAY_STR}
+              onChange={(e) => setTanggal(e.target.value)}
+            />
+          </div>
           <div className="lg:col-span-2">
             <Label htmlFor="cari">Cari</Label>
             <InputWithIcon
@@ -189,6 +217,12 @@ export function AntreanBpjsView() {
         {/* Chip filter aktif */}
         {hasFilter && (
           <div className="mt-3 flex flex-wrap items-center gap-2">
+            {tanggal !== TODAY_STR && (
+              <FilterChip
+                label={`Tanggal: ${formatDate(tanggal)}`}
+                onClear={() => setTanggal(TODAY_STR)}
+              />
+            )}
             {tahap !== "ALL" && (
               <FilterChip
                 label={`Tahap: ${TASK_META[(tahap as number) - 1].kode} ${(tahap as number) === 7 ? "Selesai" : TASK_META[(tahap as number) - 1].nama}`}
@@ -209,7 +243,7 @@ export function AntreanBpjsView() {
       <Card className="overflow-hidden">
         <CardHeader
           title="Daftar Antrean"
-          subtitle={!loading ? `${data.length} antrean ditampilkan` : undefined}
+          subtitle={!loading && meta ? `${meta.total} antrean pada tanggal terpilih` : undefined}
         />
         {loading ? (
           <TableSkeleton rows={8} cols={5} />
@@ -218,7 +252,8 @@ export function AntreanBpjsView() {
         ) : data.length === 0 ? (
           <EmptyState title="Tidak ada antrean" description="Tidak ada antrean yang cocok dengan filter." />
         ) : (
-          <div className="w-full overflow-x-auto">
+          <>
+            <div className="w-full overflow-x-auto">
             <table className="w-full border-collapse text-sm">
               <thead className="bg-surface-2/60">
                 <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wide text-fg-muted">
@@ -241,7 +276,9 @@ export function AntreanBpjsView() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+            {meta && <Pagination meta={meta} onPageChange={setPage} />}
+          </>
         )}
       </Card>
     </div>

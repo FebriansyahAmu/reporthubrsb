@@ -2,11 +2,13 @@ import type {
   AntreanBpjs,
   AntreanStatus,
   AntreanTask,
+  PageMeta,
   TaskId,
 } from "@/lib/types";
 
 /**
  * MOCK Antrean BPJS (Task 1..7) — untuk pengembangan UI monitoring.
+ * Data dibuat lintas beberapa hari agar filter tanggal bermakna.
  * Nanti diganti data nyata dari SIMGOS / bridging Antrean RS BPJS (read-only).
  */
 
@@ -40,9 +42,9 @@ const NAMA = [
   "Bagus Prasetyo", "Elis Suryani",
 ];
 
-/** "Sekarang" simulasi — pertengahan pagi hari ini. */
+/** "Hari ini" simulasi (agar mock selalu punya data hari ini). */
+export const TODAY_STR = "2026-07-23";
 const NOW = new Date("2026-07-23T10:30:00");
-const TODAY_0700 = new Date("2026-07-23T07:00:00");
 
 const SEG_BASE = [7, 4, 14, 9, 5, 11]; // menit tipikal: T1→T2 ... T6→T7
 
@@ -50,45 +52,62 @@ function pad(n: number, len = 3) {
   return String(n).padStart(len, "0");
 }
 
-function segMenit(i: number, seg: number): number {
-  return SEG_BASE[seg] + ((i * 7 + seg * 13) % 9);
+function segMenit(seed: number, seg: number): number {
+  return SEG_BASE[seg] + ((seed * 7 + seg * 13) % 9);
 }
 
-function bookingCode(i: number): string {
-  const base = (i * 2654435761) % 1000000;
-  return `BK${pad(base, 6)}`;
+function bookingCode(seed: number): string {
+  return `BK${pad((seed * 2654435761) % 1000000, 6)}`;
 }
 
-function buildAntrean(i: number): AntreanBpjs {
+/** YYYY-MM-DD, `offset` hari sebelum hari ini. */
+function dateStr(offset: number): string {
+  const d = new Date(TODAY_STR + "T00:00:00");
+  d.setDate(d.getDate() - offset);
+  return d.toISOString().slice(0, 10);
+}
+
+function buildAntrean(
+  seed: number,
+  i: number,
+  tanggal: string,
+  mode: "today" | "past",
+): AntreanBpjs {
   const poli = POLI_BPJS[i % POLI_BPJS.length];
-
-  // completedCount 1..7 tersebar untuk variasi tahap.
-  const completed = (((i * 3) % 7) + 1) as number;
-
-  // lama tertahan di tahap kini (menit); sebagian sengaja "stuck".
-  let menitTertahan = 3 + ((i * 5) % 12);
-  if (i % 6 === 2) menitTertahan += 26; // kasus terlambat
-
   const times: (Date | null)[] = Array(7).fill(null);
+  let completed: number;
+  let menitTertahan = 0;
 
-  if (completed >= 7) {
-    // Selesai: T7 tercatat beberapa menit lalu.
-    const t7 = new Date(NOW.getTime() - (5 + (i % 20)) * 60000);
-    times[6] = t7;
-    for (let k = 5; k >= 0; k--) {
-      times[k] = new Date(times[k + 1]!.getTime() - segMenit(i, k) * 60000);
+  if (mode === "past") {
+    // Hari lampau: semua task selesai, waktu urut maju dari pagi.
+    completed = 7;
+    const arrival = new Date(`${tanggal}T07:00:00`);
+    arrival.setMinutes(arrival.getMinutes() + i * 4);
+    times[0] = arrival;
+    for (let k = 1; k < 7; k++) {
+      times[k] = new Date(times[k - 1]!.getTime() + segMenit(seed, k - 1) * 60000);
     }
   } else {
-    // Berjalan: task terakhir selesai `menitTertahan` menit lalu, backfill ke belakang.
-    const last = new Date(NOW.getTime() - menitTertahan * 60000);
-    times[completed - 1] = last;
-    for (let k = completed - 2; k >= 0; k--) {
-      times[k] = new Date(times[k + 1]!.getTime() - segMenit(i, k) * 60000);
+    // Hari ini: progres bervariasi, sebagian sedang berjalan / terlambat.
+    completed = ((i * 3) % 7) + 1;
+    menitTertahan = 3 + ((i * 5) % 12);
+    if (i % 6 === 2) menitTertahan += 26;
+
+    if (completed >= 7) {
+      const t7 = new Date(NOW.getTime() - (5 + (i % 20)) * 60000);
+      times[6] = t7;
+      for (let k = 5; k >= 0; k--) {
+        times[k] = new Date(times[k + 1]!.getTime() - segMenit(seed, k) * 60000);
+      }
+      menitTertahan = 0;
+    } else {
+      const last = new Date(NOW.getTime() - menitTertahan * 60000);
+      times[completed - 1] = last;
+      for (let k = completed - 2; k >= 0; k--) {
+        times[k] = new Date(times[k + 1]!.getTime() - segMenit(seed, k) * 60000);
+      }
     }
   }
-
-  // Pastikan T1 tidak sebelum jam buka (kosmetik).
-  if (times[0] && times[0] < TODAY_0700) times[0] = new Date(TODAY_0700);
 
   const tasks: AntreanTask[] = times.map((t, idx) => ({
     taskId: (idx + 1) as TaskId,
@@ -96,26 +115,40 @@ function buildAntrean(i: number): AntreanBpjs {
   }));
 
   const currentTaskId = (completed >= 7 ? null : completed + 1) as TaskId | null;
-
   const status: AntreanStatus =
     completed >= 7 ? "SELESAI" : menitTertahan >= 25 ? "TERLAMBAT" : "BERLANGSUNG";
 
   return {
-    id: String(2000 + i),
-    kodeBooking: bookingCode(i),
+    id: String(2000 + seed),
+    tanggal,
+    kodeBooking: bookingCode(seed),
     noAntrean: `${poli.split(" ").pop()?.[0] ?? "A"}-${pad((i % 40) + 1, 3)}`,
     namaPasien: NAMA[i % NAMA.length],
-    noKartu: `000${pad(1000000000 + i * 137, 10)}`.slice(-13),
+    noKartu: `000${pad(1000000000 + seed * 137, 10)}`.slice(-13),
     poli,
     dokter: DOKTER_BPJS[poli],
     tasks,
     currentTaskId,
     status,
-    menitTertahan: completed >= 7 ? 0 : menitTertahan,
+    menitTertahan,
   };
 }
 
-const ANTREAN = Array.from({ length: 32 }, (_, i) => buildAntrean(i));
+function buildAll(): AntreanBpjs[] {
+  const list: AntreanBpjs[] = [];
+  let seed = 0;
+  // Hari ini — progresif.
+  for (let i = 0; i < 32; i++) list.push(buildAntrean(seed++, i, TODAY_STR, "today"));
+  // 6 hari sebelumnya — semua selesai.
+  for (let off = 1; off <= 6; off++) {
+    const tgl = dateStr(off);
+    const n = 18 + ((off * 5) % 14);
+    for (let i = 0; i < n; i++) list.push(buildAntrean(seed++, i, tgl, "past"));
+  }
+  return list;
+}
+
+const ANTREAN = buildAll();
 
 export function completedCount(a: AntreanBpjs): number {
   return a.tasks.filter((t) => t.waktu).length;
@@ -130,10 +163,13 @@ function durasiTotal(a: AntreanBpjs): number | null {
 }
 
 export type AntreanFilter = {
+  tanggal?: string; // default TODAY_STR
   search?: string;
   poli?: string | "ALL";
   status?: AntreanStatus | "ALL";
   tahap?: number | "ALL"; // completedCount 1..7
+  page?: number;
+  pageSize?: number;
 };
 
 export type AntreanSummary = {
@@ -152,13 +188,16 @@ function delay<T>(v: T, ms = 400): Promise<T> {
 
 export async function getAntreanBpjs(f: AntreanFilter): Promise<{
   data: AntreanBpjs[];
+  meta: PageMeta;
   summary: AntreanSummary;
   pipeline: PipelineStage[];
   updatedAt: string;
 }> {
-  const all = ANTREAN;
+  const tgl = f.tanggal ?? TODAY_STR;
+  // Ringkasan & pipeline dihitung untuk seluruh antrean pada tanggal terpilih.
+  const scoped = ANTREAN.filter((a) => a.tanggal === tgl);
 
-  const data = all.filter((a) => {
+  const filtered = scoped.filter((a) => {
     if (f.poli && f.poli !== "ALL" && a.poli !== f.poli) return false;
     if (f.status && f.status !== "ALL" && a.status !== f.status) return false;
     if (f.tahap && f.tahap !== "ALL" && completedCount(a) !== f.tahap) return false;
@@ -170,15 +209,21 @@ export async function getAntreanBpjs(f: AntreanFilter): Promise<{
     return true;
   });
 
-  const durasiSelesai = all
+  const page = f.page ?? 1;
+  const pageSize = f.pageSize ?? 10;
+  const total = filtered.length;
+  const start = (page - 1) * pageSize;
+  const data = filtered.slice(start, start + pageSize);
+
+  const durasiSelesai = scoped
     .map(durasiTotal)
     .filter((d): d is number => d != null);
 
   const summary: AntreanSummary = {
-    total: all.length,
-    selesai: all.filter((a) => a.status === "SELESAI").length,
-    berlangsung: all.filter((a) => a.status === "BERLANGSUNG").length,
-    terlambat: all.filter((a) => a.status === "TERLAMBAT").length,
+    total: scoped.length,
+    selesai: scoped.filter((a) => a.status === "SELESAI").length,
+    berlangsung: scoped.filter((a) => a.status === "BERLANGSUNG").length,
+    terlambat: scoped.filter((a) => a.status === "TERLAMBAT").length,
     rataMenit: durasiSelesai.length
       ? Math.round(durasiSelesai.reduce((s, d) => s + d, 0) / durasiSelesai.length)
       : null,
@@ -186,8 +231,14 @@ export async function getAntreanBpjs(f: AntreanFilter): Promise<{
 
   const pipeline: PipelineStage[] = ([1, 2, 3, 4, 5, 6, 7] as TaskId[]).map((t) => ({
     taskId: t,
-    jumlah: all.filter((a) => completedCount(a) === t).length,
+    jumlah: scoped.filter((a) => completedCount(a) === t).length,
   }));
 
-  return delay({ data, summary, pipeline, updatedAt: new Date().toISOString() });
+  return delay({
+    data,
+    meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) },
+    summary,
+    pipeline,
+    updatedAt: new Date().toISOString(),
+  });
 }
