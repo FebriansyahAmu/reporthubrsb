@@ -64,3 +64,14 @@ export function formatJam(iso: string | Date): string {
     second: "2-digit",
   }).format(new Date(iso));
 }
+
+/** ISO → "HH:MM" untuk value input[type=time]. */
+export function isoToTimeInput(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** Gabungkan tanggal (YYYY-MM-DD) + "HH:MM" → ISO. */
+export function timeInputToIso(tanggal: string, hhmm: string): string {
+  return new Date(`${tanggal}T${hhmm}:00`).toISOString();
+}

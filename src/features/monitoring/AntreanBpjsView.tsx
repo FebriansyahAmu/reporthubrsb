@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -8,8 +8,6 @@ import {
   ChevronDown,
   Clock,
   Loader,
-  Pause,
-  Play,
   RefreshCw,
   RotateCcw,
   Search,
@@ -33,13 +31,13 @@ import {
   TASK_META,
   type AntreanBpjs,
   type AntreanStatus,
+  type TaskId,
 } from "@/lib/types";
 import { completedCount, getAntreanBpjs, POLI_BPJS, TODAY_STR } from "@/lib/mock/bpjs";
 import { TaskTracker } from "./TaskTracker";
 import { TaskTimeline } from "./TaskTimeline";
 import { AntreanPipeline } from "./AntreanPipeline";
-
-const REFRESH_MS = 15000;
+import { EditTaskDialog, type EditTarget } from "./EditTaskDialog";
 
 const STATUS_TONE: Record<AntreanStatus, "success" | "accent" | "danger"> = {
   SELESAI: "success",
@@ -55,7 +53,9 @@ export function AntreanBpjsView() {
   const [tahap, setTahap] = useState<number | "ALL">("ALL");
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  // Koreksi waktu task lokal (mock). Kunci: `${antreanId}:${taskId}` → ISO.
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const [editing, setEditing] = useState<EditTarget | null>(null);
 
   const search = useDebounce(searchInput, 350);
 
@@ -69,11 +69,16 @@ export function AntreanBpjsView() {
     [filter],
   );
 
-  const data = result?.data ?? [];
   const meta = result?.meta ?? null;
   const summary = result?.summary ?? null;
   const pipeline = result?.pipeline ?? [];
   const updatedAt = result?.updatedAt ?? null;
+
+  // Terapkan koreksi waktu (override) ke data yang ditampilkan.
+  const displayData = useMemo(
+    () => (result?.data ?? []).map((a) => applyOverrides(a, overrides)),
+    [result, overrides],
+  );
 
   // Reset ke halaman 1 (dan tutup baris) saat filter selain page berubah — pola render-phase.
   const filterKey = `${tanggal}|${search}|${poli}|${status}|${tahap}`;
@@ -84,12 +89,11 @@ export function AntreanBpjsView() {
     setExpandedId(null);
   }
 
-  // Auto-refresh berkala (reload dipanggil di callback timer → aman).
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const id = setInterval(() => reload(), REFRESH_MS);
-    return () => clearInterval(id);
-  }, [autoRefresh, reload]);
+  function handleConfirmEdit(iso: string) {
+    if (!editing) return;
+    setOverrides((o) => ({ ...o, [`${editing.antreanId}:${editing.taskId}`]: iso }));
+    setEditing(null);
+  }
 
   const hasFilter =
     tanggal !== TODAY_STR ||
@@ -112,37 +116,24 @@ export function AntreanBpjsView() {
 
   return (
     <div className="space-y-5">
-      {/* Bar status refresh */}
+      {/* Bar status */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm text-fg-muted">
-          <span className="relative flex size-2">
-            <span className={cn("absolute inline-flex size-full rounded-full", autoRefresh ? "animate-ping bg-success/60" : "bg-fg-subtle")} />
-            <span className={cn("relative inline-flex size-2 rounded-full", autoRefresh ? "bg-success" : "bg-fg-subtle")} />
-          </span>
+          <Clock className="size-4" />
           {updatedAt ? (
             <span className="tabular">Diperbarui pukul {formatJam(updatedAt)}</span>
           ) : (
             <span>Memuat…</span>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={autoRefresh ? <Pause className="size-4" /> : <Play className="size-4" />}
-            onClick={() => setAutoRefresh((v) => !v)}
-          >
-            {autoRefresh ? "Jeda auto-refresh" : "Auto-refresh"}
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            icon={<RefreshCw className={cn("size-4", loading && "animate-spin")} />}
-            onClick={() => reload()}
-          >
-            Refresh
-          </Button>
-        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<RefreshCw className={cn("size-4", loading && "animate-spin")} />}
+          onClick={() => reload()}
+        >
+          Refresh
+        </Button>
       </div>
 
       {/* Ringkasan */}
@@ -249,7 +240,7 @@ export function AntreanBpjsView() {
           <TableSkeleton rows={8} cols={5} />
         ) : error ? (
           <ErrorState onRetry={reload} />
-        ) : data.length === 0 ? (
+        ) : displayData.length === 0 ? (
           <EmptyState title="Tidak ada antrean" description="Tidak ada antrean yang cocok dengan filter." />
         ) : (
           <>
@@ -266,12 +257,23 @@ export function AntreanBpjsView() {
                 </tr>
               </thead>
               <tbody>
-                {data.map((a) => (
+                {displayData.map((a) => (
                   <AntreanRow
                     key={a.id}
                     antrean={a}
                     expanded={expandedId === a.id}
                     onToggle={() => setExpandedId((cur) => (cur === a.id ? null : a.id))}
+                    onEditTask={(taskId) => {
+                      const task = a.tasks.find((t) => t.taskId === taskId);
+                      setEditing({
+                        antreanId: a.id,
+                        namaPasien: a.namaPasien,
+                        noAntrean: a.noAntrean,
+                        tanggal: a.tanggal,
+                        taskId,
+                        currentWaktu: task?.waktu ?? null,
+                      });
+                    }}
                   />
                 ))}
               </tbody>
@@ -281,18 +283,51 @@ export function AntreanBpjsView() {
           </>
         )}
       </Card>
+
+      <EditTaskDialog
+        target={editing}
+        onConfirm={handleConfirmEdit}
+        onCancel={() => setEditing(null)}
+      />
     </div>
   );
+}
+
+/** Terapkan koreksi waktu lokal ke satu antrean & hitung ulang tahap/status. */
+function applyOverrides(
+  a: AntreanBpjs,
+  overrides: Record<string, string>,
+): AntreanBpjs {
+  const hit = a.tasks.some((t) => `${a.id}:${t.taskId}` in overrides);
+  if (!hit) return a;
+
+  const tasks = a.tasks.map((t) => {
+    const key = `${a.id}:${t.taskId}`;
+    return key in overrides ? { ...t, waktu: overrides[key] } : t;
+  });
+
+  const firstNull = tasks.findIndex((t) => !t.waktu);
+  const currentTaskId = (firstNull === -1 ? null : firstNull + 1) as TaskId | null;
+  const status: AntreanStatus =
+    firstNull === -1
+      ? "SELESAI"
+      : a.status === "SELESAI"
+        ? "BERLANGSUNG"
+        : a.status;
+
+  return { ...a, tasks, currentTaskId, status };
 }
 
 function AntreanRow({
   antrean,
   expanded,
   onToggle,
+  onEditTask,
 }: {
   antrean: AntreanBpjs;
   expanded: boolean;
   onToggle: () => void;
+  onEditTask: (taskId: TaskId) => void;
 }) {
   const done = completedCount(antrean);
   return (
@@ -365,7 +400,7 @@ function AntreanRow({
                     <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-fg-muted">
                       Riwayat Task (dikirim ke BPJS)
                     </h4>
-                    <TaskTimeline antrean={antrean} />
+                    <TaskTimeline antrean={antrean} onEditTask={onEditTask} />
                   </div>
                 </div>
               </motion.div>

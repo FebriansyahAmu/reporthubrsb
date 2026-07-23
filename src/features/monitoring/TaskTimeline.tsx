@@ -1,10 +1,21 @@
-import { Check, Clock } from "lucide-react";
+import { Check, Clock, Pencil } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatTime, formatDurasi } from "@/lib/format";
-import { SEGMEN_LABEL, TASK_META, type AntreanBpjs } from "@/lib/types";
+import {
+  SEGMEN_LABEL,
+  TASK_META,
+  type AntreanBpjs,
+  type TaskId,
+} from "@/lib/types";
 
 /** Timeline vertikal detail 7 task: waktu tiap task + durasi antar-task (tunggu/layan). */
-export function TaskTimeline({ antrean }: { antrean: AntreanBpjs }) {
+export function TaskTimeline({
+  antrean,
+  onEditTask,
+}: {
+  antrean: AntreanBpjs;
+  onEditTask?: (taskId: TaskId) => void;
+}) {
   const currentIdx = antrean.currentTaskId ? antrean.currentTaskId - 1 : -1;
 
   return (
@@ -62,6 +73,17 @@ export function TaskTimeline({ antrean }: { antrean: AntreanBpjs }) {
                   </span>
                 ) : (
                   <span className="text-xs text-fg-subtle">Belum tercatat</span>
+                )}
+
+                {onEditTask && (
+                  <button
+                    type="button"
+                    onClick={() => onEditTask(task.taskId)}
+                    className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-fg-muted transition-colors hover:bg-surface-2 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+                  >
+                    <Pencil className="size-3" />
+                    {done ? "Ubah" : "Isi waktu"}
+                  </button>
                 )}
               </div>
               <p className="mt-0.5 text-xs text-fg-muted">{meta.deskripsi}</p>
