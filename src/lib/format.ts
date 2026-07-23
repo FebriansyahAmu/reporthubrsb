@@ -46,3 +46,21 @@ export function umur(tanggalLahir: string): string {
 export function toDateInput(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
+
+/** Format durasi dari menit → "5 mnt" / "1 j 20 mnt". */
+export function formatDurasi(menit: number | null | undefined): string {
+  if (menit == null || menit < 0) return "—";
+  if (menit < 60) return `${menit} mnt`;
+  const j = Math.floor(menit / 60);
+  const m = menit % 60;
+  return m === 0 ? `${j} j` : `${j} j ${m} mnt`;
+}
+
+/** Jam:menit:detik untuk indikator "diperbarui pukul ...". */
+export function formatJam(iso: string | Date): string {
+  return new Intl.DateTimeFormat("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(iso));
+}

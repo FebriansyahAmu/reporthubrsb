@@ -40,8 +40,9 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             </p>
             <ul className="space-y-1">
               {section.items.map((item) => {
-                const active =
-                  pathname === item.href || pathname.startsWith(item.href + "/");
+                const active = item.exact
+                  ? pathname === item.href
+                  : pathname === item.href || pathname.startsWith(item.href + "/");
                 const Icon = item.icon;
                 return (
                   <li key={item.href}>
