@@ -65,6 +65,30 @@ export function formatJam(iso: string | Date): string {
   }).format(new Date(iso));
 }
 
+/** Parse tanggal format Indonesia "dd-mm-yyyy" atau "dd-mm-yyyy HH:mm:ss" → Date | null. */
+export function parseIdDate(s: string | null | undefined): Date | null {
+  if (!s) return null;
+  const [datePart, timePart] = s.trim().split(" ");
+  const [dd, mm, yyyy] = datePart.split(/[-/]/).map(Number);
+  if (!dd || !mm || !yyyy) return null;
+  const [h = 0, mi = 0, se = 0] = (timePart?.split(":") ?? []).map(Number);
+  const d = new Date(yyyy, mm - 1, dd, h, mi, se);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Hitung umur "X th Y bl" dari Date lahir terhadap acuan (default hari ini). */
+export function hitungUmur(lahir: Date | null, acuan = new Date("2026-07-23")): string | null {
+  if (!lahir) return null;
+  let th = acuan.getFullYear() - lahir.getFullYear();
+  let bl = acuan.getMonth() - lahir.getMonth();
+  if (acuan.getDate() < lahir.getDate()) bl--;
+  if (bl < 0) {
+    th--;
+    bl += 12;
+  }
+  return `${th} th ${bl} bl`;
+}
+
 /** ISO → "HH:MM" untuk value input[type=time]. */
 export function isoToTimeInput(iso: string): string {
   const d = new Date(iso);

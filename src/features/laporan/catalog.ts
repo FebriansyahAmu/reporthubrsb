@@ -5,6 +5,7 @@ import {
   FileBarChart,
   FileText,
   FlaskConical,
+  NotebookText,
   Pill,
   ShieldCheck,
   Stethoscope,
@@ -70,6 +71,13 @@ export const LAPORAN_CATALOG: ReportGroup[] = [
     title: "Rekam Medis",
     description: "Dokumen & rekap klinis.",
     items: [
+      {
+        title: "Cetak Resume Medis",
+        description: "Resume medis lengkap (rawat jalan/inap) dari SP CetakMR2, siap cetak.",
+        icon: NotebookText,
+        status: "tersedia",
+        href: "/laporan/resume-medis",
+      },
       {
         title: "Cetak Resume Medik",
         description: "Cari kunjungan yang sudah selesai, lalu cetak resume mediknya.",
