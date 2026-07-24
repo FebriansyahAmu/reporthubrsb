@@ -21,14 +21,20 @@ menolak.
 CREATE USER 'reporthub_ro'@'%' IDENTIFIED BY '******';
 
 -- Hanya SELECT + EXECUTE (untuk memanggil stored procedure), TANPA DDL/DML lain.
-GRANT SELECT, EXECUTE ON `master`.*         TO 'reporthub_ro'@'%';
-GRANT SELECT, EXECUTE ON `pendaftaran`.*    TO 'reporthub_ro'@'%';
+-- Database yang dikonfirmasi dipakai (lihat src/server/db/simgos-databases.ts):
 GRANT SELECT, EXECUTE ON `medicalrecord`.*  TO 'reporthub_ro'@'%';
+GRANT SELECT, EXECUTE ON `pendaftaran`.*    TO 'reporthub_ro'@'%';
 GRANT SELECT, EXECUTE ON `layanan`.*        TO 'reporthub_ro'@'%';
--- ... database SIMGOS lain yang diperlukan report ...
+GRANT SELECT, EXECUTE ON `report`.*         TO 'reporthub_ro'@'%';
+-- ... tambah database SIMGOS lain di sini bila report baru membutuhkannya ...
 
 FLUSH PRIVILEGES;
 ```
+
+> 🔐 **Jangan pakai user `admin`/root untuk koneksi ini.** Sekalipun kode kita
+> tidak pernah menulis, user yang punya hak tulis membatalkan proteksi Lapis 1.
+> Buat user khusus read-only seperti di atas agar DB **secara fisik** menolak
+> penulisan — inilah jaminan HIGH ALERT yang sebenarnya.
 
 > ⚠️ **Jangan** beri `INSERT/UPDATE/DELETE/CREATE/ALTER/DROP` ke user ini.
 > Jika suatu stored procedure SIMGOS ternyata menulis (mis. mencatat log akses),
@@ -60,11 +66,14 @@ SIMGOS klasik memisah domain ke banyak database dalam satu server MySQL, mis.:
 
 | Database | Isi (perkiraan — konfirmasi saat discovery) |
 |---|---|
-| `master` | Data master: pasien, dokter, unit/poli, ICD, dll |
-| `pendaftaran` | Pendaftaran & kunjungan pasien |
-| `medicalrecord` | Rekam medis: anamnesis, diagnosis, tindakan |
+| `medicalrecord` | Rekam medis: anamnesis, diagnosis, tindakan, SP `CetakMR2` |
+| `pendaftaran` | Pendaftaran & kunjungan pasien (dipakai sbg anchor koneksi) |
 | `layanan` | Layanan/tindakan medis |
-| `bpjs`, `keuangan`, ... | Domain lain |
+| `report` | Data/agregat report bawaan SIMGOS (read-only) |
+| `master`, `bpjs`, ... | Domain lain — tambah bila diperlukan |
+
+> Keempat DB pertama sudah dikonfirmasi sebagai sumber read-only dan terdaftar di
+> `src/server/db/simgos-databases.ts` (konstanta `SIMGOS_DB`).
 
 **Implikasi:**
 - Query lintas-database memakai nama ter-kualifikasi: `SELECT ... FROM pendaftaran.kunjungan k JOIN master.pasien p ON ...`.
@@ -121,6 +130,29 @@ DATABASE_URL_APP="mysql://reporthub_app:PASSWORD@APP_HOST:3306/reporthub_app"
 
 > Database di URL SIMGOS hanya menentukan **default schema** koneksi. Selama user
 > punya hak `SELECT` pada database lain, query `db_lain.tabel` tetap jalan.
+
+---
+
+## 3a. ⚙️ Catatan Prisma 7 (implementasi aktual)
+
+Repo ini memakai **Prisma 7**, yang berbeda dari contoh historis di bawah:
+
+- **`datasource` di schema TIDAK lagi punya `url`.** Koneksi runtime lewat
+  **driver adapter** (`@prisma/adapter-mariadb`, kompatibel MySQL) yang di-pass ke
+  `new PrismaClient({ adapter })`. URL untuk CLI (`db pull`) ada di
+  **`prisma.config.ts`**, dibaca dari `.env`.
+- **Generator** memakai `provider = "prisma-client"` (output TS/ESM) → `src/generated/simgos`.
+- **Schema SIMGOS sengaja tanpa `model`.** Fitur cetak hanya butuh stored procedure
+  read-only, jadi tak perlu introspect struktur tabel. Client tetap punya
+  `$queryRaw*` untuk `CALL`. Tambah model hanya bila perlu, lewat `db pull` saja.
+- **Client di-generate**, bukan di-commit (lihat `.gitignore`), via
+  `npm run db:simgos:generate` (juga `postinstall`).
+- Instansiasi client bersifat **lazy + singleton**: tidak konek ke DB sampai query
+  pertama, sehingga aman diimport meski `.env` belum diisi (fallback ke data mock).
+
+Contoh di §4 di bawah masih menampilkan pola lama (`url` di schema,
+`prisma-client-js`) sebagai konteks; **acuan yang benar adalah catatan ini** dan
+file `prisma/simgos/schema.prisma`, `prisma.config.ts`, `src/server/db/*`.
 
 ---
 

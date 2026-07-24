@@ -1,0 +1,26 @@
+// ============================================================================
+// SIMGOS — SCHEMA READ-ONLY (HIGH ALERT)
+// ============================================================================
+// 🚨 DILARANG menambah/mengubah tabel atau menulis data ke SIMGOS.
+//
+// Schema ini SENGAJA tanpa `model`. Akses ke SIMGOS dilakukan lewat stored
+// procedure & raw query read-only (lihat src/server/db/*), sehingga kita:
+//   - tidak butuh introspect struktur tabel untuk fitur cetak, dan
+//   - tidak pernah menjalankan migrate/db push ke SIMGOS.
+//
+// Bila suatu saat perlu memetakan tabel tertentu, jalankan HANYA:
+//   npm run db:simgos:pull   (prisma db pull — introspect, tidak mengubah DB)
+// Model hasil introspect boleh ditambahkan di bawah, TETAPI tetap TANPA migrasi.
+//
+// Prisma 7: koneksi TIDAK ditaruh di sini. URL untuk CLI ada di prisma.config.ts,
+// dan koneksi runtime lewat driver adapter di src/server/db/simgos.client.ts.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../../src/generated/simgos"
+}
+
+datasource db {
+  provider = "mysql"
+}

@@ -6,16 +6,24 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:simgos:generate": "prisma generate --schema prisma/simgos/schema.prisma",
+    "db:simgos:pull": "prisma db pull --schema prisma/simgos/schema.prisma",
+    "postinstall": "prisma generate --schema prisma/simgos/schema.prisma"
   },
   "dependencies": {
+    "@prisma/adapter-mariadb": "^7.9.0",
+    "@prisma/client": "^7.9.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.42.2",
     "lucide-react": "^1.24.0",
+    "mariadb": "^3.5.3",
     "next": "16.2.10",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "tailwind-merge": "^3.6.0"
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^3.6.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -24,6 +32,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "prisma": "^7.9.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { PasienResumeList } from "@/components/report/PasienResumeList";
-import { getResumeMedisList } from "@/lib/mock/resume-medis";
+import { getResumeMedisList } from "@/server/modules/resume-medis/resume-medis.service";
 
 export const metadata = { title: "Resume Medis · ReportHub RSB" };
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { FileWarning } from "lucide-react";
-import { getResumeMedisById } from "@/lib/mock/resume-medis";
+import { getResumeMedis } from "@/server/modules/resume-medis/resume-medis.service";
 import { ResumeMedisDocument } from "@/features/resume-medis/ResumeMedisDocument";
 import { PrintToolbar } from "@/components/report/PrintToolbar";
 
@@ -12,7 +12,7 @@ export default async function ResumeMedisPrintPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const dto = await getResumeMedisById(id);
+  const dto = await getResumeMedis(id);
 
   if (!dto) {
     return (
