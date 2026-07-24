@@ -16,8 +16,10 @@ export const SIMGOS_DB = {
   PENDAFTARAN: "pendaftaran",
   /** Layanan/tindakan medis. */
   LAYANAN: "layanan",
-  /** Data/agregat report bawaan SIMGOS. */
-  REPORT: "report",
+  /** Data/agregat laporan bawaan SIMGOS (nama DB asli: `laporan`). */
+  LAPORAN: "laporan",
+  /** Data master: `ruangan` (klasifikasi RI/RJ/IGD), unit, dokter, dll. */
+  MASTER: "master",
 } as const;
 
 export type SimgosDb = (typeof SIMGOS_DB)[keyof typeof SIMGOS_DB];

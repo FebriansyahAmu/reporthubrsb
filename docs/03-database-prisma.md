@@ -25,7 +25,8 @@ CREATE USER 'reporthub_ro'@'%' IDENTIFIED BY '******';
 GRANT SELECT, EXECUTE ON `medicalrecord`.*  TO 'reporthub_ro'@'%';
 GRANT SELECT, EXECUTE ON `pendaftaran`.*    TO 'reporthub_ro'@'%';
 GRANT SELECT, EXECUTE ON `layanan`.*        TO 'reporthub_ro'@'%';
-GRANT SELECT, EXECUTE ON `report`.*         TO 'reporthub_ro'@'%';
+GRANT SELECT, EXECUTE ON `laporan`.*        TO 'reporthub_ro'@'%';
+GRANT SELECT, EXECUTE ON `master`.*         TO 'reporthub_ro'@'%';
 -- ... tambah database SIMGOS lain di sini bila report baru membutuhkannya ...
 
 FLUSH PRIVILEGES;
@@ -69,8 +70,9 @@ SIMGOS klasik memisah domain ke banyak database dalam satu server MySQL, mis.:
 | `medicalrecord` | Rekam medis: anamnesis, diagnosis, tindakan, SP `CetakMR2` |
 | `pendaftaran` | Pendaftaran & kunjungan pasien (dipakai sbg anchor koneksi) |
 | `layanan` | Layanan/tindakan medis |
-| `report` | Data/agregat report bawaan SIMGOS (read-only) |
-| `master`, `bpjs`, ... | Domain lain — tambah bila diperlukan |
+| `laporan` | Data/agregat laporan bawaan SIMGOS (read-only) |
+| `master` | Data master: `ruangan`, unit, dokter, ICD, dll |
+| `bpjs`, `inacbg`, `pembayaran`, ... | Domain lain (server punya ~37 DB) — tambah bila perlu |
 
 > Keempat DB pertama sudah dikonfirmasi sebagai sumber read-only dan terdaftar di
 > `src/server/db/simgos-databases.ts` (konstanta `SIMGOS_DB`).

@@ -47,6 +47,34 @@ export function toDateInput(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Awal minggu (Senin, 00:00 lokal) dari sebuah tanggal. */
+export function startOfWeek(d: Date): Date {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const dow = (x.getDay() + 6) % 7; // Senin=0 … Minggu=6
+  x.setDate(x.getDate() - dow);
+  return x;
+}
+
+/** Tanggal + n hari (baru, tidak memutasi input). */
+export function addDays(d: Date, n: number): Date {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+}
+
+/** Label rentang minggu, mis. "20 – 26 Jul 2026". */
+export function formatWeekRange(start: Date): string {
+  const end = addDays(start, 6);
+  const sameMonth = start.getMonth() === end.getMonth();
+  const dd = (x: Date) => String(x.getDate()).padStart(2, "0");
+  const bln = (x: Date) =>
+    x.toLocaleDateString("id-ID", { month: "short" }).replace(".", "");
+  const th = end.getFullYear();
+  return sameMonth
+    ? `${dd(start)} – ${dd(end)} ${bln(end)} ${th}`
+    : `${dd(start)} ${bln(start)} – ${dd(end)} ${bln(end)} ${th}`;
+}
+
 /** Format durasi dari menit → "5 mnt" / "1 j 20 mnt". */
 export function formatDurasi(menit: number | null | undefined): string {
   if (menit == null || menit < 0) return "—";
