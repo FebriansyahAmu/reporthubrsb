@@ -3,6 +3,7 @@ import {
   ClipboardList,
   CreditCard,
   FileBarChart,
+  FileCheck,
   FileText,
   FlaskConical,
   NotebookText,
@@ -77,6 +78,14 @@ export const LAPORAN_CATALOG: ReportGroup[] = [
         icon: NotebookText,
         status: "tersedia",
         href: "/laporan/resume-medis",
+      },
+      {
+        title: "Cetak Resume Pulang",
+        description:
+          "Ringkasan pulang 1 halaman: diagnosa, obat pulang, anjuran, tanda bahaya, dan kontrol.",
+        icon: FileCheck,
+        status: "tersedia",
+        href: "/laporan/resume-pulang",
       },
       {
         title: "Cetak Resume Medik",
