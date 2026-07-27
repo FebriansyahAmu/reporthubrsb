@@ -1,8 +1,18 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
+
+/** True hanya di client (tanpa setState-in-effect) — untuk aman createPortal. */
+function useIsClient() {
+  return useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+}
 
 export function Modal({
   open,
@@ -21,6 +31,8 @@ export function Modal({
   children?: React.ReactNode;
   footer?: React.ReactNode;
 }) {
+  const isClient = useIsClient();
+
   // Tutup dengan Escape (listener event — bukan setState sinkron di effect).
   useEffect(() => {
     if (!open) return;
@@ -31,19 +43,33 @@ export function Modal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  return (
+  // Kunci scroll body saat modal terbuka.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  if (!isClient) return null;
+
+  // Portal ke <body> agar `fixed` relatif ke viewport (lepas dari ancestor
+  // ber-transform / backdrop-filter seperti Topbar) → benar-benar center.
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
           key="modal-overlay"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 flex min-h-dvh items-center justify-center overflow-y-auto p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
         >
           <div
-            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm"
             onClick={onClose}
             aria-hidden
           />
@@ -51,10 +77,10 @@ export function Modal({
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            className="relative w-full max-w-md overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-md"
-            initial={{ opacity: 0, scale: 0.96, y: 10 }}
+            className="relative z-10 my-auto w-full max-w-md overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-lg"
+            initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 10 }}
+            exit={{ opacity: 0, scale: 0.96, y: 8 }}
             transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
           >
             <div className="flex items-start gap-3 border-b border-border px-5 py-4">
@@ -82,6 +108,7 @@ export function Modal({
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

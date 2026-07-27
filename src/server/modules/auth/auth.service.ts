@@ -1,13 +1,13 @@
 import "server-only";
 import crypto from "node:crypto";
-import { verifyPassword } from "@/server/auth/password";
+import { hashPassword, verifyPassword } from "@/server/auth/password";
 import {
   REFRESH_TTL_MS,
   signAccessToken,
   signRefreshToken,
   verifyRefreshToken,
 } from "@/server/auth/tokens";
-import { ForbiddenError, UnauthorizedError } from "@/server/lib/errors";
+import { AppError, ForbiddenError, UnauthorizedError } from "@/server/lib/errors";
 import * as dal from "./auth.dal";
 
 export type AuthUser = { id: string; username: string; name: string; role: string };
@@ -81,6 +81,29 @@ export async function refresh(rawRefresh: string, meta: Meta): Promise<IssuedTok
   const issued = await issueTokens(user, meta);
   await dal.revokeRefresh(rec.id, dal.hashToken(issued.refresh));
   return issued;
+}
+
+/**
+ * Ganti kata sandi: verifikasi kata sandi lama, simpan hash baru, lalu cabut
+ * SEMUA sesi (refresh token) dan terbitkan pasangan baru untuk sesi saat ini —
+ * sehingga perangkat lain otomatis logout, sesi ini tetap hidup.
+ */
+export async function changePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+  meta: Meta,
+): Promise<IssuedTokens> {
+  const user = await dal.findUserById(userId);
+  if (!user || !user.isActive) throw new UnauthorizedError("Sesi tidak valid");
+
+  const ok = await verifyPassword(currentPassword, user.passwordHash);
+  if (!ok) throw new AppError("Kata sandi saat ini salah", "INVALID_PASSWORD", 400);
+
+  const passwordHash = await hashPassword(newPassword);
+  await dal.updatePassword(userId, passwordHash);
+  await dal.revokeAllUserTokens(userId);
+  return issueTokens(user, meta);
 }
 
 /** Logout: cabut refresh token yang sedang dipakai (bila ada). */

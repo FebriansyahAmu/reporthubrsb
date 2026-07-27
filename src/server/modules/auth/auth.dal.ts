@@ -19,6 +19,10 @@ export function touchLastLogin(id: string) {
   return getAppDb().user.update({ where: { id }, data: { lastLoginAt: new Date() } });
 }
 
+export function updatePassword(id: string, passwordHash: string) {
+  return getAppDb().user.update({ where: { id }, data: { passwordHash } });
+}
+
 export function storeRefreshToken(data: {
   userId: string;
   tokenHash: string;
