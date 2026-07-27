@@ -1,9 +1,15 @@
 import { AppShell } from "@/components/layout/AppShell";
+import { getCurrentUser } from "@/server/auth/session";
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <AppShell>{children}</AppShell>;
+  const user = await getCurrentUser();
+  return (
+    <AppShell user={user ? { name: user.name, username: user.username, role: user.role } : null}>
+      {children}
+    </AppShell>
+  );
 }

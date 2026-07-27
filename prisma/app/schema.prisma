@@ -1,0 +1,58 @@
+// ============================================================================
+// DB APLIKASI (reporthub) — READ-WRITE, milik kita. TERPISAH dari SIMGOS.
+// ============================================================================
+// Boleh migrasi/ubah struktur di sini (ini bukan SIMGOS). Prisma 7: koneksi
+// runtime lewat driver adapter (src/server/db/app.client.ts), URL untuk CLI ada
+// di prisma.app.config.ts.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../../src/generated/app"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum Role {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+/// Pengguna aplikasi. Password disimpan sebagai hash bcrypt (tidak pernah plaintext).
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  email        String?   @unique
+  name         String
+  passwordHash String    @map("password_hash")
+  role         Role      @default(VIEWER)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+/// Refresh token (rotasi). Yang disimpan HANYA hash token-nya, bukan token asli,
+/// sehingga bocornya DB tidak langsung memberi token yang bisa dipakai.
+model RefreshToken {
+  id         String    @id @default(cuid())
+  userId     String    @map("user_id")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  replacedBy String?   @map("replaced_by")
+  userAgent  String?   @map("user_agent") @db.Text
+  ip         String?
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}

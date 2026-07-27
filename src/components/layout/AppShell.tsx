@@ -3,9 +3,15 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Sidebar } from "./Sidebar";
-import { Topbar } from "./Topbar";
+import { Topbar, type TopbarUser } from "./Topbar";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  user,
+}: {
+  children: React.ReactNode;
+  user: TopbarUser | null;
+}) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -43,7 +49,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Konten */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar onMenu={() => setMobileOpen(true)} />
+        <Topbar onMenu={() => setMobileOpen(true)} user={user} />
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <div className="w-full">{children}</div>
         </main>
