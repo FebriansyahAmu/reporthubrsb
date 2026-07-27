@@ -25,7 +25,7 @@ import { EmptyState, ErrorState } from "@/components/feedback/States";
 import { cn } from "@/lib/cn";
 import { useDebounce } from "@/lib/useDebounce";
 import { useAsyncData } from "@/lib/useAsyncData";
-import { formatDate, formatDurasi, formatJam } from "@/lib/format";
+import { formatDate, formatDurasi, formatJam, toLocalDateInput } from "@/lib/format";
 import {
   ANTREAN_STATUS_LABEL,
   TASK_META,
@@ -33,7 +33,7 @@ import {
   type AntreanStatus,
   type TaskId,
 } from "@/lib/types";
-import { completedCount, getAntreanBpjs, POLI_BPJS, TODAY_STR } from "@/lib/mock/bpjs";
+import { completedCount, type AntreanResult } from "@/lib/antrean-core";
 import { TaskTracker } from "./TaskTracker";
 import { TaskTimeline } from "./TaskTimeline";
 import { AntreanPipeline } from "./AntreanPipeline";
@@ -45,8 +45,33 @@ const STATUS_TONE: Record<AntreanStatus, "success" | "accent" | "danger"> = {
   TERLAMBAT: "danger",
 };
 
+type AntreanFilterState = {
+  tanggal: string;
+  search: string;
+  poli: string;
+  status: AntreanStatus | "ALL";
+  tahap: number | "ALL";
+  page: number;
+  pageSize: number;
+};
+
+async function fetchAntrean(f: AntreanFilterState): Promise<AntreanResult> {
+  const p = new URLSearchParams({ tanggal: f.tanggal });
+  if (f.search) p.set("search", f.search);
+  if (f.poli !== "ALL") p.set("poli", f.poli);
+  if (f.status !== "ALL") p.set("status", f.status);
+  if (f.tahap !== "ALL") p.set("tahap", String(f.tahap));
+  p.set("page", String(f.page));
+  p.set("pageSize", String(f.pageSize));
+  const res = await fetch(`/api/monitoring/antrean-bpjs?${p.toString()}`);
+  if (!res.ok) throw new Error("Gagal memuat antrean");
+  const json = (await res.json()) as { data: AntreanResult };
+  return json.data;
+}
+
 export function AntreanBpjsView() {
-  const [tanggal, setTanggal] = useState(TODAY_STR);
+  const today = useMemo(() => toLocalDateInput(new Date()), []);
+  const [tanggal, setTanggal] = useState(today);
   const [searchInput, setSearchInput] = useState("");
   const [poli, setPoli] = useState<string>("ALL");
   const [status, setStatus] = useState<AntreanStatus | "ALL">("ALL");
@@ -59,19 +84,20 @@ export function AntreanBpjsView() {
 
   const search = useDebounce(searchInput, 350);
 
-  const filter = useMemo(
+  const filter = useMemo<AntreanFilterState>(
     () => ({ tanggal, search, poli, status, tahap, page, pageSize: 10 }),
     [tanggal, search, poli, status, tahap, page],
   );
 
-  const { result, loading, error, reload } = useAsyncData(
-    () => getAntreanBpjs(filter),
+  const { result, loading, error, reload } = useAsyncData<AntreanResult>(
+    () => fetchAntrean(filter),
     [filter],
   );
 
   const meta = result?.meta ?? null;
   const summary = result?.summary ?? null;
   const pipeline = result?.pipeline ?? [];
+  const poliOptions = result?.poliOptions ?? [];
   const updatedAt = result?.updatedAt ?? null;
 
   // Terapkan koreksi waktu (override) ke data yang ditampilkan.
@@ -96,14 +122,14 @@ export function AntreanBpjsView() {
   }
 
   const hasFilter =
-    tanggal !== TODAY_STR ||
+    tanggal !== today ||
     !!search ||
     poli !== "ALL" ||
     status !== "ALL" ||
     tahap !== "ALL";
 
   function resetFilters() {
-    setTanggal(TODAY_STR);
+    setTanggal(today);
     setSearchInput("");
     setPoli("ALL");
     setStatus("ALL");
@@ -171,7 +197,7 @@ export function AntreanBpjsView() {
               id="tanggal"
               type="date"
               value={tanggal}
-              max={TODAY_STR}
+              max={today}
               onChange={(e) => setTanggal(e.target.value)}
             />
           </div>
@@ -189,7 +215,10 @@ export function AntreanBpjsView() {
             <Label htmlFor="poli">Poli</Label>
             <Select id="poli" value={poli} onChange={(e) => setPoli(e.target.value)}>
               <option value="ALL">Semua poli</option>
-              {POLI_BPJS.map((p) => (
+              {poli !== "ALL" && !poliOptions.includes(poli) && (
+                <option value={poli}>{poli}</option>
+              )}
+              {poliOptions.map((p) => (
                 <option key={p} value={p}>{p}</option>
               ))}
             </Select>
@@ -208,10 +237,10 @@ export function AntreanBpjsView() {
         {/* Chip filter aktif */}
         {hasFilter && (
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {tanggal !== TODAY_STR && (
+            {tanggal !== today && (
               <FilterChip
                 label={`Tanggal: ${formatDate(tanggal)}`}
-                onClear={() => setTanggal(TODAY_STR)}
+                onClear={() => setTanggal(today)}
               />
             )}
             {tahap !== "ALL" && (

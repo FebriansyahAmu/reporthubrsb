@@ -1,6 +1,6 @@
 import { cn } from "@/lib/cn";
 import { TASK_META, type TaskId } from "@/lib/types";
-import type { PipelineStage } from "@/lib/mock/bpjs";
+import type { PipelineStage } from "@/lib/antrean-core";
 
 /** Distribusi posisi antrean per tahap (berdasarkan task terakhir yang selesai). */
 export function AntreanPipeline({

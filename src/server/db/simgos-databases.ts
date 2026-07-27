@@ -20,6 +20,8 @@ export const SIMGOS_DB = {
   LAPORAN: "laporan",
   /** Data master: `ruangan` (klasifikasi RI/RJ/IGD), unit, dokter, dll. */
   MASTER: "master",
+  /** Antrean/registrasi online BPJS: `reservasi`, `task_action_antrian`. */
+  REGONLINE: "regonline",
 } as const;
 
 export type SimgosDb = (typeof SIMGOS_DB)[keyof typeof SIMGOS_DB];
