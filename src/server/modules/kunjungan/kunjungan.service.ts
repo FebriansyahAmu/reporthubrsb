@@ -1,24 +1,35 @@
 import "server-only";
-import {
-  getKunjunganResumeList as getMock,
-  type KunjunganResumeItem,
-  type KategoriKunjungan,
-} from "@/lib/mock/kunjungan";
+import { isSimgosConfigured } from "@/server/lib/env";
+import { filterMockKunjungan } from "@/lib/mock/kunjungan";
+import type { KategoriKunjungan, KunjunganResumeItem } from "./kunjungan.types";
+import { queryKunjunganResume } from "./kunjungan.dal";
+import { mapKunjungan } from "./kunjungan.mapper";
 
 export type { KunjunganResumeItem, KategoriKunjungan };
 
+export type KunjunganListParams = {
+  from: string; // YYYY-MM-DD (inklusif)
+  to: string; // YYYY-MM-DD (eksklusif)
+  ruanganId?: string;
+};
+
 /**
- * Daftar kunjungan untuk katalog cetak Resume Medis.
+ * Daftar kunjungan untuk katalog cetak Resume Medis, difilter rentang tanggal
+ * (kolom MASUK) + ruangan opsional. Dipisah RI/RJ Klinik/IGD lewat master.ruangan;
+ * status final dari kolom KELUAR.
  *
- * SEKARANG: memakai data simulasi.
- *
- * NANTI (butuh discovery skema): query lintas-DB read-only —
- *   FROM pendaftaran.kunjungan k
- *   JOIN master.ruangan r ON r.ID = k.RUANGAN
- *   (klasifikasi RI/RJ Klinik/IGD dari r.<jenis>, kolom KELUAR utk status final)
- * lalu difilter per minggu di WHERE. Bentuk DTO tetap `KunjunganResumeItem`
- * sehingga UI tidak berubah saat sumber diganti ke DB.
+ * SIMGOS terkonfigurasi → query lintas-DB read-only; belum → data simulasi.
  */
-export async function getKunjunganResumeList(): Promise<KunjunganResumeItem[]> {
-  return getMock();
+export async function getKunjunganResumeList(
+  params: KunjunganListParams,
+): Promise<KunjunganResumeItem[]> {
+  if (!isSimgosConfigured()) {
+    return filterMockKunjungan(params);
+  }
+  const rows = await queryKunjunganResume({
+    from: params.from,
+    to: params.to,
+    ruanganId: params.ruanganId,
+  });
+  return rows.map(mapKunjungan);
 }

@@ -19,8 +19,17 @@ const globalForSimgos = globalThis as unknown as {
 };
 
 function createClient(): PrismaClient {
-  const adapter = new PrismaMariaDb(requireSimgosUrl(), {
-    database: env.SIMGOS_DEFAULT_DB,
+  // Adapter mariadb butuh CONFIG OBJECT (bukan URL string `mysql://…` yang
+  // ditolak parser-nya). Kita urai DATABASE_URL_SIMGOS jadi field koneksi.
+  const u = new URL(requireSimgosUrl());
+  const adapter = new PrismaMariaDb({
+    host: u.hostname,
+    port: u.port ? Number(u.port) : 3306,
+    user: decodeURIComponent(u.username),
+    password: decodeURIComponent(u.password),
+    // Tanpa anchor: semua query wajib ter-kualifikasi. SIMGOS_DEFAULT_DB opsional.
+    database: env.SIMGOS_DEFAULT_DB || u.pathname.replace(/^\//, "") || undefined,
+    connectTimeout: 8000,
   });
   return new PrismaClient({ adapter, log: ["warn", "error"] });
 }

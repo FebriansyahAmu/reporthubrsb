@@ -47,6 +47,12 @@ export function toDateInput(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** yyyy-mm-dd dari komponen LOKAL (tidak bergeser TZ seperti toISOString). */
+export function toLocalDateInput(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 /** Awal minggu (Senin, 00:00 lokal) dari sebuah tanggal. */
 export function startOfWeek(d: Date): Date {
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
