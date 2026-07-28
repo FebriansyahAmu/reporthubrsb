@@ -55,6 +55,7 @@ export async function queryKunjunganResume(a: KunjunganQueryArgs): Promise<Kunju
     JOIN ${SIMGOS_DB.MASTER}.pasien ps        ON ps.NORM = pp.NORM
     WHERE CHAR_LENGTH(r.ID) = 9
       AND r.JENIS_KUNJUNGAN IN (1, 2, 3)
+      AND pp.STATUS = 1
       AND k.MASUK >= ? AND k.MASUK < ?
       ${ruanganClause}
     ORDER BY k.MASUK DESC

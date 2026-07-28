@@ -1,4 +1,11 @@
-import { Activity, LayoutGrid, ListChecks, Users, type LucideIcon } from "lucide-react";
+import {
+  Activity,
+  Hourglass,
+  LayoutGrid,
+  ListChecks,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 
 export type NavItem = {
   href: string;
@@ -43,6 +50,12 @@ export const NAV: NavSection[] = [
         label: "Kunjungan",
         icon: Activity,
         description: "Kunjungan & lama rawat per rentang waktu",
+      },
+      {
+        href: "/monitoring/pelayanan/belum-final",
+        label: "Belum Difinalkan",
+        icon: Hourglass,
+        description: "Kunjungan belum ditutup (KELUAR kosong)",
       },
     ],
   },

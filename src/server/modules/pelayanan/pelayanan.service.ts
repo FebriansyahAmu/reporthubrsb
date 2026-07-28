@@ -1,16 +1,21 @@
 import "server-only";
 import { isSimgosConfigured } from "@/server/lib/env";
-import { queryKunjunganRange } from "./pelayanan.dal";
+import { queryBelumFinal, queryKunjunganRange } from "./pelayanan.dal";
 import { mapKunjunganPelayanan } from "./pelayanan.mapper";
-import type {
-  KunjunganPelayananCounts,
-  KunjunganPelayananItem,
-  KunjunganPelayananResult,
-  KunjunganPelayananSummary,
+import {
+  agingBucket,
+  type AgingBucket,
+  type BelumFinalCounts,
+  type BelumFinalItem,
+  type BelumFinalResult,
+  type KunjunganPelayananCounts,
+  type KunjunganPelayananItem,
+  type KunjunganPelayananResult,
+  type KunjunganPelayananSummary,
 } from "./pelayanan.types";
-import type { KunjunganPelayananQuery } from "./pelayanan.schema";
+import type { BelumFinalQuery, KunjunganPelayananQuery } from "./pelayanan.schema";
 
-export type { KunjunganPelayananResult };
+export type { KunjunganPelayananResult, BelumFinalResult };
 
 function summarize(data: KunjunganPelayananItem[]): KunjunganPelayananSummary {
   const finalItems = data.filter((d) => d.final);
@@ -88,6 +93,60 @@ export async function getKunjunganPelayanan(
     data,
     meta: { page, pageSize, total, totalPages },
     summary,
+    counts,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function emptyBelumFinal(): BelumFinalResult {
+  return {
+    data: [],
+    meta: { page: 1, pageSize: 12, total: 0, totalPages: 1 },
+    counts: { Semua: 0, b1: 0, b2: 0, b3: 0, b4: 0 },
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Monitoring "Belum Difinalkan": kunjungan KELUAR NULL (90 hari terakhir),
+ * dikelompokkan umur tunggakan (bucket) & diurut terlama dulu. Hitungan bucket
+ * memperhitungkan filter kategori/cari; daftar dipaginasi di server.
+ */
+export async function getBelumFinal(params: BelumFinalQuery): Promise<BelumFinalResult> {
+  if (!isSimgosConfigured()) return emptyBelumFinal();
+
+  const rows = await queryBelumFinal(params.ruangan);
+  const scope: BelumFinalItem[] = rows.map((r) => {
+    const it = mapKunjunganPelayanan(r);
+    return { ...it, bucket: agingBucket(it.lamaMenit) };
+  });
+
+  // Filter kategori + cari → dasar hitungan bucket.
+  const q = params.search?.toLowerCase();
+  let base = q ? scope.filter((it) => matchSearch(it, q)) : scope;
+  if (params.kategori) base = base.filter((it) => it.kategori === params.kategori);
+
+  const countBucket = (b: AgingBucket) => base.filter((it) => it.bucket === b).length;
+  const counts: BelumFinalCounts = {
+    Semua: base.length,
+    b1: countBucket("b1"),
+    b2: countBucket("b2"),
+    b3: countBucket("b3"),
+    b4: countBucket("b4"),
+  };
+
+  // Filter bucket → paginasi (sudah urut terlama dulu dari DAL).
+  const filtered = params.bucket ? base.filter((it) => it.bucket === params.bucket) : base;
+  const pageSize = params.pageSize;
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(params.page, totalPages);
+  const start = (page - 1) * pageSize;
+  const data = filtered.slice(start, start + pageSize);
+
+  return {
+    data,
+    meta: { page, pageSize, total, totalPages },
     counts,
     updatedAt: new Date().toISOString(),
   };

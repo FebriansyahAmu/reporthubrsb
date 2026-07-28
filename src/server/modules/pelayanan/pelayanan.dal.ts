@@ -62,9 +62,52 @@ export async function queryKunjunganRange(
     JOIN ${SIMGOS_DB.MASTER}.pasien ps        ON ps.NORM = pp.NORM
     WHERE CHAR_LENGTH(r.ID) = 9
       AND r.JENIS_KUNJUNGAN IN (1, 2, 3)
+      AND pp.STATUS = 1
       AND k.MASUK >= ? AND k.MASUK < ?
       ${ruanganClause}
     ORDER BY k.MASUK DESC
+    LIMIT 1000`;
+
+  return getSimgos().$queryRawUnsafe<KunjunganPelayananRow[]>(sql, ...params);
+}
+
+/**
+ * Kunjungan yang BELUM difinalkan (KELUAR NULL) dalam 90 hari terakhir, diurut
+ * MASUK menaik (terlama terbuka lebih dulu). `LAMA_MENIT` = MASUK→NOW() = lama
+ * tunggakan. Read-only; ruangan opsional.
+ */
+export async function queryBelumFinal(ruanganId?: string): Promise<KunjunganPelayananRow[]> {
+  const params: unknown[] = [];
+  let ruanganClause = "";
+  if (ruanganId) {
+    ruanganClause = "AND k.RUANGAN = ?";
+    params.push(ruanganId);
+  }
+
+  const sql = `
+    SELECT k.NOMOR,
+           k.NOPEN,
+           r.ID              AS RUANGAN_ID,
+           r.DESKRIPSI       AS RUANG,
+           r.JENIS_KUNJUNGAN,
+           k.MASUK,
+           k.KELUAR,
+           TIMESTAMPDIFF(MINUTE, k.MASUK, NOW()) AS LAMA_MENIT,
+           ps.NORM,
+           ps.NAMA,
+           ps.JENIS_KELAMIN,
+           ps.TANGGAL_LAHIR
+    FROM ${SIMGOS_DB.PENDAFTARAN}.kunjungan k
+    JOIN ${SIMGOS_DB.MASTER}.ruangan r        ON r.ID = k.RUANGAN
+    JOIN ${SIMGOS_DB.PENDAFTARAN}.pendaftaran pp ON pp.NOMOR = k.NOPEN
+    JOIN ${SIMGOS_DB.MASTER}.pasien ps        ON ps.NORM = pp.NORM
+    WHERE CHAR_LENGTH(r.ID) = 9
+      AND r.JENIS_KUNJUNGAN IN (1, 2, 3)
+      AND pp.STATUS = 1
+      AND k.KELUAR IS NULL
+      AND k.MASUK >= NOW() - INTERVAL 90 DAY
+      ${ruanganClause}
+    ORDER BY k.MASUK ASC
     LIMIT 1000`;
 
   return getSimgos().$queryRawUnsafe<KunjunganPelayananRow[]>(sql, ...params);

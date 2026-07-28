@@ -49,3 +49,40 @@ export type KunjunganPelayananResult = {
   counts: KunjunganPelayananCounts;
   updatedAt: string;
 };
+
+// ---------------------------------------------------------------------------
+// Belum Difinalkan (Aging) — kunjungan KELUAR NULL, dikelompokkan umur tunggakan.
+// ---------------------------------------------------------------------------
+
+export type AgingBucket = "b1" | "b2" | "b3" | "b4";
+
+export const AGING_BUCKETS: {
+  key: AgingBucket;
+  label: string;
+  tone: "warning" | "danger";
+}[] = [
+  { key: "b1", label: "< 1 hari", tone: "warning" },
+  { key: "b2", label: "1–2 hari", tone: "warning" },
+  { key: "b3", label: "2–7 hari", tone: "danger" },
+  { key: "b4", label: "> 7 hari", tone: "danger" },
+];
+
+/** Tentukan bucket umur tunggakan dari lama terbuka (menit). */
+export function agingBucket(lamaMenit: number): AgingBucket {
+  const hari = lamaMenit / 1440;
+  if (hari < 1) return "b1";
+  if (hari < 2) return "b2";
+  if (hari < 7) return "b3";
+  return "b4";
+}
+
+export type BelumFinalItem = KunjunganPelayananItem & { bucket: AgingBucket };
+
+export type BelumFinalCounts = Record<"Semua" | AgingBucket, number>;
+
+export type BelumFinalResult = {
+  data: BelumFinalItem[];
+  meta: PageMeta;
+  counts: BelumFinalCounts;
+  updatedAt: string;
+};

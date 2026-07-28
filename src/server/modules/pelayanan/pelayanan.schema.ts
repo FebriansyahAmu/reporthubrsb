@@ -17,3 +17,15 @@ export const kunjunganPelayananQuerySchema = z
   });
 
 export type KunjunganPelayananQuery = z.infer<typeof kunjunganPelayananQuerySchema>;
+
+/** Query "Belum Difinalkan": filter kategori/bucket/ruangan/cari + paginasi. */
+export const belumFinalQuerySchema = z.object({
+  ruangan: z.string().trim().min(1).max(20).optional(),
+  kategori: z.enum(["Rawat Inap", "Rawat Jalan Klinik", "IGD"]).optional(),
+  bucket: z.enum(["b1", "b2", "b3", "b4"]).optional(),
+  search: z.string().trim().max(60).optional(),
+  page: z.coerce.number().int().min(1).max(10000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(60).default(12),
+});
+
+export type BelumFinalQuery = z.infer<typeof belumFinalQuerySchema>;
