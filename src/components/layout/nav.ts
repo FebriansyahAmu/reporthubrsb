@@ -1,4 +1,4 @@
-import { LayoutGrid, ListChecks, Users, type LucideIcon } from "lucide-react";
+import { Activity, LayoutGrid, ListChecks, Users, type LucideIcon } from "lucide-react";
 
 export type NavItem = {
   href: string;
@@ -32,6 +32,17 @@ export const NAV: NavSection[] = [
         label: "Antrean BPJS",
         icon: ListChecks,
         description: "Monitoring Task 1–7 antrean BPJS",
+      },
+    ],
+  },
+  {
+    title: "Monitoring Pelayanan",
+    items: [
+      {
+        href: "/monitoring/pelayanan/kunjungan",
+        label: "Kunjungan",
+        icon: Activity,
+        description: "Kunjungan & lama rawat per rentang waktu",
       },
     ],
   },

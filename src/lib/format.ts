@@ -90,6 +90,20 @@ export function formatDurasi(menit: number | null | undefined): string {
   return m === 0 ? `${j} j` : `${j} j ${m} mnt`;
 }
 
+/**
+ * Lama rawat dari menit → "3 hari 4 j" / "5 j 20 mnt" / "12 mnt".
+ * Untuk durasi panjang (rawat inap) yang bisa melewati hari.
+ */
+export function formatLama(menit: number | null | undefined): string {
+  if (menit == null || menit < 0) return "—";
+  const hari = Math.floor(menit / 1440);
+  const jam = Math.floor((menit % 1440) / 60);
+  const m = menit % 60;
+  if (hari > 0) return jam > 0 ? `${hari} hari ${jam} j` : `${hari} hari`;
+  if (jam > 0) return m > 0 ? `${jam} j ${m} mnt` : `${jam} j`;
+  return `${m} mnt`;
+}
+
 /** Jam:menit:detik untuk indikator "diperbarui pukul ...". */
 export function formatJam(iso: string | Date): string {
   return new Intl.DateTimeFormat("id-ID", {
