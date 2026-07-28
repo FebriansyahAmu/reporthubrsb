@@ -3,6 +3,7 @@ import {
   Hourglass,
   LayoutGrid,
   ListChecks,
+  Stethoscope,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -56,6 +57,12 @@ export const NAV: NavSection[] = [
         label: "Belum Difinalkan",
         icon: Hourglass,
         description: "Kunjungan belum ditutup (KELUAR kosong)",
+      },
+      {
+        href: "/monitoring/pelayanan/diagnosa",
+        label: "Kelengkapan Diagnosa",
+        icon: Stethoscope,
+        description: "Kunjungan final tanpa diagnosa / ICD",
       },
     ],
   },

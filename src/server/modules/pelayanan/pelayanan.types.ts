@@ -86,3 +86,63 @@ export type BelumFinalResult = {
   counts: BelumFinalCounts;
   updatedAt: string;
 };
+
+// ---------------------------------------------------------------------------
+// Kelengkapan Diagnosa (ICD) — kunjungan FINAL vs medicalrecord.diagnosa.
+// ---------------------------------------------------------------------------
+
+export type DiagnosaStatus = "TANPA_DX" | "TANPA_ICD" | "TANPA_UTAMA" | "LENGKAP";
+
+export const DIAGNOSA_STATUS_META: Record<
+  DiagnosaStatus,
+  { label: string; tone: "danger" | "warning" | "success" }
+> = {
+  TANPA_DX: { label: "Tanpa Diagnosa", tone: "danger" },
+  TANPA_ICD: { label: "Tanpa Kode ICD", tone: "warning" },
+  TANPA_UTAMA: { label: "Tanpa Diagnosa Utama", tone: "warning" },
+  LENGKAP: { label: "Lengkap", tone: "success" },
+};
+
+/** Urutan status paling parah → paling lengkap (untuk tab). */
+export const DIAGNOSA_STATUS_ORDER: DiagnosaStatus[] = [
+  "TANPA_DX",
+  "TANPA_ICD",
+  "TANPA_UTAMA",
+  "LENGKAP",
+];
+
+/** Turunkan status kelengkapan dari agregat diagnosa (UTAMA=1 primer, KODE=ICD). */
+export function diagnosaStatus(jml: number, jmlKode: number, jmlUtama: number): DiagnosaStatus {
+  if (jml <= 0) return "TANPA_DX";
+  if (jmlKode <= 0) return "TANPA_ICD";
+  if (jmlUtama <= 0) return "TANPA_UTAMA";
+  return "LENGKAP";
+}
+
+export type DiagnosaItem = {
+  nomor: string;
+  nopen: string;
+  norm: string;
+  nama: string;
+  jenisKelamin: string;
+  umur: string | null;
+  kategori: KategoriKunjungan;
+  ruang: string;
+  ruanganId: string;
+  masuk: string;
+  keluar: string | null;
+  status: DiagnosaStatus;
+  jmlDiagnosa: number;
+  /** Diagnosa representatif (utama bila ada) untuk ditampilkan. */
+  diagnosaNama: string | null;
+  diagnosaKode: string | null;
+};
+
+export type DiagnosaCounts = Record<"Semua" | DiagnosaStatus, number>;
+
+export type DiagnosaResult = {
+  data: DiagnosaItem[];
+  meta: PageMeta;
+  counts: DiagnosaCounts;
+  updatedAt: string;
+};

@@ -2,8 +2,12 @@ import { hitungUmur } from "@/lib/format";
 import {
   JENIS_KUNJUNGAN_KATEGORI,
 } from "@/server/modules/kunjungan/kunjungan.types";
-import type { KunjunganPelayananItem } from "./pelayanan.types";
-import type { KunjunganPelayananRow } from "./pelayanan.dal";
+import {
+  diagnosaStatus,
+  type DiagnosaItem,
+  type KunjunganPelayananItem,
+} from "./pelayanan.types";
+import type { DiagnosaRow, KunjunganPelayananRow } from "./pelayanan.dal";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -39,5 +43,40 @@ export function mapKunjunganPelayanan(row: KunjunganPelayananRow): KunjunganPela
     keluar,
     lamaMenit: Number.isFinite(lama) ? Math.max(0, lama) : 0,
     final: keluar != null,
+  };
+}
+
+const clean = (v: string | null) => {
+  const t = v?.trim();
+  return t ? t : null;
+};
+
+export function mapDiagnosa(row: DiagnosaRow): DiagnosaItem {
+  const lahir = row.TANGGAL_LAHIR
+    ? row.TANGGAL_LAHIR instanceof Date
+      ? row.TANGGAL_LAHIR
+      : new Date(row.TANGGAL_LAHIR)
+    : null;
+  const jk = Number(row.JENIS_KELAMIN);
+  const jml = Number(row.JML) || 0;
+  const jmlUtama = Number(row.JML_UTAMA) || 0;
+  const jmlKode = Number(row.JML_KODE) || 0;
+
+  return {
+    nomor: String(row.NOMOR),
+    nopen: String(row.NOPEN),
+    norm: String(row.NORM),
+    nama: row.NAMA?.trim() || "—",
+    jenisKelamin: jk === 1 ? "Laki-Laki" : jk === 2 ? "Perempuan" : "—",
+    umur: hitungUmur(lahir && !Number.isNaN(lahir.getTime()) ? lahir : null),
+    kategori: JENIS_KUNJUNGAN_KATEGORI[Number(row.JENIS_KUNJUNGAN)] ?? "Rawat Jalan Klinik",
+    ruang: row.RUANG,
+    ruanganId: String(row.RUANGAN_ID),
+    masuk: toWallClockIso(row.MASUK) ?? new Date().toISOString(),
+    keluar: toWallClockIso(row.KELUAR),
+    status: diagnosaStatus(jml, jmlKode, jmlUtama),
+    jmlDiagnosa: jml,
+    diagnosaNama: clean(row.UTAMA_NAMA) ?? clean(row.REP_NAMA),
+    diagnosaKode: clean(row.UTAMA_KODE) ?? clean(row.REP_KODE),
   };
 }
