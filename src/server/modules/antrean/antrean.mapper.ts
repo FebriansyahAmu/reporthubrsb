@@ -10,7 +10,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
  * DATETIME dari adapter Prisma menaruh jam-dinding di field UTC (lihat catatan
  * `kunjungan.mapper`). Baca `getUTC*` → ISO lokal tanpa Z, mis "2026-07-27T12:02:27".
  */
-function toWallClockIso(v: Date | string | null): string | null {
+export function toWallClockIso(v: Date | string | null): string | null {
   if (v == null) return null;
   const d = v instanceof Date ? v : new Date(v);
   if (Number.isNaN(d.getTime())) return null;

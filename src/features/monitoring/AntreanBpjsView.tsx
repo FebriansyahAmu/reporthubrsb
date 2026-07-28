@@ -12,6 +12,7 @@ import {
   RotateCcw,
   Search,
   Users,
+  Wrench,
   X,
 } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -25,10 +26,9 @@ import { EmptyState, ErrorState } from "@/components/feedback/States";
 import { cn } from "@/lib/cn";
 import { useDebounce } from "@/lib/useDebounce";
 import { useAsyncData } from "@/lib/useAsyncData";
-import { formatDate, formatDurasi, formatJam, toLocalDateInput } from "@/lib/format";
+import { formatDate, formatJam, toLocalDateInput } from "@/lib/format";
 import {
   ANTREAN_STATUS_LABEL,
-  TASK_META,
   type AntreanBpjs,
   type AntreanStatus,
   type TaskId,
@@ -36,7 +36,6 @@ import {
 import { completedCount, type AntreanResult } from "@/lib/antrean-core";
 import { TaskTracker } from "./TaskTracker";
 import { TaskTimeline } from "./TaskTimeline";
-import { AntreanPipeline } from "./AntreanPipeline";
 import { EditTaskDialog, type EditTarget } from "./EditTaskDialog";
 
 const STATUS_TONE: Record<AntreanStatus, "success" | "accent" | "danger"> = {
@@ -50,7 +49,6 @@ type AntreanFilterState = {
   search: string;
   poli: string;
   status: AntreanStatus | "ALL";
-  tahap: number | "ALL";
   page: number;
   pageSize: number;
 };
@@ -60,7 +58,6 @@ async function fetchAntrean(f: AntreanFilterState): Promise<AntreanResult> {
   if (f.search) p.set("search", f.search);
   if (f.poli !== "ALL") p.set("poli", f.poli);
   if (f.status !== "ALL") p.set("status", f.status);
-  if (f.tahap !== "ALL") p.set("tahap", String(f.tahap));
   p.set("page", String(f.page));
   p.set("pageSize", String(f.pageSize));
   const res = await fetch(`/api/monitoring/antrean-bpjs?${p.toString()}`);
@@ -69,24 +66,33 @@ async function fetchAntrean(f: AntreanFilterState): Promise<AntreanResult> {
   return json.data;
 }
 
+/** Task 5 tercatat lebih lambat dari Task 6 (urutan waktu terbalik). */
+function isTaskOutOfOrder(a: AntreanBpjs): boolean {
+  const t5 = a.tasks[4]?.waktu;
+  const t6 = a.tasks[5]?.waktu;
+  return !!t5 && !!t6 && new Date(t5) > new Date(t6);
+}
+
 export function AntreanBpjsView() {
   const today = useMemo(() => toLocalDateInput(new Date()), []);
   const [tanggal, setTanggal] = useState(today);
   const [searchInput, setSearchInput] = useState("");
   const [poli, setPoli] = useState<string>("ALL");
   const [status, setStatus] = useState<AntreanStatus | "ALL">("ALL");
-  const [tahap, setTahap] = useState<number | "ALL">("ALL");
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // Koreksi waktu task lokal (mock). Kunci: `${antreanId}:${taskId}` → ISO.
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<EditTarget | null>(null);
+  // Koreksi urutan Task 5>Task 6 (menulis ke SIMGOS).
+  const [adjustingId, setAdjustingId] = useState<string | null>(null);
+  const [adjustError, setAdjustError] = useState<{ id: string; msg: string } | null>(null);
 
   const search = useDebounce(searchInput, 350);
 
   const filter = useMemo<AntreanFilterState>(
-    () => ({ tanggal, search, poli, status, tahap, page, pageSize: 10 }),
-    [tanggal, search, poli, status, tahap, page],
+    () => ({ tanggal, search, poli, status, page, pageSize: 10 }),
+    [tanggal, search, poli, status, page],
   );
 
   const { result, loading, error, reload } = useAsyncData<AntreanResult>(
@@ -96,7 +102,6 @@ export function AntreanBpjsView() {
 
   const meta = result?.meta ?? null;
   const summary = result?.summary ?? null;
-  const pipeline = result?.pipeline ?? [];
   const poliOptions = result?.poliOptions ?? [];
   const updatedAt = result?.updatedAt ?? null;
 
@@ -107,7 +112,7 @@ export function AntreanBpjsView() {
   );
 
   // Reset ke halaman 1 (dan tutup baris) saat filter selain page berubah — pola render-phase.
-  const filterKey = `${tanggal}|${search}|${poli}|${status}|${tahap}`;
+  const filterKey = `${tanggal}|${search}|${poli}|${status}`;
   const [prevKey, setPrevKey] = useState(filterKey);
   if (prevKey !== filterKey) {
     setPrevKey(filterKey);
@@ -121,23 +126,36 @@ export function AntreanBpjsView() {
     setEditing(null);
   }
 
+  async function handleAdjustTask(a: AntreanBpjs) {
+    setAdjustingId(a.id);
+    setAdjustError(null);
+    try {
+      const res = await fetch("/api/monitoring/antrean-bpjs/sesuaikan-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ antrian: a.id }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setAdjustError({ id: a.id, msg: body?.error?.message ?? "Gagal menyesuaikan task." });
+        return;
+      }
+      reload(); // muat ulang → highlight hilang bila urutan sudah benar
+    } catch {
+      setAdjustError({ id: a.id, msg: "Tidak dapat terhubung ke server." });
+    } finally {
+      setAdjustingId(null);
+    }
+  }
+
   const hasFilter =
-    tanggal !== today ||
-    !!search ||
-    poli !== "ALL" ||
-    status !== "ALL" ||
-    tahap !== "ALL";
+    tanggal !== today || !!search || poli !== "ALL" || status !== "ALL";
 
   function resetFilters() {
     setTanggal(today);
     setSearchInput("");
     setPoli("ALL");
     setStatus("ALL");
-    setTahap("ALL");
-  }
-
-  function toggleTahap(t: number) {
-    setTahap((cur) => (cur === t ? "ALL" : t));
   }
 
   return (
@@ -169,24 +187,6 @@ export function AntreanBpjsView() {
         <StatCard label="Berlangsung" value={summary?.berlangsung ?? 0} icon={Loader} tone="accent" loading={loading} />
         <StatCard label="Terlambat" value={summary?.terlambat ?? 0} icon={AlertTriangle} tone="danger" loading={loading} />
       </div>
-
-      {/* Pipeline */}
-      <Card>
-        <CardHeader
-          title="Posisi Antrean Saat Ini"
-          subtitle="Jumlah pasien per tahap (berdasarkan task terakhir yang tercatat). Klik tahap untuk memfilter."
-          action={
-            <div className="flex items-center gap-1.5 rounded-md bg-surface-2 px-2.5 py-1 text-xs text-fg-muted">
-              <Clock className="size-3.5" />
-              Rata-rata layanan:{" "}
-              <span className="font-medium text-fg tabular">{formatDurasi(summary?.rataMenit)}</span>
-            </div>
-          }
-        />
-        <div className="p-4">
-          <AntreanPipeline pipeline={pipeline} activeTahap={tahap} onSelect={toggleTahap} loading={loading} />
-        </div>
-      </Card>
 
       {/* Filter */}
       <Card className="p-4">
@@ -243,12 +243,6 @@ export function AntreanBpjsView() {
                 onClear={() => setTanggal(today)}
               />
             )}
-            {tahap !== "ALL" && (
-              <FilterChip
-                label={`Tahap: ${TASK_META[(tahap as number) - 1].kode} ${(tahap as number) === 7 ? "Selesai" : TASK_META[(tahap as number) - 1].nama}`}
-                onClear={() => setTahap("ALL")}
-              />
-            )}
             {poli !== "ALL" && <FilterChip label={poli} onClear={() => setPoli("ALL")} />}
             {status !== "ALL" && <FilterChip label={ANTREAN_STATUS_LABEL[status]} onClear={() => setStatus("ALL")} />}
             {!!search && <FilterChip label={`"${search}"`} onClear={() => setSearchInput("")} />}
@@ -303,6 +297,10 @@ export function AntreanBpjsView() {
                         currentWaktu: task?.waktu ?? null,
                       });
                     }}
+                    outOfOrder={isTaskOutOfOrder(a)}
+                    adjusting={adjustingId === a.id}
+                    adjustError={adjustError?.id === a.id ? adjustError.msg : null}
+                    onAdjust={() => handleAdjustTask(a)}
                   />
                 ))}
               </tbody>
@@ -352,11 +350,19 @@ function AntreanRow({
   expanded,
   onToggle,
   onEditTask,
+  outOfOrder,
+  adjusting,
+  adjustError,
+  onAdjust,
 }: {
   antrean: AntreanBpjs;
   expanded: boolean;
   onToggle: () => void;
   onEditTask: (taskId: TaskId) => void;
+  outOfOrder: boolean;
+  adjusting: boolean;
+  adjustError: string | null;
+  onAdjust: () => void;
 }) {
   const done = completedCount(antrean);
   return (
@@ -364,8 +370,10 @@ function AntreanRow({
       <tr
         onClick={onToggle}
         className={cn(
-          "cursor-pointer border-b border-border transition-colors hover:bg-surface-2/50",
-          expanded && "bg-surface-2/40",
+          "cursor-pointer border-b border-border transition-colors",
+          !outOfOrder && "hover:bg-surface-2/50",
+          !outOfOrder && expanded && "bg-surface-2/40",
+          outOfOrder && "bg-warning-soft hover:bg-warning-soft/70",
         )}
       >
         <td className="px-4 py-3">
@@ -385,6 +393,26 @@ function AntreanRow({
             <TaskTracker antrean={antrean} />
             <span className="text-xs text-fg-muted tabular">{done}/7</span>
           </div>
+          {outOfOrder && (
+            <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-warning">
+                  <AlertTriangle className="size-3" /> T5 mendahului T6
+                </span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={adjusting}
+                  icon={<Wrench className="size-3.5" />}
+                  onClick={onAdjust}
+                  className="h-7 gap-1.5 px-2.5 text-[12px]"
+                >
+                  Sesuaikan Task
+                </Button>
+              </div>
+              {adjustError && <p className="mt-1 text-[11px] text-danger">{adjustError}</p>}
+            </div>
+          )}
         </td>
         <td className="px-4 py-3">
           <Badge tone={STATUS_TONE[antrean.status]} dot>
