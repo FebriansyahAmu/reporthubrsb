@@ -4,11 +4,13 @@ import {
   queryBelumFinal,
   queryDiagnosaKelengkapan,
   queryKunjunganRange,
+  queryResumeKelengkapan,
 } from "./pelayanan.dal";
-import { mapDiagnosa, mapKunjunganPelayanan } from "./pelayanan.mapper";
+import { mapDiagnosa, mapKunjunganPelayanan, mapResume } from "./pelayanan.mapper";
 import {
   agingBucket,
   DIAGNOSA_STATUS_ORDER,
+  RESUME_STATUS_ORDER,
   type AgingBucket,
   type BelumFinalCounts,
   type BelumFinalItem,
@@ -21,14 +23,19 @@ import {
   type KunjunganPelayananItem,
   type KunjunganPelayananResult,
   type KunjunganPelayananSummary,
+  type ResumeCounts,
+  type ResumeItem,
+  type ResumeResult,
+  type ResumeStatus,
 } from "./pelayanan.types";
 import type {
   BelumFinalQuery,
   DiagnosaQuery,
   KunjunganPelayananQuery,
+  ResumeQuery,
 } from "./pelayanan.schema";
 
-export type { KunjunganPelayananResult, BelumFinalResult, DiagnosaResult };
+export type { KunjunganPelayananResult, BelumFinalResult, DiagnosaResult, ResumeResult };
 
 function summarize(data: KunjunganPelayananItem[]): KunjunganPelayananSummary {
   const finalItems = data.filter((d) => d.final);
@@ -206,6 +213,64 @@ export async function getDiagnosaKelengkapan(params: DiagnosaQuery): Promise<Dia
   const filtered = params.status ? base.filter((it) => it.status === params.status) : base;
   filtered.sort(
     (a, b) => DIAGNOSA_STATUS_ORDER.indexOf(a.status) - DIAGNOSA_STATUS_ORDER.indexOf(b.status),
+  );
+
+  const pageSize = params.pageSize;
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(params.page, totalPages);
+  const start = (page - 1) * pageSize;
+  const data = filtered.slice(start, start + pageSize);
+
+  return {
+    data,
+    meta: { page, pageSize, total, totalPages },
+    counts,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function emptyResume(): ResumeResult {
+  return {
+    data: [],
+    meta: { page: 1, pageSize: 12, total: 0, totalPages: 1 },
+    counts: { Semua: 0, TANPA_RESUME: 0, RESUME_MINIM: 0, LENGKAP: 0 },
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Monitoring "Kelengkapan Resume Medis": kunjungan FINAL pada rentang tanggal
+ * dinilai kelengkapan resume medisnya (tanpa resume / resume belum lengkap /
+ * lengkap). Hitungan status memperhitungkan filter kategori/cari; daftar
+ * dipaginasi server & diurut paling parah dulu.
+ */
+export async function getResumeKelengkapan(params: ResumeQuery): Promise<ResumeResult> {
+  if (!isSimgosConfigured()) return emptyResume();
+
+  const rows = await queryResumeKelengkapan({
+    from: params.from,
+    to: params.to,
+    ruanganId: params.ruangan,
+  });
+  const scope: ResumeItem[] = rows.map(mapResume);
+
+  const q = params.search?.toLowerCase();
+  let base = q ? scope.filter((it) => matchSearch(it, q)) : scope;
+  if (params.kategori) base = base.filter((it) => it.kategori === params.kategori);
+
+  const countStatus = (s: ResumeStatus) => base.filter((it) => it.status === s).length;
+  const counts: ResumeCounts = {
+    Semua: base.length,
+    TANPA_RESUME: countStatus("TANPA_RESUME"),
+    RESUME_MINIM: countStatus("RESUME_MINIM"),
+    LENGKAP: countStatus("LENGKAP"),
+  };
+
+  // Filter status → urut paling parah dulu → paginasi.
+  const filtered = params.status ? base.filter((it) => it.status === params.status) : base;
+  filtered.sort(
+    (a, b) => RESUME_STATUS_ORDER.indexOf(a.status) - RESUME_STATUS_ORDER.indexOf(b.status),
   );
 
   const pageSize = params.pageSize;

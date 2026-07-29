@@ -146,3 +146,66 @@ export type DiagnosaResult = {
   counts: DiagnosaCounts;
   updatedAt: string;
 };
+
+// ---------------------------------------------------------------------------
+// Kelengkapan Resume Medis — kunjungan FINAL vs medicalrecord.resume (per NOPEN).
+// Resume medis (ringkasan pulang) melekat pada NOPEN/episode, bukan per-leg.
+// ---------------------------------------------------------------------------
+
+export type ResumeStatus = "TANPA_RESUME" | "RESUME_MINIM" | "LENGKAP";
+
+export const RESUME_STATUS_META: Record<
+  ResumeStatus,
+  { label: string; tone: "danger" | "warning" | "success" }
+> = {
+  TANPA_RESUME: { label: "Tanpa Resume", tone: "danger" },
+  RESUME_MINIM: { label: "Resume Belum Lengkap", tone: "warning" },
+  LENGKAP: { label: "Lengkap", tone: "success" },
+};
+
+/** Urutan status paling parah → paling lengkap (untuk tab). */
+export const RESUME_STATUS_ORDER: ResumeStatus[] = [
+  "TANPA_RESUME",
+  "RESUME_MINIM",
+  "LENGKAP",
+];
+
+/**
+ * Komponen INTI resume yang wajib terisi (di SIMGOS berupa int-ref; 0 = kosong).
+ * Hanya komponen naratif yang konsisten dipakai — RPS/TANDA_VITAL/diagnosa-json
+ * sengaja diabaikan karena hampir selalu kosong (dicatat di modul lain).
+ */
+export const RESUME_CORE_COMPONENTS = [
+  { key: "ANAMNESIS", label: "Anamnesis" },
+  { key: "KELUHAN_UTAMA", label: "Keluhan utama" },
+  { key: "RPP", label: "Riwayat penyakit" },
+  { key: "RENCANA_TERAPI", label: "Rencana terapi" },
+] as const;
+
+export type ResumeItem = {
+  nomor: string;
+  nopen: string;
+  norm: string;
+  nama: string;
+  jenisKelamin: string;
+  umur: string | null;
+  kategori: KategoriKunjungan;
+  ruang: string;
+  ruanganId: string;
+  masuk: string;
+  keluar: string | null;
+  status: ResumeStatus;
+  /** ISO lokal kapan resume dibuat, atau null bila tak ada resume. */
+  resumeTanggal: string | null;
+  /** Label komponen inti yang belum diisi (untuk status RESUME_MINIM). */
+  komponenKurang: string[];
+};
+
+export type ResumeCounts = Record<"Semua" | ResumeStatus, number>;
+
+export type ResumeResult = {
+  data: ResumeItem[];
+  meta: PageMeta;
+  counts: ResumeCounts;
+  updatedAt: string;
+};

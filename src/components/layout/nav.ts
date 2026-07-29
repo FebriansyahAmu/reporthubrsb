@@ -1,5 +1,6 @@
 import {
   Activity,
+  ClipboardList,
   Hourglass,
   LayoutGrid,
   ListChecks,
@@ -63,6 +64,12 @@ export const NAV: NavSection[] = [
         label: "Kelengkapan Diagnosa",
         icon: Stethoscope,
         description: "Kunjungan final tanpa diagnosa / ICD",
+      },
+      {
+        href: "/monitoring/pelayanan/resume",
+        label: "Kelengkapan Resume",
+        icon: ClipboardList,
+        description: "Kunjungan final tanpa resume medis",
       },
     ],
   },

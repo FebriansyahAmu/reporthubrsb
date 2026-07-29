@@ -198,3 +198,88 @@ export async function queryDiagnosaKelengkapan(
 
   return getSimgos().$queryRawUnsafe<DiagnosaRow[]>(sql, ...params);
 }
+
+/** Baris kunjungan FINAL + resume medis terakhir (per NOPEN) & komponen intinya. */
+export type ResumeRow = {
+  NOMOR: string;
+  NOPEN: string;
+  RUANGAN_ID: string;
+  RUANG: string;
+  JENIS_KUNJUNGAN: number;
+  MASUK: Date | string;
+  KELUAR: Date | string | null;
+  NORM: string | number;
+  NAMA: string;
+  JENIS_KELAMIN: number | string;
+  TANGGAL_LAHIR: Date | string | null;
+  /** null bila NOPEN tak punya resume. */
+  RESUME_ID: number | null;
+  RESUME_TANGGAL: Date | string | null;
+  ANAMNESIS: number | null;
+  KELUHAN_UTAMA: number | null;
+  RPP: number | null;
+  RENCANA_TERAPI: number | null;
+  EDUKASI_EMERGENCY: number | null;
+  JADWAL_KONTROL: number | null;
+};
+
+/**
+ * Kunjungan FINAL pada rentang tanggal, di-LEFT JOIN resume medis TERAKHIR per
+ * NOPEN (`medicalrecord.resume`, STATUS=1, ID terbesar) untuk menilai kelengkapan
+ * dokumentasi ringkasan pulang. Resume melekat pada episode (NOPEN), bukan leg
+ * kunjungan. Read-only, lintas-DB; ruangan opsional.
+ */
+export async function queryResumeKelengkapan(a: KunjunganRangeArgs): Promise<ResumeRow[]> {
+  const params: unknown[] = [a.from, a.to];
+  let ruanganClause = "";
+  if (a.ruanganId) {
+    ruanganClause = "AND k.RUANGAN = ?";
+    params.push(a.ruanganId);
+  }
+
+  const sql = `
+    SELECT k.NOMOR,
+           k.NOPEN,
+           r.ID              AS RUANGAN_ID,
+           r.DESKRIPSI       AS RUANG,
+           r.JENIS_KUNJUNGAN,
+           k.MASUK,
+           k.KELUAR,
+           ps.NORM,
+           ps.NAMA,
+           ps.JENIS_KELAMIN,
+           ps.TANGGAL_LAHIR,
+           rs.ID             AS RESUME_ID,
+           rs.TANGGAL        AS RESUME_TANGGAL,
+           rs.ANAMNESIS,
+           rs.KELUHAN_UTAMA,
+           rs.RPP,
+           rs.RENCANA_TERAPI,
+           rs.EDUKASI_EMERGENCY,
+           rs.JADWAL_KONTROL
+    FROM ${SIMGOS_DB.PENDAFTARAN}.kunjungan k
+    JOIN ${SIMGOS_DB.MASTER}.ruangan r        ON r.ID = k.RUANGAN
+    JOIN ${SIMGOS_DB.PENDAFTARAN}.pendaftaran pp ON pp.NOMOR = k.NOPEN
+    JOIN ${SIMGOS_DB.MASTER}.pasien ps        ON ps.NORM = pp.NORM
+    LEFT JOIN (
+      SELECT t.ID, t.NOPEN, t.TANGGAL, t.ANAMNESIS, t.KELUHAN_UTAMA, t.RPP,
+             t.RENCANA_TERAPI, t.EDUKASI_EMERGENCY, t.JADWAL_KONTROL
+      FROM ${SIMGOS_DB.MEDICALRECORD}.resume t
+      JOIN (
+        SELECT NOPEN, MAX(ID) AS MID
+        FROM ${SIMGOS_DB.MEDICALRECORD}.resume
+        WHERE STATUS = 1
+        GROUP BY NOPEN
+      ) m ON m.MID = t.ID
+    ) rs ON rs.NOPEN = k.NOPEN
+    WHERE CHAR_LENGTH(r.ID) = 9
+      AND r.JENIS_KUNJUNGAN IN (1, 2, 3)
+      AND pp.STATUS = 1
+      AND k.KELUAR IS NOT NULL
+      AND k.MASUK >= ? AND k.MASUK < ?
+      ${ruanganClause}
+    ORDER BY k.MASUK DESC
+    LIMIT 1000`;
+
+  return getSimgos().$queryRawUnsafe<ResumeRow[]>(sql, ...params);
+}
