@@ -5,97 +5,103 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* =========================================================================
-   DESIGN TOKENS — Teal + Slate netral (tanpa indigo/violet).
-   Nilai didefinisikan sebagai CSS variable agar bisa di-switch light/dark.
+   DESIGN TOKENS — Warm Charcoal + Dry Peach.
+   Netral hangat (cokelat-arang) dengan brand peach/terracotta. Enam anchor
+   pemberi user: #e07b5b(Dry Peach) #77615a(Raisin) #47403d(Wild Truffle)
+   #2b2726(Bakora Grey) #1a1919(Thamar Black) #111111(Dreamless Sleep).
+   Palet ini condong GELAP → di tema gelap anchor dipakai langsung (surface/
+   fg/brand); di tema terang netral ivory/sand diturunkan & brand didalam-kan
+   ke terracotta agar teks tetap kontras. Accent teal = komplemen modern untuk
+   peach; status (hijau/amber/merah) tetap fungsional.
    ========================================================================= */
 :root {
-  --bg: #f8fafc; /* slate-50  */
-  --surface: #ffffff;
-  --surface-2: #f1f5f9; /* slate-100 */
-  --border: #e2e8f0; /* slate-200 */
-  --border-strong: #cbd5e1; /* slate-300 */
-  --fg: #0f172a; /* slate-900 */
-  --fg-muted: #64748b; /* slate-500 */
-  --fg-subtle: #94a3b8; /* slate-400 */
+  --bg: #f6f1ec; /* ivory hangat — page */
+  --surface: #fdfaf6; /* near-white hangat — kartu */
+  --surface-2: #efe7df; /* sand — isian/inset */
+  --border: #e7ded4;
+  --border-strong: #d6c9bc;
+  --fg: #1a1919; /* Thamar Black — teks utama (anchor) */
+  --fg-muted: #77615a; /* Raisin (anchor) */
+  --fg-subtle: #8f7d75;
 
-  --brand: #0f766e; /* teal-700  */
-  --brand-hover: #115e59; /* teal-800  */
+  --brand: #bf5836; /* terracotta — peach didalam-kan agar kontras di terang */
+  --brand-hover: #a5482b;
   --brand-fg: #ffffff;
-  --brand-soft: #f0fdfa; /* teal-50   */
-  --brand-soft-fg: #0f766e;
-  --brand-ring: #5eead4; /* teal-300  */
+  --brand-soft: #f8e7df;
+  --brand-soft-fg: #a9482a;
+  --brand-ring: #e8b6a3;
 
-  --accent: #0369a1; /* sky-700 — info/link, hemat */
-  --accent-soft: #f0f9ff; /* sky-50 */
+  --accent: #237a70; /* teal — komplemen peach, kategori/link (hemat) */
+  --accent-soft: #e2f1ef;
 
-  --success: #059669; /* emerald-600 */
-  --success-soft: #ecfdf5;
-  --warning: #d97706; /* amber-600 */
-  --warning-soft: #fffbeb;
-  --danger: #dc2626; /* red-600 */
-  --danger-soft: #fef2f2;
+  --success: #37834a;
+  --success-soft: #e8f3e6;
+  --warning: #a56c14;
+  --warning-soft: #f7ecd6;
+  --danger: #cf4436;
+  --danger-soft: #fbe9e6;
 
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
 
-  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.08);
-  --shadow-md: 0 2px 4px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.08);
+  --shadow-xs: 0 1px 2px rgba(26, 25, 25, 0.06);
+  --shadow-sm: 0 1px 2px rgba(26, 25, 25, 0.07), 0 1px 3px rgba(26, 25, 25, 0.10);
+  --shadow-md: 0 2px 4px rgba(26, 25, 25, 0.07), 0 10px 28px rgba(26, 25, 25, 0.14);
 }
 
 /* Ikuti preferensi OS bila user belum memilih tema manual */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0b1220;
-    --surface: #0f172a;
-    --surface-2: #131f34;
-    --border: #1e293b;
-    --border-strong: #334155;
-    --fg: #e2e8f0;
-    --fg-muted: #94a3b8;
-    --fg-subtle: #64748b;
-    --brand: #14b8a6;
-    --brand-hover: #2dd4bf;
-    --brand-fg: #04211d;
-    --brand-soft: #0b2f2b;
-    --brand-soft-fg: #5eead4;
-    --brand-ring: #115e59;
-    --accent: #38bdf8;
-    --accent-soft: #0b2433;
-    --success: #34d399;
-    --success-soft: #06281f;
-    --warning: #fbbf24;
-    --warning-soft: #2a1c05;
-    --danger: #f87171;
-    --danger-soft: #2a0f0f;
+    --bg: #111111; /* Dreamless Sleep — page (anchor) */
+    --surface: #1a1919; /* Thamar Black — kartu (anchor) */
+    --surface-2: #2b2726; /* Bakora Grey — elevasi (anchor) */
+    --border: #332e2c;
+    --border-strong: #47403d; /* Wild Truffle (anchor) */
+    --fg: #f4ede7; /* ivory hangat */
+    --fg-muted: #b3a49b;
+    --fg-subtle: #8a786f; /* Raisin dicerahkan */
+    --brand: #e07b5b; /* Dry Peach — brand (anchor) */
+    --brand-hover: #e88f72;
+    --brand-fg: #1a1010;
+    --brand-soft: #2f211b;
+    --brand-soft-fg: #f0a488;
+    --brand-ring: #8a4b36;
+    --accent: #5ec4b8;
+    --accent-soft: #123430;
+    --success: #6cc26a;
+    --success-soft: #16281a;
+    --warning: #e2a63e;
+    --warning-soft: #2c2109;
+    --danger: #f2685f;
+    --danger-soft: #331714;
   }
 }
 
 /* Pilihan tema manual */
 :root[data-theme="dark"] {
-  --bg: #0b1220;
-  --surface: #0f172a;
-  --surface-2: #131f34;
-  --border: #1e293b;
-  --border-strong: #334155;
-  --fg: #e2e8f0;
-  --fg-muted: #94a3b8;
-  --fg-subtle: #64748b;
-  --brand: #14b8a6;
-  --brand-hover: #2dd4bf;
-  --brand-fg: #04211d;
-  --brand-soft: #0b2f2b;
-  --brand-soft-fg: #5eead4;
-  --brand-ring: #115e59;
-  --accent: #38bdf8;
-  --accent-soft: #0b2433;
-  --success: #34d399;
-  --success-soft: #06281f;
-  --warning: #fbbf24;
-  --warning-soft: #2a1c05;
-  --danger: #f87171;
-  --danger-soft: #2a0f0f;
+  --bg: #111111;
+  --surface: #1a1919;
+  --surface-2: #2b2726;
+  --border: #332e2c;
+  --border-strong: #47403d;
+  --fg: #f4ede7;
+  --fg-muted: #b3a49b;
+  --fg-subtle: #8a786f;
+  --brand: #e07b5b;
+  --brand-hover: #e88f72;
+  --brand-fg: #1a1010;
+  --brand-soft: #2f211b;
+  --brand-soft-fg: #f0a488;
+  --brand-ring: #8a4b36;
+  --accent: #5ec4b8;
+  --accent-soft: #123430;
+  --success: #6cc26a;
+  --success-soft: #16281a;
+  --warning: #e2a63e;
+  --warning-soft: #2c2109;
+  --danger: #f2685f;
+  --danger-soft: #331714;
 }
 
 /* =========================================================================

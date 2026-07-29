@@ -69,7 +69,7 @@ export function Modal({
           transition={{ duration: 0.15 }}
         >
           <div
-            className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm"
+            className="fixed inset-0 bg-[#111111]/60 backdrop-blur-sm"
             onClick={onClose}
             aria-hidden
           />
