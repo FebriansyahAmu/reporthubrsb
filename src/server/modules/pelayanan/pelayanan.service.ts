@@ -5,8 +5,14 @@ import {
   queryDiagnosaKelengkapan,
   queryKunjunganRange,
   queryResumeKelengkapan,
+  queryTurunanByNopens,
 } from "./pelayanan.dal";
-import { mapDiagnosa, mapKunjunganPelayanan, mapResume } from "./pelayanan.mapper";
+import {
+  mapDiagnosa,
+  mapKunjunganPelayanan,
+  mapResume,
+  mapTurunan,
+} from "./pelayanan.mapper";
 import {
   agingBucket,
   DIAGNOSA_STATUS_ORDER,
@@ -15,6 +21,7 @@ import {
   type BelumFinalCounts,
   type BelumFinalItem,
   type BelumFinalResult,
+  type TurunanLayananItem,
   type DiagnosaCounts,
   type DiagnosaItem,
   type DiagnosaResult,
@@ -138,7 +145,7 @@ export async function getBelumFinal(params: BelumFinalQuery): Promise<BelumFinal
   const rows = await queryBelumFinal(params.ruangan);
   const scope: BelumFinalItem[] = rows.map((r) => {
     const it = mapKunjunganPelayanan(r);
-    return { ...it, bucket: agingBucket(it.lamaMenit) };
+    return { ...it, bucket: agingBucket(it.lamaMenit), turunan: [] };
   });
 
   // Filter kategori + cari → dasar hitungan bucket.
@@ -164,12 +171,35 @@ export async function getBelumFinal(params: BelumFinalQuery): Promise<BelumFinal
   const start = (page - 1) * pageSize;
   const data = filtered.slice(start, start + pageSize);
 
+  // Lampirkan turunan layanan HANYA untuk halaman ini (≤ pageSize NOPEN) agar
+  // payload ringan. Leg kartu itu sendiri (own NOMOR) dikecualikan.
+  await attachTurunan(data);
+
   return {
     data,
     meta: { page, pageSize, total, totalPages },
     counts,
     updatedAt: new Date().toISOString(),
   };
+}
+
+/** Ambil semua leg per NOPEN untuk item halaman & sematkan (kecuali leg sendiri). */
+async function attachTurunan(data: BelumFinalItem[]): Promise<void> {
+  if (data.length === 0) return;
+  const nopens = [...new Set(data.map((d) => d.nopen))];
+  const rows = await queryTurunanByNopens(nopens);
+
+  const byNopen = new Map<string, TurunanLayananItem[]>();
+  for (const row of rows) {
+    const key = String(row.NOPEN);
+    const list = byNopen.get(key) ?? [];
+    list.push(mapTurunan(row));
+    byNopen.set(key, list);
+  }
+
+  for (const d of data) {
+    d.turunan = (byNopen.get(d.nopen) ?? []).filter((t) => t.nomor !== d.nomor);
+  }
 }
 
 function emptyDiagnosa(): DiagnosaResult {

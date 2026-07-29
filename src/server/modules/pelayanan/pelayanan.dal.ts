@@ -113,6 +113,41 @@ export async function queryBelumFinal(ruanganId?: string): Promise<KunjunganPela
   return getSimgos().$queryRawUnsafe<KunjunganPelayananRow[]>(sql, ...params);
 }
 
+/** Satu leg layanan (kunjungan) di bawah suatu NOPEN. */
+export type TurunanRow = {
+  NOMOR: string;
+  NOPEN: string;
+  RUANG: string | null;
+  JENIS_KUNJUNGAN: number | null;
+  MASUK: Date | string;
+  KELUAR: Date | string | null;
+};
+
+/**
+ * Semua leg kunjungan (turunan layanan) untuk sekumpulan NOPEN — dipakai
+ * menampilkan rincian layanan (farmasi/lab/radiologi/dll) per pasien. Leg BATAL
+ * (`kunjungan.STATUS = 0`) dikecualikan. Read-only; parameter via `?`.
+ */
+export async function queryTurunanByNopens(nopens: string[]): Promise<TurunanRow[]> {
+  if (nopens.length === 0) return [];
+  const placeholders = nopens.map(() => "?").join(", ");
+
+  const sql = `
+    SELECT k.NOMOR,
+           k.NOPEN,
+           r.DESKRIPSI AS RUANG,
+           r.JENIS_KUNJUNGAN,
+           k.MASUK,
+           k.KELUAR
+    FROM ${SIMGOS_DB.PENDAFTARAN}.kunjungan k
+    LEFT JOIN ${SIMGOS_DB.MASTER}.ruangan r ON r.ID = k.RUANGAN
+    WHERE k.NOPEN IN (${placeholders})
+      AND k.STATUS <> 0
+    ORDER BY k.MASUK ASC`;
+
+  return getSimgos().$queryRawUnsafe<TurunanRow[]>(sql, ...nopens);
+}
+
 /** Baris kunjungan FINAL + agregat kelengkapan diagnosa (per NOPEN). */
 export type DiagnosaRow = {
   NOMOR: string;

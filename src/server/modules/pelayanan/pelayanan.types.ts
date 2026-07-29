@@ -76,7 +76,47 @@ export function agingBucket(lamaMenit: number): AgingBucket {
   return "b4";
 }
 
-export type BelumFinalItem = KunjunganPelayananItem & { bucket: AgingBucket };
+/**
+ * Peta `master.ruangan.JENIS_KUNJUNGAN` → label layanan (untuk turunan/leg
+ * penunjang di bawah satu NOPEN). Selain 1/2/3 (klinik/IGD/ranap) ada kode
+ * penunjang: 0/4=Lab, 5=Radiologi, 6=Kamar Operasi, 11=Farmasi, 18=lainnya.
+ */
+export const JENIS_LAYANAN_LABEL: Record<number, string> = {
+  0: "Laboratorium",
+  1: "Rawat Jalan",
+  2: "IGD",
+  3: "Rawat Inap",
+  4: "Laboratorium",
+  5: "Radiologi",
+  6: "Kamar Operasi",
+  11: "Farmasi",
+  18: "Lainnya",
+};
+
+export function jenisLayananLabel(jenis: number): string {
+  return JENIS_LAYANAN_LABEL[jenis] ?? "Lainnya";
+}
+
+/** Satu leg layanan (kunjungan) di bawah NOPEN yang sama — turunan layanan. */
+export type TurunanLayananItem = {
+  /** kunjungan.NOMOR (key React). */
+  nomor: string;
+  ruang: string;
+  /** Label jenis layanan (Farmasi/Laboratorium/Radiologi/…). */
+  jenisLabel: string;
+  /** ISO lokal. */
+  masuk: string;
+  /** ISO lokal, atau null bila leg belum ditutup. */
+  keluar: string | null;
+  /** true bila KELUAR terisi (leg sudah difinalkan). */
+  final: boolean;
+};
+
+export type BelumFinalItem = KunjunganPelayananItem & {
+  bucket: AgingBucket;
+  /** Leg layanan lain di bawah NOPEN yang sama (kecuali leg ini & yang batal). */
+  turunan: TurunanLayananItem[];
+};
 
 export type BelumFinalCounts = Record<"Semua" | AgingBucket, number>;
 

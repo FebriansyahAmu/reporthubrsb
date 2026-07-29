@@ -4,12 +4,19 @@ import {
 } from "@/server/modules/kunjungan/kunjungan.types";
 import {
   diagnosaStatus,
+  jenisLayananLabel,
   type DiagnosaItem,
   type KunjunganPelayananItem,
   type ResumeItem,
   type ResumeStatus,
+  type TurunanLayananItem,
 } from "./pelayanan.types";
-import type { DiagnosaRow, KunjunganPelayananRow, ResumeRow } from "./pelayanan.dal";
+import type {
+  DiagnosaRow,
+  KunjunganPelayananRow,
+  ResumeRow,
+  TurunanRow,
+} from "./pelayanan.dal";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -80,6 +87,18 @@ export function mapDiagnosa(row: DiagnosaRow): DiagnosaItem {
     jmlDiagnosa: jml,
     diagnosaNama: clean(row.UTAMA_NAMA) ?? clean(row.REP_NAMA),
     diagnosaKode: clean(row.UTAMA_KODE) ?? clean(row.REP_KODE),
+  };
+}
+
+export function mapTurunan(row: TurunanRow): TurunanLayananItem {
+  const keluar = toWallClockIso(row.KELUAR);
+  return {
+    nomor: String(row.NOMOR),
+    ruang: row.RUANG?.trim() || "—",
+    jenisLabel: jenisLayananLabel(Number(row.JENIS_KUNJUNGAN)),
+    masuk: toWallClockIso(row.MASUK) ?? new Date().toISOString(),
+    keluar,
+    final: keluar != null,
   };
 }
 
