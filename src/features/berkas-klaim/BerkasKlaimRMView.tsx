@@ -1,20 +1,21 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
 import {
-  AlertTriangle,
+  ArrowRight,
   Clock,
   DoorOpen,
-  Hourglass,
+  FolderCheck,
+  Hospital,
   RefreshCw,
   Search,
-  TriangleAlert,
 } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { InputWithIcon, Label } from "@/components/ui/Field";
+import { Input, InputWithIcon, Label } from "@/components/ui/Field";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Pagination } from "@/components/ui/Pagination";
@@ -23,69 +24,88 @@ import { TurunanCollapse } from "@/components/report/TurunanCollapse";
 import { cn } from "@/lib/cn";
 import { useDebounce } from "@/lib/useDebounce";
 import { useAsyncData } from "@/lib/useAsyncData";
-import { formatDateTime, formatJam, formatLama } from "@/lib/format";
-import {
-  AGING_BUCKETS,
-  type AgingBucket,
-  type BelumFinalItem,
-  type BelumFinalResult,
-  type KategoriKunjungan,
-} from "@/server/modules/pelayanan/pelayanan.types";
+import { addDays, formatDate, formatDateTime, formatJam, toLocalDateInput } from "@/lib/format";
+import type {
+  BerkasKlaimItem,
+  BerkasKlaimResult,
+  KategoriKunjungan,
+} from "@/server/modules/berkas-klaim/berkas-klaim.types";
 import type { RuanganOption } from "@/server/modules/kunjungan/kunjungan.types";
 
 const KATEGORI: KategoriKunjungan[] = ["Rawat Inap", "Rawat Jalan Klinik", "IGD"];
 const PAGE_SIZE = 12;
 
-const BUCKET_META: Record<AgingBucket, { label: string; tone: "warning" | "danger" }> =
-  Object.fromEntries(AGING_BUCKETS.map((b) => [b.key, { label: b.label, tone: b.tone }])) as Record<
-    AgingBucket,
-    { label: string; tone: "warning" | "danger" }
-  >;
+type KategoriFilter = "Semua" | KategoriKunjungan;
 
-type BucketFilter = "Semua" | AgingBucket;
+const KATEGORI_TONE: Record<KategoriKunjungan, "brand" | "accent" | "warning"> = {
+  "Rawat Inap": "brand",
+  "Rawat Jalan Klinik": "accent",
+  IGD: "warning",
+};
 
-async function fetchBelumFinal(args: {
+async function fetchBerkas(args: {
+  from: string;
+  toExclusive: string;
   ruanganId: string;
-  kategori: "Semua" | KategoriKunjungan;
-  bucket: BucketFilter;
+  kategori: KategoriFilter;
   search: string;
   page: number;
-}): Promise<BelumFinalResult> {
-  const p = new URLSearchParams({ page: String(args.page), pageSize: String(PAGE_SIZE) });
+}): Promise<BerkasKlaimResult> {
+  const p = new URLSearchParams({
+    from: args.from,
+    to: args.toExclusive,
+    page: String(args.page),
+    pageSize: String(PAGE_SIZE),
+  });
   if (args.ruanganId) p.set("ruangan", args.ruanganId);
   if (args.kategori !== "Semua") p.set("kategori", args.kategori);
-  if (args.bucket !== "Semua") p.set("bucket", args.bucket);
   if (args.search) p.set("search", args.search);
-  const res = await fetch(`/api/monitoring/pelayanan/belum-final?${p.toString()}`);
+  const res = await fetch(`/api/berkas-klaim/rm?${p.toString()}`);
   if (!res.ok) throw new Error("Gagal memuat data");
-  const json = (await res.json()) as { data: BelumFinalResult };
+  const json = (await res.json()) as { data: BerkasKlaimResult };
   return json.data;
 }
 
-export function BelumFinalView({ ruanganOptions }: { ruanganOptions: RuanganOption[] }) {
+export function BerkasKlaimRMView({
+  ruanganOptions,
+  nowIso,
+}: {
+  ruanganOptions: RuanganOption[];
+  nowIso: string;
+}) {
+  const today = useMemo(() => toLocalDateInput(new Date(nowIso)), [nowIso]);
+  const weekAgo = useMemo(() => toLocalDateInput(addDays(new Date(nowIso), -6)), [nowIso]);
+
+  const [from, setFrom] = useState(weekAgo);
+  const [to, setTo] = useState(today);
   const [ruanganId, setRuanganId] = useState("");
-  const [kategori, setKategori] = useState<"Semua" | KategoriKunjungan>("Semua");
-  const [bucket, setBucket] = useState<BucketFilter>("Semua");
+  const [kategori, setKategori] = useState<KategoriFilter>("Semua");
   const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(1);
   const search = useDebounce(searchInput, 350);
 
-  const filterKey = `${ruanganId}|${kategori}|${bucket}|${search}`;
+  const toExclusive = useMemo(
+    () => toLocalDateInput(addDays(new Date(`${to}T00:00:00`), 1)),
+    [to],
+  );
+
+  const filterKey = `${from}|${toExclusive}|${ruanganId}|${kategori}|${search}`;
   const [prevKey, setPrevKey] = useState(filterKey);
   if (prevKey !== filterKey) {
     setPrevKey(filterKey);
     setPage(1);
   }
 
-  const { result, loading, error, reload } = useAsyncData<BelumFinalResult>(
-    () => fetchBelumFinal({ ruanganId, kategori, bucket, search, page }),
-    [ruanganId, kategori, bucket, search, page],
+  const { result, loading, error, reload } = useAsyncData<BerkasKlaimResult>(
+    () => fetchBerkas({ from, toExclusive, ruanganId, kategori, search, page }),
+    [from, toExclusive, ruanganId, kategori, search, page],
   );
 
   const counts = result?.counts ?? null;
   const meta = result?.meta ?? null;
   const updatedAt = result?.updatedAt ?? null;
   const items = result?.data ?? [];
+  const rangeInvalid = from > to;
 
   const ruanganByKategori = useMemo(() => {
     const g: Record<KategoriKunjungan, RuanganOption[]> = {
@@ -97,9 +117,9 @@ export function BelumFinalView({ ruanganOptions }: { ruanganOptions: RuanganOpti
     return g;
   }, [ruanganOptions]);
 
-  const bucketTabs: { key: BucketFilter; label: string }[] = [
+  const kategoriTabs: { key: KategoriFilter; label: string }[] = [
     { key: "Semua", label: "Semua" },
-    ...AGING_BUCKETS.map((b) => ({ key: b.key as BucketFilter, label: b.label })),
+    ...KATEGORI.map((k) => ({ key: k as KategoriFilter, label: k })),
   ];
 
   return (
@@ -126,31 +146,33 @@ export function BelumFinalView({ ruanganOptions }: { ruanganOptions: RuanganOpti
 
       {/* Ringkasan */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Belum Difinalkan" value={counts?.Semua ?? 0} icon={Hourglass} tone="danger" loading={loading} />
-        <StatCard label="Terbuka 2–7 hari" value={counts?.b3 ?? 0} icon={AlertTriangle} tone="accent" loading={loading} />
-        <StatCard label="Terbuka > 7 hari" value={counts?.b4 ?? 0} icon={TriangleAlert} tone="danger" loading={loading} />
+        <StatCard label="Total Final" value={counts?.Semua ?? 0} icon={FolderCheck} tone="brand" loading={loading} />
+        <StatCard label="Rawat Inap" value={counts?.["Rawat Inap"] ?? 0} icon={Hospital} tone="accent" loading={loading} />
+        <StatCard label="IGD" value={counts?.IGD ?? 0} icon={Clock} tone="neutral" loading={loading} />
       </div>
 
       {/* Filter */}
       <Card className="p-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
-            <Label htmlFor="kategori">Kategori</Label>
-            <select
-              id="kategori"
-              value={kategori}
-              onChange={(e) => setKategori(e.target.value as "Semua" | KategoriKunjungan)}
-              className="h-10 w-full rounded-[var(--radius-md)] border border-border bg-surface px-3 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-            >
-              <option value="Semua">Semua kategori</option>
-              {KATEGORI.map((k) => (
-                <option key={k} value={k}>
-                  {k}
-                </option>
-              ))}
-            </select>
+            <Label htmlFor="from">Dari tanggal</Label>
+            <Input id="from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div>
+            <Label htmlFor="to">Sampai tanggal</Label>
+            <Input id="to" type="date" value={to} max={today} min={from} onChange={(e) => setTo(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="cari">Cari</Label>
+            <InputWithIcon
+              id="cari"
+              icon={<Search className="size-4" />}
+              placeholder="Nama / No. RM / ruang"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+          </div>
+          <div className="lg:col-span-3">
             <Label htmlFor="ruangan">Ruangan</Label>
             <select
               id="ruangan"
@@ -172,28 +194,22 @@ export function BelumFinalView({ ruanganOptions }: { ruanganOptions: RuanganOpti
               )}
             </select>
           </div>
-          <div>
-            <Label htmlFor="cari">Cari</Label>
-            <InputWithIcon
-              id="cari"
-              icon={<Search className="size-4" />}
-              placeholder="Nama / No. RM / ruang"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-            />
-          </div>
         </div>
 
-        {/* Tab bucket umur tunggakan */}
+        {rangeInvalid && (
+          <p className="mt-2 text-xs text-danger">Tanggal awal melebihi tanggal akhir.</p>
+        )}
+
+        {/* Tab kategori */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {bucketTabs.map((t) => {
-            const active = bucket === t.key;
+          {kategoriTabs.map((t) => {
+            const active = kategori === t.key;
             const jumlah = counts ? counts[t.key] : undefined;
             return (
               <button
                 key={t.key}
                 type="button"
-                onClick={() => setBucket(t.key)}
+                onClick={() => setKategori(t.key)}
                 className={cn(
                   "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors",
                   active
@@ -219,9 +235,11 @@ export function BelumFinalView({ ruanganOptions }: { ruanganOptions: RuanganOpti
       {/* Daftar kartu */}
       <Card className="overflow-hidden">
         <CardHeader
-          title="Kunjungan Belum Difinalkan"
+          title="Pasien Final"
           subtitle={
-            !loading && meta ? `${meta.total} kunjungan · diurut paling lama terbuka` : undefined
+            !loading && meta
+              ? `${meta.total} pasien · rentang ${formatDate(from)} – ${formatDate(to)}`
+              : undefined
           }
         />
         <div className="p-4">
@@ -230,21 +248,18 @@ export function BelumFinalView({ ruanganOptions }: { ruanganOptions: RuanganOpti
           ) : error ? (
             <ErrorState onRetry={reload} />
           ) : items.length === 0 ? (
-            <EmptyState
-              title="Tidak ada tunggakan"
-              description="Semua kunjungan pada filter ini sudah difinalkan. 🎉"
-            />
+            <EmptyState title="Tidak ada data" description="Tidak ada pasien final untuk filter ini." />
           ) : (
             <AnimatePresence mode="wait">
               <motion.div
-                key={`${page}|${bucket}|${kategori}|${search}`}
+                key={`${page}|${kategori}|${search}`}
                 variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.035 } } }}
                 initial="hidden"
                 animate="visible"
                 className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
               >
                 {items.map((it) => (
-                  <BelumFinalCard key={it.nomor} item={it} />
+                  <BerkasCard key={it.nomor} item={it} />
                 ))}
               </motion.div>
             </AnimatePresence>
@@ -264,60 +279,47 @@ const cardVariants: Variants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.16, 1, 0.3, 1] } },
 };
 
-const KATEGORI_TONE: Record<KategoriKunjungan, "brand" | "accent" | "warning"> = {
-  "Rawat Inap": "brand",
-  "Rawat Jalan Klinik": "accent",
-  IGD: "warning",
-};
-
-function BelumFinalCard({ item }: { item: BelumFinalItem }) {
-  const meta = BUCKET_META[item.bucket];
+function BerkasCard({ item }: { item: BerkasKlaimItem }) {
+  const href = `/berkas-klaim/rm/${item.nopen}`;
   return (
     <motion.div
       variants={cardVariants}
-      className="flex flex-col rounded-[var(--radius-lg)] border border-danger/40 bg-danger-soft p-4 shadow-xs transition-colors hover:border-danger/60"
+      className="flex flex-col rounded-[var(--radius-lg)] border border-border bg-surface p-4 shadow-xs transition-colors hover:border-brand/50"
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate font-semibold text-fg">{item.nama}</p>
-          <p className="font-mono text-xs text-fg-muted">
-            {item.norm} · {item.jenisKelamin}
-            {item.umur ? ` · ${item.umur}` : ""}
-          </p>
+      <Link href={href} className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate font-semibold text-fg">{item.nama}</p>
+            <p className="font-mono text-xs text-fg-muted">
+              {item.norm} · {item.jenisKelamin}
+              {item.umur ? ` · ${item.umur}` : ""}
+            </p>
+          </div>
+          <Badge tone={KATEGORI_TONE[item.kategori]}>{item.kategori}</Badge>
         </div>
-        <Badge tone={KATEGORI_TONE[item.kategori]}>{item.kategori}</Badge>
-      </div>
 
-      <div className="mt-3 space-y-1.5 text-[13px]">
-        <Row icon={<DoorOpen className="size-3.5" />} value={item.ruang} />
-        <Row
-          icon={<Clock className="size-3.5" />}
-          value={
-            <>
-              Masuk {formatDateTime(item.masuk)}
-              <span className="font-medium text-danger"> · belum keluar</span>
-            </>
-          }
-        />
-      </div>
+        <div className="mt-3 space-y-1.5 text-[13px]">
+          <Row icon={<DoorOpen className="size-3.5" />} value={item.ruang} />
+          <Row
+            icon={<Clock className="size-3.5" />}
+            value={<>Keluar {formatDateTime(item.keluar ?? item.masuk)}</>}
+          />
+        </div>
+      </Link>
 
-      {item.turunan.length > 0 ? (
+      {item.turunan.length > 0 && (
         <div className="mt-3">
           <TurunanCollapse turunan={item.turunan} />
         </div>
-      ) : (
-        <p className="mt-3 text-xs text-fg-subtle">Tidak ada layanan turunan.</p>
       )}
 
-      <div className="mt-4 flex items-center justify-between gap-2 border-t border-border/70 pt-3">
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-xs text-fg-muted">Sudah terbuka</span>
-          <span className="text-sm font-semibold text-danger tabular">{formatLama(item.lamaMenit)}</span>
-        </div>
-        <Badge tone={meta.tone} dot>
-          {meta.label}
-        </Badge>
-      </div>
+      <Link
+        href={href}
+        className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-brand bg-brand-soft px-3 py-2 text-sm font-medium text-brand-soft-fg transition-colors hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+      >
+        Buka Berkas
+        <ArrowRight className="size-4" />
+      </Link>
     </motion.div>
   );
 }
@@ -350,10 +352,7 @@ function CardGridSkeleton() {
             <Skeleton className="h-3 w-2/3 rounded" />
             <Skeleton className="h-3 w-5/6 rounded" />
           </div>
-          <div className="mt-4 flex items-center justify-between border-t border-border/70 pt-3">
-            <Skeleton className="h-4 w-24 rounded" />
-            <Skeleton className="h-5 w-14 rounded-full" />
-          </div>
+          <Skeleton className="mt-4 h-9 w-full rounded-[var(--radius-md)]" />
         </div>
       ))}
     </div>

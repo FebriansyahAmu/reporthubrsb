@@ -1,6 +1,7 @@
 import {
   Activity,
   ClipboardList,
+  FolderCheck,
   Hourglass,
   LayoutGrid,
   ListChecks,
@@ -70,6 +71,17 @@ export const NAV: NavSection[] = [
         label: "Kelengkapan Resume",
         icon: ClipboardList,
         description: "Kunjungan final tanpa resume medis",
+      },
+    ],
+  },
+  {
+    title: "Berkas Klaim",
+    items: [
+      {
+        href: "/berkas-klaim/rm",
+        label: "Berkas Klaim RM",
+        icon: FolderCheck,
+        description: "Berkas pasien final untuk klaim",
       },
     ],
   },

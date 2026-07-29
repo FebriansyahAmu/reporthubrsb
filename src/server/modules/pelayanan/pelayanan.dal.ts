@@ -26,6 +26,8 @@ export type KunjunganRangeArgs = {
   to: string;
   /** ID ruangan opsional (master.ruangan.ID). */
   ruanganId?: string;
+  /** Bila true, hanya kunjungan yang sudah difinalkan (KELUAR terisi). */
+  finalOnly?: boolean;
 };
 
 /**
@@ -42,6 +44,7 @@ export async function queryKunjunganRange(
     ruanganClause = "AND k.RUANGAN = ?";
     params.push(a.ruanganId);
   }
+  const finalClause = a.finalOnly ? "AND k.KELUAR IS NOT NULL" : "";
 
   const sql = `
     SELECT k.NOMOR,
@@ -64,6 +67,7 @@ export async function queryKunjunganRange(
       AND r.JENIS_KUNJUNGAN IN (1, 2, 3)
       AND pp.STATUS = 1
       AND k.MASUK >= ? AND k.MASUK < ?
+      ${finalClause}
       ${ruanganClause}
     ORDER BY k.MASUK DESC
     LIMIT 1000`;
