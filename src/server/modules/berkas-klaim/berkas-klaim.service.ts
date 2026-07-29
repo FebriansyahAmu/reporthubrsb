@@ -4,6 +4,7 @@ import { hitungUmur } from "@/lib/format";
 import { queryKunjunganRange, queryTurunanByNopens } from "@/server/modules/pelayanan/pelayanan.dal";
 import { mapKunjunganPelayanan, mapTurunan } from "@/server/modules/pelayanan/pelayanan.mapper";
 import { queryBerkasDetail } from "./berkas-klaim.dal";
+import { buktiExists } from "./berkas-klaim.bukti.service";
 import type { BerkasKlaimQuery } from "./berkas-klaim.schema";
 import type {
   BerkasDetail,
@@ -138,6 +139,7 @@ export async function getBerkasDetail(nopen: string): Promise<BerkasDetail | nul
   const cpptN = n(header.CPPT_N);
   const diagnosaN = n(header.DIAGNOSA_N);
   const final = mainMasuk?.final ?? false;
+  const buktiAda = await buktiExists(nopen).catch(() => false);
 
   const dokumen: DokumenBerkas[] = [
     {
@@ -177,8 +179,8 @@ export async function getBerkasDetail(nopen: string): Promise<BerkasDetail | nul
       key: "bukti",
       label: "Bukti Pelayanan",
       icon: "bukti",
-      status: "PENDING",
-      keterangan: "Form cetak (belum tersedia)",
+      status: buktiAda ? "ADA" : "TIDAK",
+      keterangan: buktiAda ? "Sudah diisi" : "Belum diisi — klik untuk mengisi",
     },
     {
       key: "cppt",

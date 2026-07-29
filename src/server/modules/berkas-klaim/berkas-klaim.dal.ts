@@ -48,3 +48,31 @@ export async function queryBerkasDetail(nopen: string): Promise<BerkasDetailRow 
   const rows = await getSimgos().$queryRawUnsafe<BerkasDetailRow[]>(sql, nopen);
   return rows[0] ?? null;
 }
+
+/** Baris tindakan medis (untuk prefill Bukti Pelayanan). */
+export type TindakanRow = {
+  TANGGAL: Date | string | null;
+  NAMA: string | null;
+  RUANG: string | null;
+};
+
+/**
+ * Tindakan medis pada satu episode (NOPEN), ditarik dari `layanan.tindakan_medis`
+ * (join ke leg kunjungan & `master.tindakan` untuk nama). READ-ONLY — hanya untuk
+ * prefill; hasil isian disimpan di DB reporthub, bukan di sini.
+ */
+export async function queryTindakanByNopen(nopen: string): Promise<TindakanRow[]> {
+  const sql = `
+    SELECT tm.TANGGAL,
+           mt.NAMA      AS NAMA,
+           r.DESKRIPSI  AS RUANG
+    FROM ${SIMGOS_DB.LAYANAN}.tindakan_medis tm
+    JOIN ${SIMGOS_DB.PENDAFTARAN}.kunjungan k ON k.NOMOR = tm.KUNJUNGAN
+    LEFT JOIN ${SIMGOS_DB.MASTER}.ruangan r   ON r.ID = k.RUANGAN
+    LEFT JOIN ${SIMGOS_DB.MASTER}.tindakan mt ON mt.ID = tm.TINDAKAN
+    WHERE k.NOPEN = ? AND tm.STATUS = 1
+    ORDER BY tm.TANGGAL ASC
+    LIMIT 200`;
+
+  return getSimgos().$queryRawUnsafe<TindakanRow[]>(sql, nopen);
+}

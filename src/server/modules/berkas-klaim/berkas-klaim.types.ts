@@ -57,6 +57,44 @@ export type DokumenBerkas = {
   printHref?: string;
 };
 
+// ---------------------------------------------------------------------------
+// Bukti Pelayanan — dokumen yang DIISI SENDIRI (disimpan di DB reporthub).
+// ---------------------------------------------------------------------------
+
+/** Satu baris tindakan/pelayanan (bisa disunting petugas). */
+export type BuktiTindakanRow = {
+  /** "YYYY-MM-DD" atau ISO lokal; boleh kosong. */
+  tanggal: string;
+  nama: string;
+  pelaksana: string;
+  keterangan: string;
+};
+
+/** Isi form Bukti Pelayanan (disimpan sebagai JSON di reporthub). */
+export type BuktiPelayananForm = {
+  tanggalPelayanan: string;
+  dpjp: string;
+  penjamin: string;
+  noSep: string;
+  catatan: string;
+  tindakan: BuktiTindakanRow[];
+};
+
+/** Rekaman tersimpan + metadata. */
+export type BuktiPelayananSaved = {
+  nopen: string;
+  data: BuktiPelayananForm;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
+/** Respons GET untuk form: rekaman tersimpan (bila ada) + tindakan dari SIMGOS. */
+export type BuktiPelayananContext = {
+  saved: BuktiPelayananSaved | null;
+  /** Tindakan ditarik dari SIMGOS (prefill saat belum pernah disimpan). */
+  tindakanSimgos: BuktiTindakanRow[];
+};
+
 export type BerkasDetail = {
   nopen: string;
   norm: string;

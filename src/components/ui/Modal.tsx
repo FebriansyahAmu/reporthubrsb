@@ -14,6 +14,13 @@ function useIsClient() {
   );
 }
 
+const SIZE: Record<"sm" | "md" | "lg" | "xl", string> = {
+  sm: "max-w-md",
+  md: "max-w-lg",
+  lg: "max-w-3xl",
+  xl: "max-w-5xl",
+};
+
 export function Modal({
   open,
   onClose,
@@ -22,6 +29,8 @@ export function Modal({
   icon,
   children,
   footer,
+  dismissible = true,
+  size = "sm",
 }: {
   open: boolean;
   onClose: () => void;
@@ -30,18 +39,21 @@ export function Modal({
   icon?: React.ReactNode;
   children?: React.ReactNode;
   footer?: React.ReactNode;
+  /** Bila false: TIDAK bisa ditutup via Escape / klik backdrop / tombol X. */
+  dismissible?: boolean;
+  size?: "sm" | "md" | "lg" | "xl";
 }) {
   const isClient = useIsClient();
 
-  // Tutup dengan Escape (listener event — bukan setState sinkron di effect).
+  // Tutup dengan Escape (hanya bila dismissible).
   useEffect(() => {
-    if (!open) return;
+    if (!open || !dismissible) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, onClose, dismissible]);
 
   // Kunci scroll body saat modal terbuka.
   useEffect(() => {
@@ -70,14 +82,14 @@ export function Modal({
         >
           <div
             className="fixed inset-0 bg-[#111111]/60 backdrop-blur-sm"
-            onClick={onClose}
+            onClick={dismissible ? onClose : undefined}
             aria-hidden
           />
           <motion.div
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            className="relative z-10 my-auto w-full max-w-md overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-lg"
+            className={`relative z-10 my-auto w-full ${SIZE[size]} overflow-hidden rounded-[var(--radius-lg)] border border-border bg-surface shadow-lg`}
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 8 }}
@@ -89,13 +101,15 @@ export function Modal({
                 <h2 className="text-sm font-semibold text-fg">{title}</h2>
                 {description && <p className="mt-0.5 text-xs text-fg-muted">{description}</p>}
               </div>
-              <button
-                onClick={onClose}
-                aria-label="Tutup"
-                className="rounded-md p-1 text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-              >
-                <X className="size-4" />
-              </button>
+              {dismissible && (
+                <button
+                  onClick={onClose}
+                  aria-label="Tutup"
+                  className="rounded-md p-1 text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+                >
+                  <X className="size-4" />
+                </button>
+              )}
             </div>
 
             {children && <div className="px-5 py-4">{children}</div>}

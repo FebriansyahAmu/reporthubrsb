@@ -39,6 +39,28 @@ model User {
   @@map("users")
 }
 
+/// Bukti Pelayanan yang DIISI SENDIRI oleh petugas (bukan data SIMGOS).
+/// Tindakan ditarik dari SIMGOS (`layanan.tindakan_medis`) lalu bisa disunting;
+/// hasil akhirnya (form + snapshot tindakan) disimpan sebagai JSON di sini,
+/// satu per episode (NOPEN). SIMGOS tetap READ-ONLY — penyimpanan hanya di sini.
+model BuktiPelayanan {
+  id         String   @id @default(cuid())
+  /// NOPEN (nomor pendaftaran / episode) — satu bukti per episode.
+  nopen      String   @unique
+  norm       String?
+  namaPasien String?  @map("nama_pasien")
+  kategori   String?
+  ruang      String?
+  /// Isi form + daftar tindakan (editable) sebagai JSON.
+  data       Json
+  createdBy  String?  @map("created_by")
+  updatedBy  String?  @map("updated_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("bukti_pelayanan")
+}
+
 /// Refresh token (rotasi). Yang disimpan HANYA hash token-nya, bukan token asli,
 /// sehingga bocornya DB tidak langsung memberi token yang bisa dipakai.
 model RefreshToken {

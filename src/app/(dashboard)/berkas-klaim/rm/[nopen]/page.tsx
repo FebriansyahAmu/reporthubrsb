@@ -18,6 +18,7 @@ import { FadeIn } from "@/components/motion/Motion";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { TurunanCollapse } from "@/components/report/TurunanCollapse";
+import { BuktiPelayananCard } from "@/features/berkas-klaim/BuktiPelayananCard";
 import { cn } from "@/lib/cn";
 import { formatDateTime } from "@/lib/format";
 import { getBerkasDetail } from "@/server/modules/berkas-klaim/berkas-klaim.service";
@@ -153,13 +154,29 @@ export default async function BerkasDetailPage({
           Dokumen Berkas Klaim
         </h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {detail.dokumen.map((doc) => (
-            <DokumenCard key={doc.key} doc={doc} />
-          ))}
+          {detail.dokumen.map((doc) =>
+            doc.key === "bukti" ? (
+              <BuktiPelayananCard
+                key={doc.key}
+                nopen={detail.nopen}
+                initialSaved={doc.status === "ADA"}
+                header={{
+                  norm: detail.norm,
+                  nama: detail.nama,
+                  kategori: detail.kategori,
+                  ruang: detail.ruangUtama,
+                  tanggalDefault: detail.masuk.slice(0, 10),
+                }}
+              />
+            ) : (
+              <DokumenCard key={doc.key} doc={doc} />
+            ),
+          )}
         </div>
         <p className="mt-3 text-xs text-fg-subtle">
-          Kartu hijau berarti datanya sudah ada &amp; siap dicetak. <span className="text-warning">SEP</span> dan{" "}
-          <span className="text-warning">Bukti Pelayanan</span> belum terhubung (perlu pemetaan BPJS lebih lanjut).
+          Kartu hijau berarti datanya sudah ada. <span className="text-fg-muted">Bukti Pelayanan</span> diisi
+          sendiri (tarik tindakan dari SIMRS, simpan ke ReportHub). <span className="text-warning">SEP</span> belum
+          terhubung (perlu pemetaan BPJS lebih lanjut).
         </p>
       </div>
     </FadeIn>
