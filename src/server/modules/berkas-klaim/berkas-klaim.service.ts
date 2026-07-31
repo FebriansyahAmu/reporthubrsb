@@ -148,7 +148,8 @@ export async function getBerkasDetail(nopen: string): Promise<BerkasDetail | nul
       icon: "rekam-medis",
       status: final ? "ADA" : "TIDAK",
       keterangan: diagnosaN > 0 ? `${diagnosaN} diagnosa` : final ? "Siap dicetak" : "Belum final",
-      printHref: `/print/resume-medis/${nopen}`,
+      // Viewer (iframe) → preview PDF resmi SIMGOS di tab, tak dicegat IDM.
+      printHref: `/print/simgos/resume-medis/${nopen}`,
     },
     {
       key: "triase",
