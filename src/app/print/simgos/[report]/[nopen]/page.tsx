@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 
 const LABEL: Record<string, string> = {
   "resume-medis": "Resume Medis",
+  sep: "SEP (Surat Eligibilitas Peserta)",
 };
 
 /**

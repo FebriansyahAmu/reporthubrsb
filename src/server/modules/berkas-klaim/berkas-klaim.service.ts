@@ -3,7 +3,7 @@ import { isSimgosConfigured } from "@/server/lib/env";
 import { hitungUmur } from "@/lib/format";
 import { queryKunjunganRange, queryTurunanByNopens } from "@/server/modules/pelayanan/pelayanan.dal";
 import { mapKunjunganPelayanan, mapTurunan } from "@/server/modules/pelayanan/pelayanan.mapper";
-import { queryBerkasDetail } from "./berkas-klaim.dal";
+import { queryBerkasDetail, querySepByNopen } from "./berkas-klaim.dal";
 import { buktiExists } from "./berkas-klaim.bukti.service";
 import type { BerkasKlaimQuery } from "./berkas-klaim.schema";
 import type {
@@ -140,6 +140,8 @@ export async function getBerkasDetail(nopen: string): Promise<BerkasDetail | nul
   const diagnosaN = n(header.DIAGNOSA_N);
   const final = mainMasuk?.final ?? false;
   const buktiAda = await buktiExists(nopen).catch(() => false);
+  // Nomor SEP dari bpjs.kunjungan (noKartu + tglSEP), READ-ONLY. Null bila umum/belum terbit.
+  const sepNo = await querySepByNopen(nopen).catch(() => null);
 
   const dokumen: DokumenBerkas[] = [
     {
@@ -162,8 +164,10 @@ export async function getBerkasDetail(nopen: string): Promise<BerkasDetail | nul
       key: "sep",
       label: "SEP",
       icon: "sep",
-      status: "PENDING",
-      keterangan: "Perlu integrasi BPJS",
+      status: sepNo ? "ADA" : "TIDAK",
+      keterangan: sepNo ? `No. SEP ${sepNo}` : "Tidak ditemukan (umum / SEP belum terbit)",
+      // Viewer (iframe) → cetak SEP resmi via report engine (route resolve NOPEN→SEP).
+      printHref: sepNo ? `/print/simgos/sep/${nopen}` : undefined,
     },
     {
       key: "spri",

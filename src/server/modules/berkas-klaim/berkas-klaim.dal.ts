@@ -49,6 +49,58 @@ export async function queryBerkasDetail(nopen: string): Promise<BerkasDetailRow 
   return rows[0] ?? null;
 }
 
+/** Baris nomor SEP. */
+type SepRow = { noSEP: string | null };
+
+/**
+ * Nomor SEP BPJS untuk satu episode (NOPEN), READ-ONLY.
+ *
+ * SIMGOS tidak menyimpan tautan langsung NOPEN→SEP (kolom `bpjs.kunjungan.noTrans`
+ * kosong total). Sumber SEP yang otoritatif adalah **`bpjs.kunjungan`**, ber-kunci
+ * (`noKartu`, `noSEP`). Sesuai arahan: ambil `noSEP` dari `bpjs.kunjungan` memakai
+ * dua parameter — **noKartu** pasien + **tglSEP** ≈ tanggal episode.
+ *
+ * Rantai NOPEN → noKartu (semua READ-ONLY, lintas-DB):
+ *   pendaftaran.pendaftaran.NORM
+ *   → master.kartu_identitas_pasien.NOMOR (JENIS=1 = NIK)
+ *   → bpjs.peserta.nik → bpjs.peserta.noKartu
+ * Lalu `bpjs.kunjungan` disaring pada `tglSEP` di sekitar tanggal daftar episode.
+ *
+ * **Filter jenis pelayanan (mencegah SEP RI menempel ke episode non-RI):** SEP
+ * BPJS `jenisPelayanan` 1=Rawat Inap, 2=Rawat Jalan. Kategori episode dilihat dari
+ * ada-tidaknya leg Rawat Inap (`master.ruangan.JENIS_KUNJUNGAN=3`) pada NOPEN:
+ *   ada leg RI → hanya terima SEP jP=1; selain itu → hanya terima SEP jP=2.
+ * Terbukti (30h): coverage RI utuh (174/174), dan 175 salah-tempel SEP RI di
+ * episode non-RI terbuang. Bila tetap >1, diambil tglSEP terdekat.
+ * Mengembalikan `null` bila tak ada (pasien umum / SEP belum terbit / NIK kosong).
+ */
+export async function querySepByNopen(nopen: string): Promise<string | null> {
+  const sql = `
+    SELECT bk.noSEP AS noSEP
+    FROM ${SIMGOS_DB.PENDAFTARAN}.pendaftaran pp
+    JOIN ${SIMGOS_DB.MASTER}.kartu_identitas_pasien ki
+      ON ki.NORM = pp.NORM AND ki.JENIS = 1
+    JOIN ${SIMGOS_DB.BPJS}.peserta pes ON pes.nik = ki.NOMOR
+    JOIN ${SIMGOS_DB.BPJS}.kunjungan bk
+      ON bk.noKartu = pes.noKartu AND bk.status = 1
+    WHERE pp.NOMOR = ?
+      AND bk.tglSEP IS NOT NULL
+      AND DATE(bk.tglSEP) BETWEEN DATE_SUB(DATE(pp.TANGGAL), INTERVAL 1 DAY)
+                              AND DATE_ADD(DATE(pp.TANGGAL), INTERVAL 3 DAY)
+      AND bk.jenisPelayanan = (
+            CASE WHEN EXISTS (
+              SELECT 1 FROM ${SIMGOS_DB.PENDAFTARAN}.kunjungan k
+              JOIN ${SIMGOS_DB.MASTER}.ruangan r ON r.ID = k.RUANGAN
+              WHERE k.NOPEN = pp.NOMOR AND k.STATUS <> 0 AND r.JENIS_KUNJUNGAN = 3
+            ) THEN 1 ELSE 2 END)
+    ORDER BY ABS(DATEDIFF(bk.tglSEP, pp.TANGGAL)) ASC, bk.tglSEP DESC
+    LIMIT 1`;
+
+  const rows = await getSimgos().$queryRawUnsafe<SepRow[]>(sql, nopen);
+  const sep = rows[0]?.noSEP?.trim();
+  return sep ? sep : null;
+}
+
 /** Baris tindakan medis (untuk prefill Bukti Pelayanan). */
 export type TindakanRow = {
   TANGGAL: Date | string | null;

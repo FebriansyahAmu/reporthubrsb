@@ -22,6 +22,8 @@ export const SIMGOS_DB = {
   MASTER: "master",
   /** Antrean/registrasi online BPJS: `reservasi`, `task_action_antrian`. */
   REGONLINE: "regonline",
+  /** Bridging BPJS/VClaim: `kunjungan` (noSEP per noKartu+tglSEP), `peserta` (noKartu↔nik). */
+  BPJS: "bpjs",
 } as const;
 
 export type SimgosDb = (typeof SIMGOS_DB)[keyof typeof SIMGOS_DB];
