@@ -1,5 +1,6 @@
 import "server-only";
 import { isSimgosConfigured } from "@/server/lib/env";
+import { qrSvgDataUriMap } from "@/server/lib/qr";
 import { queryTurunanByNopens } from "@/server/modules/pelayanan/pelayanan.dal";
 import { queryBuktiReportHeader, querySepByNopen } from "./berkas-klaim.dal";
 import { getBuktiContext } from "./berkas-klaim.bukti.service";
@@ -46,6 +47,9 @@ export type BuktiReportRow = {
   tanggal: string;
   tindakan: string;
   pelaksana: string;
+  /** QR (SVG data-URI) meng-encode nama pelaksana; "" bila tak ada. Kolom
+   *  "TT & Nama Dokter/Petugas" menampilkan QR ini (bukan teks). */
+  pelaksanaQr: string;
   keterangan: string;
 };
 
@@ -66,6 +70,8 @@ export type BuktiPelayananReport = {
   krsTanggal: string;
   jumlahHari: string;
   dpjp: string;
+  /** QR (SVG data-URI) meng-encode nama DPJP untuk kolom "TT Dokter" Tabel A. */
+  dpjpQr: string;
   penjamin: string;
   /** Tabel B — semua tindakan 1:1. */
   rows: BuktiReportRow[];
@@ -104,13 +110,27 @@ export async function getBuktiPelayananReport(
   const tindakan: BuktiTindakanRow[] =
     saved && saved.data.tindakan.length > 0 ? saved.data.tindakan : ctx.tindakanSimgos;
 
-  const rows: BuktiReportRow[] = tindakan.map((t) => ({
-    ruang,
-    tanggal: fmtIsoDate(t.tanggal),
-    tindakan: t.nama?.trim() || "",
-    pelaksana: t.pelaksana?.trim() || "",
-    keterangan: t.keterangan?.trim() || "",
-  }));
+  const dpjp = saved?.data.dpjp?.trim() || ctx.dpjpSimgos || "";
+
+  // QR meng-encode nama petugas (kolom "TT & Nama Dokter/Petugas" = QR, bukan
+  // teks). Dedup: nama sama → 1 QR. Termasuk DPJP untuk Tabel A.
+  const qrByName = await qrSvgDataUriMap([
+    dpjp,
+    ...tindakan.map((t) => t.pelaksana?.trim() || ""),
+  ]);
+  const qrOf = (name: string) => qrByName.get(name.trim()) ?? "";
+
+  const rows: BuktiReportRow[] = tindakan.map((t) => {
+    const pelaksana = t.pelaksana?.trim() || "";
+    return {
+      ruang,
+      tanggal: fmtIsoDate(t.tanggal),
+      tindakan: t.nama?.trim() || "",
+      pelaksana,
+      pelaksanaQr: qrOf(pelaksana),
+      keterangan: t.keterangan?.trim() || "",
+    };
+  });
 
   return {
     nopen,
@@ -125,7 +145,8 @@ export async function getBuktiPelayananReport(
     mrsTanggal: fmtDate(mainLeg?.MASUK ?? null),
     krsTanggal: fmtDate(mainLeg?.KELUAR ?? null),
     jumlahHari: hariRawat(mainLeg?.MASUK ?? null, mainLeg?.KELUAR ?? null),
-    dpjp: saved?.data.dpjp?.trim() || ctx.dpjpSimgos || "",
+    dpjp,
+    dpjpQr: qrOf(dpjp),
     penjamin: saved?.data.penjamin?.trim() || "BPJS Kesehatan",
     rows,
     tersimpan: !!saved,

@@ -1,7 +1,8 @@
 import type { BuktiPelayananReport } from "@/server/modules/berkas-klaim/berkas-klaim.bukti-report.service";
 
-/** Minimal baris Tabel B agar formulir tetap terisi penuh saat tindakan sedikit. */
-const MIN_ROWS = 16;
+/** Minimal baris Tabel B agar formulir tetap terisi penuh saat tindakan sedikit.
+ *  Lebih kecil dari sebelumnya (16) karena baris kini lebih tinggi (memuat QR). */
+const MIN_ROWS = 12;
 
 /**
  * Formulir "BUKTI PELAYANAN / PERAWATAN PESERTA JKN-KIS" (RSUD Bolaang Mongondow
@@ -75,7 +76,12 @@ export function BuktiPelayananDocument({ data }: { data: BuktiPelayananReport })
             <td className="bp-center">{data.jumlahHari}</td>
             <td />
             <td />
-            <td className="bp-center">{data.dpjp}</td>
+            <td className="bp-center">
+              {data.dpjpQr ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img className="bp-qr bp-qr-a" src={data.dpjpQr} alt={data.dpjp} />
+              ) : null}
+            </td>
             <td />
           </tr>
         </tbody>
@@ -110,7 +116,12 @@ export function BuktiPelayananDocument({ data }: { data: BuktiPelayananReport })
               <td className="bp-center">{r.tanggal}</td>
               <td className="bp-left">{r.tindakan}</td>
               <td />
-              <td className="bp-center">{r.pelaksana}</td>
+              <td className="bp-center">
+                {r.pelaksanaQr ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className="bp-qr" src={r.pelaksanaQr} alt={r.pelaksana} />
+                ) : null}
+              </td>
               <td>{r.keterangan}</td>
             </tr>
           ))}
@@ -162,7 +173,8 @@ export function BuktiPelayananDocument({ data }: { data: BuktiPelayananReport })
       <div className="bp-foot no-print">
         Sumber: SIMGOS (read-only) · Bukti Pelayanan{" "}
         {data.tersimpan ? "tersimpan di ReportHub" : "prefill dari SIMRS (belum disimpan)"} ·{" "}
-        {data.rows.length} tindakan.
+        {data.rows.length} tindakan · Kolom &ldquo;TT &amp; Nama Dokter/Petugas&rdquo; = QR nama
+        (scan untuk membaca).
       </div>
     </article>
   );
@@ -223,7 +235,11 @@ const CSS = `
 }
 .bp-tbl th { text-align: center; vertical-align: middle; line-height: 1.1; }
 .bp-rowA td { height: 15mm; }
-.bp-rowB td { height: 5.4mm; }
+/* Baris Tabel B kini memuat QR nama petugas → lebih tinggi & rata tengah. */
+.bp-rowB td { height: 12.5mm; vertical-align: middle; }
+/* QR nama petugas: vektor, dicetak tajam; latar putih sebagai quiet-zone tambahan. */
+.bp-qr { display: block; width: 11mm; height: 11mm; margin: 0 auto; background: #fff; }
+.bp-qr-a { width: 13mm; height: 13mm; }
 .bp-keluar { text-align: left; height: auto; padding: 1.5mm 1.9mm; }
 .bp-gap { height: 4mm; }
 
