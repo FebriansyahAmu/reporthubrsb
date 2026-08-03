@@ -88,11 +88,13 @@ export type BuktiPelayananSaved = {
   updatedBy: string | null;
 };
 
-/** Respons GET untuk form: rekaman tersimpan (bila ada) + tindakan dari SIMGOS. */
+/** Respons GET untuk form: rekaman tersimpan (bila ada) + prefill dari SIMGOS. */
 export type BuktiPelayananContext = {
   saved: BuktiPelayananSaved | null;
   /** Tindakan ditarik dari SIMGOS (prefill saat belum pernah disimpan). */
   tindakanSimgos: BuktiTindakanRow[];
+  /** Nama DPJP dari SIMGOS (prefill field DPJP saat belum disimpan). */
+  dpjpSimgos: string;
 };
 
 export type BerkasDetail = {

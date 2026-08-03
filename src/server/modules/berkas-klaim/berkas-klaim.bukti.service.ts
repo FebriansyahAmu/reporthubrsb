@@ -1,7 +1,7 @@
 import "server-only";
 import { getAppDb } from "@/server/db/app.client";
 import { isSimgosConfigured } from "@/server/lib/env";
-import { queryTindakanByNopen, type TindakanRow } from "./berkas-klaim.dal";
+import { queryDpjpByNopen, queryTindakanByNopen, type TindakanRow } from "./berkas-klaim.dal";
 import type {
   BuktiPelayananContext,
   BuktiPelayananForm,
@@ -23,7 +23,7 @@ function mapTindakan(row: TindakanRow): BuktiTindakanRow {
   return {
     tanggal: toWallClockDate(row.TANGGAL),
     nama: row.NAMA?.trim() || "(tanpa nama)",
-    pelaksana: "",
+    pelaksana: row.PELAKSANA?.trim() || "",
     keterangan: "",
   };
 }
@@ -49,13 +49,19 @@ export async function buktiExists(nopen: string): Promise<boolean> {
   return rec != null;
 }
 
-/** Konteks untuk form: rekaman tersimpan + tindakan dari SIMGOS (prefill). */
+/** Konteks untuk form: rekaman tersimpan + tindakan & DPJP dari SIMGOS (prefill). */
 export async function getBuktiContext(nopen: string): Promise<BuktiPelayananContext> {
-  const [saved, tindakanRows] = await Promise.all([
+  const simgos = isSimgosConfigured();
+  const [saved, tindakanRows, dpjp] = await Promise.all([
     getBuktiRecord(nopen),
-    isSimgosConfigured() ? queryTindakanByNopen(nopen).catch(() => []) : Promise.resolve([]),
+    simgos ? queryTindakanByNopen(nopen).catch(() => []) : Promise.resolve([]),
+    simgos ? queryDpjpByNopen(nopen).catch(() => null) : Promise.resolve(null),
   ]);
-  return { saved, tindakanSimgos: tindakanRows.map(mapTindakan) };
+  return {
+    saved,
+    tindakanSimgos: tindakanRows.map(mapTindakan),
+    dpjpSimgos: dpjp ?? "",
+  };
 }
 
 export type BuktiHeader = {

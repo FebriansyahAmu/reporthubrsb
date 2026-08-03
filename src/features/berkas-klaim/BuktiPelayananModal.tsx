@@ -25,10 +25,14 @@ export type BuktiHeaderInfo = {
   tanggalDefault: string;
 };
 
-function emptyForm(tanggalDefault: string, tindakan: BuktiTindakanRow[]): BuktiPelayananForm {
+function emptyForm(
+  tanggalDefault: string,
+  tindakan: BuktiTindakanRow[],
+  dpjp: string,
+): BuktiPelayananForm {
   return {
     tanggalPelayanan: tanggalDefault,
-    dpjp: "",
+    dpjp,
     penjamin: "BPJS",
     noSep: "",
     catatan: "",
@@ -69,7 +73,9 @@ export function BuktiPelayananModal({
         if (!alive) return;
         const ctx = json.data;
         setForm(
-          ctx.saved ? ctx.saved.data : emptyForm(header.tanggalDefault, ctx.tindakanSimgos),
+          ctx.saved
+            ? ctx.saved.data
+            : emptyForm(header.tanggalDefault, ctx.tindakanSimgos, ctx.dpjpSimgos),
         );
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : "Terjadi kesalahan");

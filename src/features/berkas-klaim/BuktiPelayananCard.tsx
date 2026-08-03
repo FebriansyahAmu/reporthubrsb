@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { FileCheck, Pencil } from "lucide-react";
+import Link from "next/link";
+import { FileCheck, Pencil, Printer } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/cn";
 import { BuktiPelayananModal, type BuktiHeaderInfo } from "./BuktiPelayananModal";
@@ -44,14 +45,36 @@ export function BuktiPelayananCard({
         </Badge>
       </div>
 
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-brand bg-brand px-3 py-2 text-sm font-medium text-brand-fg transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-      >
-        <Pencil className="size-4" />
-        {saved ? "Lihat / Edit" : "Isi Bukti Pelayanan"}
-      </button>
+      {saved ? (
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-sm font-medium text-fg transition-colors hover:bg-surface-2"
+          >
+            <Pencil className="size-4" />
+            Lihat / Edit
+          </button>
+          <Link
+            href={`/print/bukti-pelayanan/${nopen}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-brand bg-brand px-3 py-2 text-sm font-medium text-brand-fg transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+          >
+            <Printer className="size-4" />
+            Cetak
+          </Link>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-brand bg-brand px-3 py-2 text-sm font-medium text-brand-fg transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+        >
+          <Pencil className="size-4" />
+          Isi Bukti Pelayanan
+        </button>
+      )}
 
       <BuktiPelayananModal
         open={open}

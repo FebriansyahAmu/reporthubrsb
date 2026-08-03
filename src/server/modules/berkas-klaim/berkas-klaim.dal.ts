@@ -133,30 +133,104 @@ export async function queryCpptKunjunganByNopen(nopen: string): Promise<string |
   return k ? k : null;
 }
 
+/** Header cetak Bukti Pelayanan: identitas pasien + diagnosa + peserta BPJS. */
+export type BuktiReportHeaderRow = {
+  NORM: number | string;
+  NAMA: string;
+  JENIS_KELAMIN: number | string;
+  TANGGAL_LAHIR: Date | string | null;
+  DIAGNOSA: string | null;
+  NO_KARTU: string | null;
+  NAMA_PESERTA: string | null;
+  KELAS: string | null;
+};
+
+/**
+ * Header untuk formulir "Bukti Pelayanan / Perawatan Peserta JKN-KIS" (READ-ONLY).
+ * Identitas pasien (`master.pasien`) + diagnosa utama (`medicalrecord.diagnosa`)
+ * + data peserta BPJS (No. Kartu JKN, nama peserta, kelas) via rantai NIK yang
+ * sama dengan SEP (`kartu_identitas_pasien`→`bpjs.peserta`; LEFT JOIN agar tetap
+ * jalan untuk pasien umum). Mengembalikan null bila NOPEN tak ada/tak aktif.
+ */
+export async function queryBuktiReportHeader(
+  nopen: string,
+): Promise<BuktiReportHeaderRow | null> {
+  const sql = `
+    SELECT ps.NORM, ps.NAMA, ps.JENIS_KELAMIN, ps.TANGGAL_LAHIR,
+           (SELECT CONCAT_WS(' - ', NULLIF(d.KODE, ''), d.DIAGNOSA)
+              FROM ${SIMGOS_DB.MEDICALRECORD}.diagnosa d
+              WHERE d.NOPEN = pp.NOMOR AND d.STATUS = 1
+              ORDER BY (d.UTAMA = 1) DESC, d.ID ASC LIMIT 1) AS DIAGNOSA,
+           pes.noKartu AS NO_KARTU,
+           pes.nama    AS NAMA_PESERTA,
+           pes.nmKelas AS KELAS
+    FROM ${SIMGOS_DB.PENDAFTARAN}.pendaftaran pp
+    JOIN ${SIMGOS_DB.MASTER}.pasien ps ON ps.NORM = pp.NORM
+    LEFT JOIN ${SIMGOS_DB.MASTER}.kartu_identitas_pasien ki
+      ON ki.NORM = pp.NORM AND ki.JENIS = 1
+    LEFT JOIN ${SIMGOS_DB.BPJS}.peserta pes ON pes.nik = ki.NOMOR
+    WHERE pp.NOMOR = ? AND pp.STATUS = 1
+    LIMIT 1`;
+
+  const rows = await getSimgos().$queryRawUnsafe<BuktiReportHeaderRow[]>(sql, nopen);
+  return rows[0] ?? null;
+}
+
 /** Baris tindakan medis (untuk prefill Bukti Pelayanan). */
 export type TindakanRow = {
   TANGGAL: Date | string | null;
   NAMA: string | null;
   RUANG: string | null;
+  /** Nama petugas pelaksana (tindakan_medis.OLEH → master.pegawai). */
+  PELAKSANA: string | null;
 };
+
+/** Susun nama lengkap pegawai + gelar (alias `pg`). */
+const PEGAWAI_NAMA = `TRIM(CONCAT_WS(' ', NULLIF(pg.GELAR_DEPAN, ''), pg.NAMA, NULLIF(pg.GELAR_BELAKANG, '')))`;
 
 /**
  * Tindakan medis pada satu episode (NOPEN), ditarik dari `layanan.tindakan_medis`
- * (join ke leg kunjungan & `master.tindakan` untuk nama). READ-ONLY — hanya untuk
- * prefill; hasil isian disimpan di DB reporthub, bukan di sini.
+ * (join ke leg kunjungan & `master.tindakan` untuk nama). Pelaksana di-resolve dari
+ * `tindakan_medis.OLEH` → **`master.pegawai.ID`** (bukan staff — OLEH melampaui
+ * range staff.ID; pegawai mencakup ~semua). READ-ONLY — hanya untuk prefill;
+ * hasil isian disimpan di DB reporthub, bukan di sini.
  */
 export async function queryTindakanByNopen(nopen: string): Promise<TindakanRow[]> {
   const sql = `
     SELECT tm.TANGGAL,
-           mt.NAMA      AS NAMA,
-           r.DESKRIPSI  AS RUANG
+           mt.NAMA         AS NAMA,
+           r.DESKRIPSI     AS RUANG,
+           ${PEGAWAI_NAMA} AS PELAKSANA
     FROM ${SIMGOS_DB.LAYANAN}.tindakan_medis tm
     JOIN ${SIMGOS_DB.PENDAFTARAN}.kunjungan k ON k.NOMOR = tm.KUNJUNGAN
     LEFT JOIN ${SIMGOS_DB.MASTER}.ruangan r   ON r.ID = k.RUANGAN
     LEFT JOIN ${SIMGOS_DB.MASTER}.tindakan mt ON mt.ID = tm.TINDAKAN
+    LEFT JOIN ${SIMGOS_DB.MASTER}.pegawai pg  ON pg.ID = tm.OLEH
     WHERE k.NOPEN = ? AND tm.STATUS = 1
     ORDER BY tm.TANGGAL ASC
     LIMIT 200`;
 
   return getSimgos().$queryRawUnsafe<TindakanRow[]>(sql, nopen);
+}
+
+/**
+ * Nama DPJP episode (READ-ONLY): dari leg klinis utama (RI>IGD>RJ),
+ * `pendaftaran.kunjungan.DPJP` (smallint = `master.dokter.ID`) → `master.dokter.NIP`
+ * → `master.pegawai` (join NIP) → nama + gelar. Null bila tak ada DPJP.
+ */
+export async function queryDpjpByNopen(nopen: string): Promise<string | null> {
+  const sql = `
+    SELECT ${PEGAWAI_NAMA} AS DPJP
+    FROM ${SIMGOS_DB.PENDAFTARAN}.kunjungan k
+    JOIN ${SIMGOS_DB.MASTER}.ruangan r ON r.ID = k.RUANGAN
+    JOIN ${SIMGOS_DB.MASTER}.dokter d  ON d.ID = k.DPJP
+    JOIN ${SIMGOS_DB.MASTER}.pegawai pg ON pg.NIP = d.NIP
+    WHERE k.NOPEN = ? AND k.STATUS <> 0 AND k.DPJP IS NOT NULL AND k.DPJP <> 0
+    ORDER BY (r.JENIS_KUNJUNGAN = 3) DESC, (r.JENIS_KUNJUNGAN = 2) DESC,
+             (r.JENIS_KUNJUNGAN = 1) DESC, k.MASUK ASC
+    LIMIT 1`;
+
+  const rows = await getSimgos().$queryRawUnsafe<{ DPJP: string | null }[]>(sql, nopen);
+  const d = rows[0]?.DPJP?.trim();
+  return d ? d : null;
 }
