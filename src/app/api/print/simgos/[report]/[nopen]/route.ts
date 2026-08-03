@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { REPORTS } from "@/server/modules/report/report.registry";
 import { getSimgosReportPdf } from "@/server/modules/report/report-engine";
-import { querySepByNopen } from "@/server/modules/berkas-klaim/berkas-klaim.dal";
 
 export const runtime = "nodejs";
 
@@ -9,8 +8,9 @@ export const runtime = "nodejs";
  * GET /api/print/simgos/[report]/[nopen]
  * Proxy READ-ONLY ke report engine SIMGOS → stream PDF resmi (inline di browser).
  *
- * Untuk report ber-`param: "sep"` (mis. Cetak SEP), NOPEN di URL diresolusikan
- * dulu menjadi NOMOR SEP via `querySepByNopen` sebelum payload dibangun.
+ * Tiap report me-resolve parameternya sendiri dari NOPEN (`def.build`): Resume
+ * Medis (PNOPEN), SEP (resolve nomor SEP), CPPT (resolve KUNJUNGAN). Bila payload
+ * `null` → dokumen tak tersedia untuk NOPEN ini (mis. tanpa SEP/CPPT) → 404.
  */
 export async function GET(
   req: NextRequest,
@@ -26,21 +26,15 @@ export async function GET(
     return new Response("NOPEN tidak valid.", { status: 400 });
   }
 
-  // Resolusi kunci payload: NOPEN langsung, atau NOMOR SEP untuk report SEP.
-  let key = nopen;
-  if (def.param === "sep") {
-    const sep = await querySepByNopen(nopen).catch(() => null);
-    if (!sep) {
-      return new Response("SEP tidak ditemukan untuk NOPEN ini.", { status: 404 });
-    }
-    key = sep;
-  }
-
   // ?dl=1 → paksa unduh (attachment); default = inline agar preview di viewer.
   const disposition = req.nextUrl.searchParams.get("dl") === "1" ? "attachment" : "inline";
 
   try {
-    const pdf = await getSimgosReportPdf(def.build(key));
+    const payload = await def.build(nopen);
+    if (!payload) {
+      return new Response("Dokumen tidak tersedia untuk NOPEN ini.", { status: 404 });
+    }
+    const pdf = await getSimgosReportPdf(payload);
     return new Response(pdf, {
       status: 200,
       headers: {

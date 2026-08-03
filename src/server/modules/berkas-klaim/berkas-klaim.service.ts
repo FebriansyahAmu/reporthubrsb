@@ -193,6 +193,8 @@ export async function getBerkasDetail(nopen: string): Promise<BerkasDetail | nul
       icon: "cppt",
       status: cpptN > 0 ? "ADA" : "TIDAK",
       keterangan: cpptN > 0 ? `${cpptN} catatan` : "Belum ada catatan",
+      // Cetak Catatan Medik resmi (route resolve NOPEN→KUNJUNGAN ber-CPPT).
+      printHref: cpptN > 0 ? `/print/simgos/cppt/${nopen}` : undefined,
     },
     {
       key: "resume",

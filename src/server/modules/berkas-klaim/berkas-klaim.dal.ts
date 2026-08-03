@@ -101,6 +101,38 @@ export async function querySepByNopen(nopen: string): Promise<string | null> {
   return sep ? sep : null;
 }
 
+/** Baris nomor kunjungan. */
+type KunjunganRow = { KUNJUNGAN: string | null };
+
+/**
+ * KUNJUNGAN (leg) yang memuat CPPT untuk satu NOPEN — dipakai sebagai parameter
+ * cetak "Catatan Medik" (payload butuh `PKUNJUNGAN`, bukan hanya `PNOPEN`).
+ * READ-ONLY. CPPT (`medicalrecord.cppt`) ber-kunci **KUNJUNGAN** (bukan NOPEN),
+ * jadi dipilih leg klinis utama (Rawat Inap > IGD > Rawat Jalan) yang PUNYA CPPT,
+ * dengan jumlah catatan terbanyak. Mengembalikan `null` bila tak ada leg ber-CPPT.
+ */
+export async function queryCpptKunjunganByNopen(nopen: string): Promise<string | null> {
+  const sql = `
+    SELECT k.NOMOR AS KUNJUNGAN
+    FROM ${SIMGOS_DB.PENDAFTARAN}.kunjungan k
+    JOIN ${SIMGOS_DB.MASTER}.ruangan r ON r.ID = k.RUANGAN
+    WHERE k.NOPEN = ? AND k.STATUS <> 0
+      AND EXISTS (
+        SELECT 1 FROM ${SIMGOS_DB.MEDICALRECORD}.cppt c
+        WHERE c.KUNJUNGAN = k.NOMOR AND c.STATUS = 1)
+    ORDER BY (r.JENIS_KUNJUNGAN = 3) DESC,
+             (r.JENIS_KUNJUNGAN = 2) DESC,
+             (r.JENIS_KUNJUNGAN = 1) DESC,
+             (SELECT COUNT(*) FROM ${SIMGOS_DB.MEDICALRECORD}.cppt c
+              WHERE c.KUNJUNGAN = k.NOMOR AND c.STATUS = 1) DESC,
+             k.MASUK ASC
+    LIMIT 1`;
+
+  const rows = await getSimgos().$queryRawUnsafe<KunjunganRow[]>(sql, nopen);
+  const k = rows[0]?.KUNJUNGAN?.trim();
+  return k ? k : null;
+}
+
 /** Baris tindakan medis (untuk prefill Bukti Pelayanan). */
 export type TindakanRow = {
   TANGGAL: Date | string | null;
