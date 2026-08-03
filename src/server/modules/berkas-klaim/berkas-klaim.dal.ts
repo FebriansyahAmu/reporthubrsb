@@ -181,7 +181,7 @@ export type TindakanRow = {
   TANGGAL: Date | string | null;
   NAMA: string | null;
   RUANG: string | null;
-  /** Nama petugas pelaksana (tindakan_medis.OLEH → master.pegawai). */
+  /** Nama pelaksana (petugas_tindakan_medis.MEDIS → perawat → pegawai). */
   PELAKSANA: string | null;
 };
 
@@ -190,22 +190,32 @@ const PEGAWAI_NAMA = `TRIM(CONCAT_WS(' ', NULLIF(pg.GELAR_DEPAN, ''), pg.NAMA, N
 
 /**
  * Tindakan medis pada satu episode (NOPEN), ditarik dari `layanan.tindakan_medis`
- * (join ke leg kunjungan & `master.tindakan` untuk nama). Pelaksana di-resolve dari
- * `tindakan_medis.OLEH` → **`master.pegawai.ID`** (bukan staff — OLEH melampaui
- * range staff.ID; pegawai mencakup ~semua). READ-ONLY — hanya untuk prefill;
- * hasil isian disimpan di DB reporthub, bukan di sini.
+ * (join ke leg kunjungan & `master.tindakan` untuk nama). READ-ONLY — hanya untuk
+ * prefill; hasil isian disimpan di DB reporthub, bukan di sini.
+ *
+ * **Pelaksana (dikoreksi):** BUKAN dari `tindakan_medis.OLEH`. Petugas pelaksana
+ * dicatat di **`layanan.petugas_tindakan_medis`** (`TINDAKAN_MEDIS` = `tindakan_medis.ID`);
+ * kolom **`MEDIS`** = ID petugas → **`master.perawat.ID`** → `master.perawat.NIP`
+ * → **`master.pegawai`** (join NIP) → nama + gelar persis. Satu tindakan bisa punya
+ * >1 petugas (mis. pengambilan sampel lab), jadi nama di-`GROUP_CONCAT(DISTINCT …)`
+ * jadi daftar berpisah koma. `perawat` mencakup perawat/bidan/analis/gizi (semua
+ * JENIS resolve), jadi tidak perlu filter JENIS. INNER JOIN membuang ID placeholder
+ * (mis. MEDIS=0/182) yang tak ada di master.
  */
 export async function queryTindakanByNopen(nopen: string): Promise<TindakanRow[]> {
   const sql = `
     SELECT tm.TANGGAL,
-           mt.NAMA         AS NAMA,
-           r.DESKRIPSI     AS RUANG,
-           ${PEGAWAI_NAMA} AS PELAKSANA
+           mt.NAMA     AS NAMA,
+           r.DESKRIPSI AS RUANG,
+           (SELECT GROUP_CONCAT(DISTINCT ${PEGAWAI_NAMA} ORDER BY ${PEGAWAI_NAMA} SEPARATOR ', ')
+              FROM ${SIMGOS_DB.LAYANAN}.petugas_tindakan_medis ptm
+              JOIN ${SIMGOS_DB.MASTER}.perawat pr ON pr.ID = ptm.MEDIS
+              JOIN ${SIMGOS_DB.MASTER}.pegawai pg ON pg.NIP = pr.NIP
+              WHERE ptm.TINDAKAN_MEDIS = tm.ID AND ptm.STATUS = 1) AS PELAKSANA
     FROM ${SIMGOS_DB.LAYANAN}.tindakan_medis tm
     JOIN ${SIMGOS_DB.PENDAFTARAN}.kunjungan k ON k.NOMOR = tm.KUNJUNGAN
     LEFT JOIN ${SIMGOS_DB.MASTER}.ruangan r   ON r.ID = k.RUANGAN
     LEFT JOIN ${SIMGOS_DB.MASTER}.tindakan mt ON mt.ID = tm.TINDAKAN
-    LEFT JOIN ${SIMGOS_DB.MASTER}.pegawai pg  ON pg.ID = tm.OLEH
     WHERE k.NOPEN = ? AND tm.STATUS = 1
     ORDER BY tm.TANGGAL ASC
     LIMIT 200`;
