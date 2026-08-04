@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FileWarning } from "lucide-react";
 import { getResumeMedis } from "@/server/modules/resume-medis/resume-medis.service";
+import { qrSvgDataUri } from "@/server/lib/qr";
 import { ResumePulangDocument } from "@/features/resume-pulang/ResumePulangDocument";
 import { PrintToolbar } from "@/components/report/PrintToolbar";
 
@@ -13,6 +14,7 @@ export default async function ResumePulangPrintPage({
 }) {
   const { id } = await params;
   const dto = await getResumeMedis(id);
+  const dpjpQr = dto ? await qrSvgDataUri(dto.pelayanan.dpjp ?? "") : "";
 
   if (!dto) {
     return (
@@ -43,7 +45,7 @@ export default async function ResumePulangPrintPage({
         subtitle={dto.pasien.norm ?? undefined}
         backHref="/laporan/resume-pulang"
       />
-      <ResumePulangDocument dto={dto} />
+      <ResumePulangDocument dto={dto} dpjpQr={dpjpQr} />
     </>
   );
 }

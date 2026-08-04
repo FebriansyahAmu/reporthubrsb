@@ -139,12 +139,15 @@ export function SignatureBlock({
   peran,
   nama,
   nip,
+  qr,
 }: {
   kota: string | null;
   tanggal: string;
   peran: string;
   nama: string;
   nip: string | null;
+  /** Bila diisi (SVG data-URI), QR menggantikan ruang tanda tangan — scan → nama. */
+  qr?: string;
 }) {
   return (
     <div className="mt-8 flex justify-end">
@@ -154,7 +157,12 @@ export function SignatureBlock({
           {tanggal}
         </p>
         <p>{peran}</p>
-        <div className="h-16" />
+        {qr ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={qr} alt={nama} className="mx-auto my-1 block size-[22mm]" />
+        ) : (
+          <div className="h-16" />
+        )}
         <p className="font-semibold underline">{nama}</p>
         {nip && <p className="text-xs text-neutral-600">NIP. {nip}</p>}
       </div>

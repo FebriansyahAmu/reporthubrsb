@@ -116,8 +116,10 @@ export function formatJam(iso: string | Date): string {
 /** Parse tanggal format Indonesia "dd-mm-yyyy" atau "dd-mm-yyyy HH:mm:ss" → Date | null. */
 export function parseIdDate(s: string | null | undefined): Date | null {
   if (!s) return null;
-  const [datePart, timePart] = s.trim().split(" ");
-  const [dd, mm, yyyy] = datePart.split(/[-/]/).map(Number);
+  const [datePart, timePart] = s.trim().split(/[ T]/);
+  const seg = datePart.split(/[-/]/).map(Number);
+  // Deteksi urutan: "yyyy-mm-dd" (tahun 4 digit di depan) vs "dd-mm-yyyy".
+  const [dd, mm, yyyy] = /^\d{4}[-/]/.test(datePart) ? [seg[2], seg[1], seg[0]] : seg;
   if (!dd || !mm || !yyyy) return null;
   const [h = 0, mi = 0, se = 0] = (timePart?.split(":") ?? []).map(Number);
   const d = new Date(yyyy, mm - 1, dd, h, mi, se);
