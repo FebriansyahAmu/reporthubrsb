@@ -1,6 +1,7 @@
 import {
   Activity,
   ClipboardList,
+  FileSignature,
   FolderCheck,
   Hourglass,
   LayoutGrid,
@@ -82,6 +83,17 @@ export const NAV: NavSection[] = [
         label: "Berkas Klaim RM",
         icon: FolderCheck,
         description: "Berkas pasien final untuk klaim",
+      },
+    ],
+  },
+  {
+    title: "Form RM",
+    items: [
+      {
+        href: "/form-rm",
+        label: "Form RM (Admisi)",
+        icon: FileSignature,
+        description: "Isi formulir RM pasien saat pendaftaran",
       },
     ],
   },

@@ -61,6 +61,30 @@ model BuktiPelayanan {
   @@map("bukti_pelayanan")
 }
 
+/// Formulir Rekam Medis (RM) yang DIISI SENDIRI oleh admisi/petugas (bukan data
+/// SIMGOS). Generik: satu baris per (NOPEN, jenis) — mis. jenis "edukasi" (RM.21),
+/// "ringkasan" (RM.01), "consent" (RM.03). Isi form disimpan sebagai JSON.
+/// SIMGOS tetap READ-ONLY — penyimpanan hanya di sini.
+model FormRm {
+  id         String   @id @default(cuid())
+  /// NOPEN (nomor pendaftaran / episode).
+  nopen      String
+  /// Jenis form RM: "edukasi" | "ringkasan" | "consent" | …
+  jenis      String
+  norm       String?
+  namaPasien String?  @map("nama_pasien")
+  ruang      String?
+  /// Isi form sebagai JSON.
+  data       Json
+  createdBy  String?  @map("created_by")
+  updatedBy  String?  @map("updated_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@unique([nopen, jenis])
+  @@map("form_rm")
+}
+
 /// Refresh token (rotasi). Yang disimpan HANYA hash token-nya, bukan token asli,
 /// sehingga bocornya DB tidak langsung memberi token yang bisa dipakai.
 model RefreshToken {
