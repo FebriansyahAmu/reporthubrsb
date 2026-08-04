@@ -7,6 +7,7 @@ const LABEL: Record<string, string> = {
   "resume-medis": "Resume Medis",
   sep: "SEP (Surat Eligibilitas Peserta)",
   cppt: "CPPT (Catatan Medik)",
+  spri: "SPRI (Surat Rencana Rawat Inap)",
 };
 
 /**

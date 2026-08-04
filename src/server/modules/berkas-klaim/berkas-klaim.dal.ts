@@ -133,6 +133,32 @@ export async function queryCpptKunjunganByNopen(nopen: string): Promise<string |
   return k ? k : null;
 }
 
+/**
+ * KUNJUNGAN (leg) sumber SPRI untuk satu episode Rawat Inap (NOPEN) — dipakai
+ * sebagai parameter cetak "Surat Rencana Rawat Inap" (payload butuh `PKUNJUNGAN`).
+ * READ-ONLY.
+ *
+ * SPRI dibuat saat kunjungan **IGD/asal** (sebelum pasien masuk Rawat Inap), lalu
+ * menautkan ke pendaftaran RI. Tabel `medicalrecord.perencanaan_rawat_inap` memuat
+ * kedua sisi: `KUNJUNGAN` = leg asal (IGD) tempat SPRI dibuat, `PENDAFTARAN_RI_NOMOR`
+ * = NOPEN Rawat Inap hasilnya (NB: IGD & RI adalah pendaftaran/NOPEN BERBEDA). Jadi
+ * `PKUNJUNGAN` = `KUNJUNGAN` dari baris SPRI yang `PENDAFTARAN_RI_NOMOR = nopen`.
+ * Mengembalikan `null` bila episode tak punya SPRI.
+ */
+export async function querySpriKunjunganByNopen(nopen: string): Promise<string | null> {
+  const sql = `
+    SELECT s.KUNJUNGAN AS KUNJUNGAN
+    FROM ${SIMGOS_DB.MEDICALRECORD}.perencanaan_rawat_inap s
+    WHERE s.PENDAFTARAN_RI_NOMOR = ? AND s.STATUS = 1
+      AND s.KUNJUNGAN IS NOT NULL AND s.KUNJUNGAN <> ''
+    ORDER BY s.DIBUAT_TANGGAL DESC
+    LIMIT 1`;
+
+  const rows = await getSimgos().$queryRawUnsafe<KunjunganRow[]>(sql, nopen);
+  const k = rows[0]?.KUNJUNGAN?.trim();
+  return k ? k : null;
+}
+
 /** Header cetak Bukti Pelayanan: identitas pasien + diagnosa + peserta BPJS. */
 export type BuktiReportHeaderRow = {
   NORM: number | string;

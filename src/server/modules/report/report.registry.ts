@@ -2,6 +2,7 @@ import "server-only";
 import {
   queryCpptKunjunganByNopen,
   querySepByNopen,
+  querySpriKunjunganByNopen,
 } from "@/server/modules/berkas-klaim/berkas-klaim.dal";
 
 /**
@@ -68,6 +69,26 @@ export const REPORTS: Record<string, ReportDef> = {
         TYPE: "Pdf",
         EXT: "pdf",
         REQUEST_FOR_PRINT: false,
+        ALLOW_DOWNLOAD: false,
+        CONNECTION_NUMBER: 0,
+        COPIES: 1,
+      };
+    },
+  },
+  spri: {
+    build: async (nopen) => {
+      // PKUNJUNGAN = leg IGD/asal tempat SPRI dibuat (bukan leg Rawat Inap).
+      const kunjungan = await querySpriKunjunganByNopen(nopen);
+      if (!kunjungan) return null;
+      return {
+        NAME: "bpjs.7111011-RencanaKontrol",
+        TYPE: "Pdf",
+        EXT: "pdf",
+        PARAMETER: { PKUNJUNGAN: kunjungan, CETAK_HEADER: 1 },
+        REQUEST_FOR_PRINT: false,
+        MULTI_PRINT: false,
+        PRINT_NAME: "CetakSPRI",
+        TITLE: "Cetak Surat Rencana Rawat Inap",
         ALLOW_DOWNLOAD: false,
         CONNECTION_NUMBER: 0,
         COPIES: 1,

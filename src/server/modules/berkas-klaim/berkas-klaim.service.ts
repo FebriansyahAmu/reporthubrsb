@@ -179,6 +179,8 @@ export async function getBerkasDetail(nopen: string): Promise<BerkasDetail | nul
           ? "Ada perintah rawat inap"
           : "Belum diinput"
         : "Hanya Rawat Inap",
+      // Cetak "Surat Rencana Rawat Inap" resmi (route resolve NOPEN→KUNJUNGAN IGD asal).
+      printHref: hasRI && spriN > 0 ? `/print/simgos/spri/${nopen}` : undefined,
     },
     {
       key: "bukti",
