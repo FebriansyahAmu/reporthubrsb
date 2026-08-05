@@ -6,6 +6,8 @@ import { Check, Loader2, Printer, QrCode, Save } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Field";
+import { DatePicker, DateTimePicker, nowLocalDateTime } from "@/components/ui/DatePicker";
+import { SelectOther } from "@/components/ui/Select";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { cn } from "@/lib/cn";
 import {
@@ -14,6 +16,7 @@ import {
   EDUKASI_KATEGORI,
   EVALUASI_OPTS,
   HAMBATAN_OPTS,
+  HUBUNGAN_OPTS,
   KESEDIAAN_OPTS,
   METODE_OPTS,
   PEMAHAMAN_OPTS,
@@ -240,11 +243,19 @@ function EntryCard({
   topik: string[];
   onPatch: (p: Partial<EdukasiEntry>) => void;
 }) {
+  // Saat kategori diaktifkan, auto-isi Tanggal & Jam = sekarang (bila masih kosong).
+  function toggleAktif() {
+    const nextAktif = !entry.aktif;
+    const patch: Partial<EdukasiEntry> = { aktif: nextAktif };
+    if (nextAktif && !entry.tanggalJam) patch.tanggalJam = nowLocalDateTime();
+    onPatch(patch);
+  }
+
   return (
     <Card className={cn("overflow-hidden transition-colors", entry.aktif && "border-brand/40")}>
       <button
         type="button"
-        onClick={() => onPatch({ aktif: !entry.aktif })}
+        onClick={toggleAktif}
         className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-2/50"
       >
         <div className="min-w-0">
@@ -278,10 +289,9 @@ function EntryCard({
             />
             <div>
               <Label>Tanggal &amp; Jam</Label>
-              <Input
-                type="datetime-local"
+              <DateTimePicker
                 value={entry.tanggalJam}
-                onChange={(e) => onPatch({ tanggalJam: e.target.value })}
+                onChange={(v) => onPatch({ tanggalJam: v })}
               />
             </div>
             <div>
@@ -309,12 +319,16 @@ function EntryCard({
               onChange={(v) => onPatch({ sasaranNama: v })}
               placeholder="Nama penerima edukasi"
             />
-            <TextField
-              label="Hubungan dgn Pasien"
-              value={entry.sasaranHubungan}
-              onChange={(v) => onPatch({ sasaranHubungan: v })}
-              placeholder="mis. Anak / Istri"
-            />
+            <div>
+              <Label>Hubungan dgn Pasien</Label>
+              <SelectOther
+                value={entry.sasaranHubungan}
+                onChange={(v) => onPatch({ sasaranHubungan: v })}
+                options={HUBUNGAN_OPTS}
+                placeholder="Pilih hubungan"
+                otherPlaceholder="Hubungan lainnya…"
+              />
+            </div>
           </div>
 
           {/* TTD Edukator otomatis jadi QR (isi nama) saat cetak; sasaran ttd gambar. */}
@@ -367,10 +381,10 @@ function EntryCard({
 
           <div className="sm:max-w-xs">
             <Label>Tanggal Re-Edukasi</Label>
-            <Input
-              type="date"
+            <DatePicker
               value={entry.tanggalReEdukasi}
-              onChange={(e) => onPatch({ tanggalReEdukasi: e.target.value })}
+              onChange={(v) => onPatch({ tanggalReEdukasi: v })}
+              placeholder="Pilih tanggal re-edukasi"
             />
           </div>
         </div>

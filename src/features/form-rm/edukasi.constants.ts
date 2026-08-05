@@ -46,6 +46,7 @@ export const SARANA_OPTS = ["Leaflet", "Audiovisual", "Lisan"];
 export const PEMAHAMAN_OPTS = ["Sudah Mengerti", "Sudah Paham"];
 export const EVALUASI_OPTS = ["Re-Edukasi", "Sudah Mengerti", "Sudah Paham"];
 export const SASARAN_OPTS = ["Pasien", "Keluarga", "Lain-lain"];
+export const HUBUNGAN_OPTS = ["Istri", "Suami", "Anak", "Kakek", "Nenek", "Saudara", "Keluarga"];
 
 /** Satu baris edukasi kosong untuk kategori tertentu. */
 export function emptyEntry(kategori: string): EdukasiEntry {
