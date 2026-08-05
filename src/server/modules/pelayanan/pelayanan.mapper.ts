@@ -104,6 +104,18 @@ export function mapTurunan(row: TurunanRow): TurunanLayananItem {
 
 const filled = (v: number | null) => Number(v) > 0;
 
+/** TIME (string "HH:mm:ss" atau Date jam-dinding UTC) → "HH:mm:ss", null bila invalid. */
+function timeToHms(v: string | Date | null): string | null {
+  if (v == null) return null;
+  if (v instanceof Date) {
+    return Number.isNaN(v.getTime())
+      ? null
+      : `${pad(v.getUTCHours())}:${pad(v.getUTCMinutes())}:${pad(v.getUTCSeconds())}`;
+  }
+  const m = /^(\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(v).trim());
+  return m ? `${m[1]}:${m[2]}:${m[3] ?? "00"}` : null;
+}
+
 export function mapResume(row: ResumeRow): ResumeItem {
   const lahir = row.TANGGAL_LAHIR
     ? row.TANGGAL_LAHIR instanceof Date
@@ -127,6 +139,16 @@ export function mapResume(row: ResumeRow): ResumeItem {
       ? "RESUME_MINIM"
       : "LENGKAP";
 
+  // Surat Kontrol: ada baris jadwal_kontrol (STATUS=1) untuk kunjungan ini?
+  const kontrolTerbit = row.JK_ID != null;
+  const kontrolDateIso = kontrolTerbit ? toWallClockIso(row.JK_TANGGAL) : null;
+  const kontrolJam = kontrolTerbit ? timeToHms(row.JK_JAM) : null;
+  const kontrolTanggal = kontrolDateIso
+    ? kontrolJam
+      ? `${kontrolDateIso.slice(0, 10)}T${kontrolJam}`
+      : kontrolDateIso
+    : null;
+
   return {
     nomor: String(row.NOMOR),
     nopen: String(row.NOPEN),
@@ -142,5 +164,8 @@ export function mapResume(row: ResumeRow): ResumeItem {
     status,
     resumeTanggal: adaResume ? toWallClockIso(row.RESUME_TANGGAL) : null,
     komponenKurang: kurang,
+    kontrolTerbit,
+    kontrolNomor: kontrolTerbit ? row.JK_NOMOR?.trim() || null : null,
+    kontrolTanggal,
   };
 }

@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
 import {
+  CalendarCheck,
+  CalendarClock,
   CheckCircle2,
   ClipboardList,
   Clock,
@@ -307,6 +309,8 @@ const cardVariants: Variants = {
 
 function ResumeCard({ item }: { item: ResumeItem }) {
   const meta = RESUME_STATUS_META[item.status];
+  // Surat Kontrol hanya relevan untuk Rawat Inap & Rawat Jalan Klinik (IGD nyaris tak ada).
+  const showKontrol = item.kategori === "Rawat Inap" || item.kategori === "Rawat Jalan Klinik";
   return (
     <motion.div
       variants={cardVariants}
@@ -351,7 +355,22 @@ function ResumeCard({ item }: { item: ResumeItem }) {
         />
       </div>
 
-      <div className="mt-4 flex items-center justify-end border-t border-border/70 pt-3">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3">
+        {showKontrol ? (
+          item.kontrolTerbit ? (
+            <Badge tone="success">
+              <CalendarCheck className="size-3.5" />
+              Kontrol {formatDate(item.kontrolTanggal)}
+            </Badge>
+          ) : (
+            <Badge tone="warning" dot>
+              <CalendarClock className="size-3.5" />
+              Surat Kontrol belum terbit
+            </Badge>
+          )
+        ) : (
+          <span />
+        )}
         <Badge tone={meta.tone} dot>
           {meta.label}
         </Badge>

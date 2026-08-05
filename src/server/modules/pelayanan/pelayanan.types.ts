@@ -239,6 +239,12 @@ export type ResumeItem = {
   resumeTanggal: string | null;
   /** Label komponen inti yang belum diisi (untuk status RESUME_MINIM). */
   komponenKurang: string[];
+  /** Surat Kontrol (rencana kontrol) sudah terbit di medicalrecord.jadwal_kontrol? Relevan untuk RI/RJ. */
+  kontrolTerbit: boolean;
+  /** Nomor surat kontrol (jadwal_kontrol.NOMOR), bila terbit. */
+  kontrolNomor: string | null;
+  /** ISO lokal tanggal(+jam) kontrol, bila terbit. */
+  kontrolTanggal: string | null;
 };
 
 export type ResumeCounts = Record<"Semua" | ResumeStatus, number>;

@@ -260,6 +260,11 @@ export type ResumeRow = {
   RENCANA_TERAPI: number | null;
   EDUKASI_EMERGENCY: number | null;
   JADWAL_KONTROL: number | null;
+  /** medicalrecord.jadwal_kontrol (STATUS=1) untuk kunjungan ini — null = surat kontrol belum terbit. */
+  JK_ID: number | null;
+  JK_NOMOR: string | null;
+  JK_TANGGAL: Date | string | null;
+  JK_JAM: string | Date | null;
 };
 
 /**
@@ -295,11 +300,17 @@ export async function queryResumeKelengkapan(a: KunjunganRangeArgs): Promise<Res
            rs.RPP,
            rs.RENCANA_TERAPI,
            rs.EDUKASI_EMERGENCY,
-           rs.JADWAL_KONTROL
+           rs.JADWAL_KONTROL,
+           jk.ID       AS JK_ID,
+           jk.NOMOR    AS JK_NOMOR,
+           jk.TANGGAL  AS JK_TANGGAL,
+           jk.JAM      AS JK_JAM
     FROM ${SIMGOS_DB.PENDAFTARAN}.kunjungan k
     JOIN ${SIMGOS_DB.MASTER}.ruangan r        ON r.ID = k.RUANGAN
     JOIN ${SIMGOS_DB.PENDAFTARAN}.pendaftaran pp ON pp.NOMOR = k.NOPEN
     JOIN ${SIMGOS_DB.MASTER}.pasien ps        ON ps.NORM = pp.NORM
+    LEFT JOIN ${SIMGOS_DB.MEDICALRECORD}.jadwal_kontrol jk
+           ON jk.KUNJUNGAN = k.NOMOR AND jk.STATUS = 1
     LEFT JOIN (
       SELECT t.ID, t.NOPEN, t.TANGGAL, t.ANAMNESIS, t.KELUHAN_UTAMA, t.RPP,
              t.RENCANA_TERAPI, t.EDUKASI_EMERGENCY, t.JADWAL_KONTROL
