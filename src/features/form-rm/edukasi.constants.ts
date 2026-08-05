@@ -58,6 +58,7 @@ export function emptyEntry(kategori: string): EdukasiEntry {
     sasaran: "",
     sasaranNama: "",
     sasaranHubungan: "",
+    sasaranTtd: "",
     metode: [],
     sarana: [],
     saranaLain: "",

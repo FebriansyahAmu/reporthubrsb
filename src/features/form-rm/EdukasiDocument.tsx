@@ -70,9 +70,12 @@ function OptList({
 export function EdukasiDocument({
   header,
   data,
+  edukatorQr,
 }: {
   header: FormRmHeader;
   data: EdukasiForm;
+  /** Peta nama edukator → QR SVG data-URI (pengganti tanda tangan edukator). */
+  edukatorQr: Map<string, string>;
 }) {
   const p = data.persiapan;
 
@@ -184,7 +187,21 @@ export function EdukasiDocument({
                     ))}
                   </ul>
                 </td>
-                <td>{on ? e?.edukatorNama : ""}</td>
+                <td>
+                  {on ? (
+                    <>
+                      <div>{e?.edukatorNama}</div>
+                      {e?.edukatorNama && edukatorQr.get(e.edukatorNama.trim()) ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          className="rm-qr"
+                          src={edukatorQr.get(e.edukatorNama.trim())}
+                          alt={`QR ${e.edukatorNama}`}
+                        />
+                      ) : null}
+                    </>
+                  ) : null}
+                </td>
                 <td className="rm-c">{on ? fmt(e?.tanggalJam ?? "") : ""}</td>
                 <td className="rm-c">{on ? e?.durasiMenit : ""}</td>
                 <td>
@@ -196,6 +213,10 @@ export function EdukasiDocument({
                           {[e?.sasaranNama, e?.sasaranHubungan].filter(Boolean).join(" · ")}
                         </div>
                       )}
+                      {e?.sasaranTtd ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img className="rm-ttd" src={e.sasaranTtd} alt="TTD sasaran" />
+                      ) : null}
                     </>
                   ) : null}
                 </td>
@@ -261,6 +282,8 @@ const CSS = `
 .rm-topik li { line-height: 1.25; }
 .rm-c { text-align: center; }
 .rm-sas { margin-top: .8mm; font-style: italic; color: #333; }
+.rm-ttd { display: block; height: 9mm; max-width: 100%; object-fit: contain; margin-top: 1mm; }
+.rm-qr { display: block; width: 12mm; height: 12mm; margin-top: 1mm; }
 .rm-catatan { margin-top: 2mm; font-size: 8.5pt; border: .5pt solid #000; padding: 1.4mm 2mm; }
 .rm-foot { margin-top: 5mm; font-size: 8pt; color: #666; }
 

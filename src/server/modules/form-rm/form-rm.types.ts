@@ -69,6 +69,7 @@ export type EdukasiEntry = {
   kategori: string;
   /** Diisi bila edukasi kategori ini benar-benar dilakukan. */
   aktif: boolean;
+  /** Nama edukator/dokter — saat cetak jadi QR (bukan tanda tangan gambar). */
   edukatorNama: string;
   /** ISO lokal "YYYY-MM-DDTHH:mm". */
   tanggalJam: string;
@@ -77,6 +78,8 @@ export type EdukasiEntry = {
   sasaran: string;
   sasaranNama: string;
   sasaranHubungan: string;
+  /** Tanda tangan sasaran/keluarga — PNG data-URL hitam-putih. */
+  sasaranTtd: string;
   metode: string[];
   sarana: string[];
   saranaLain: string;

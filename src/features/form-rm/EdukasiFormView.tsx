@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, Loader2, Printer, Save } from "lucide-react";
+import { Check, Loader2, Printer, QrCode, Save } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Field";
+import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { cn } from "@/lib/cn";
 import {
   BACA_TULIS_OPTS,
@@ -313,6 +314,25 @@ function EntryCard({
               value={entry.sasaranHubungan}
               onChange={(v) => onPatch({ sasaranHubungan: v })}
               placeholder="mis. Anak / Istri"
+            />
+          </div>
+
+          {/* TTD Edukator otomatis jadi QR (isi nama) saat cetak; sasaran ttd gambar. */}
+          <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-fg-muted">Tanda Tangan Edukator</p>
+              <div className="flex items-center gap-2.5 rounded-[var(--radius-md)] border border-dashed border-border bg-surface-2/40 px-3 py-2.5 text-xs text-fg-muted">
+                <QrCode className="size-8 shrink-0 text-fg-subtle" />
+                <span>
+                  Otomatis berupa <span className="font-medium text-fg">QR code</span> berisi nama
+                  edukator{entry.edukatorNama ? <> (<span className="font-medium text-fg">{entry.edukatorNama}</span>)</> : null} saat dicetak.
+                </span>
+              </div>
+            </div>
+            <SignaturePad
+              label="Tanda Tangan Sasaran / Keluarga"
+              value={entry.sasaranTtd}
+              onChange={(v) => onPatch({ sasaranTtd: v })}
             />
           </div>
 

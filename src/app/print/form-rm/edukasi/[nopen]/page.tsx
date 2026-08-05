@@ -3,6 +3,7 @@ import { FileWarning } from "lucide-react";
 import { getEdukasiContext } from "@/server/modules/form-rm/form-rm.service";
 import { EdukasiDocument } from "@/features/form-rm/EdukasiDocument";
 import { PrintToolbar } from "@/components/report/PrintToolbar";
+import { qrSvgDataUriMap } from "@/server/lib/qr";
 
 export const metadata = { title: "Cetak Edukasi RM.21 · ReportHub RSB" };
 export const dynamic = "force-dynamic";
@@ -35,6 +36,11 @@ export default async function EdukasiPrintPage({
     );
   }
 
+  // TTD edukator/dokter = QR berisi nama (bukan tanda tangan gambar).
+  const edukatorQr = await qrSvgDataUriMap(
+    ctx.saved.data.entries.filter((e) => e.aktif).map((e) => e.edukatorNama),
+  );
+
   return (
     <>
       {/* F4 landscape untuk tabel edukasi yang lebar. */}
@@ -44,7 +50,7 @@ export default async function EdukasiPrintPage({
         subtitle={ctx.header.norm}
         backHref={`/form-rm/${nopen}/edukasi`}
       />
-      <EdukasiDocument header={ctx.header} data={ctx.saved.data} />
+      <EdukasiDocument header={ctx.header} data={ctx.saved.data} edukatorQr={edukatorQr} />
     </>
   );
 }

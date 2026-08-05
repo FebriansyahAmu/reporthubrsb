@@ -30,6 +30,13 @@ const persiapanSchema = z.object({
   kesediaan: z.enum(["", "Bersedia", "Tidak Bersedia"]).default(""),
 });
 
+/** Data-URL tanda tangan (PNG). Dibatasi ~1,5 MB agar payload aman. */
+const ttdSchema = z
+  .string()
+  .max(1_500_000, "Tanda tangan terlalu besar")
+  .refine((s) => s === "" || s.startsWith("data:image/"), "Format tanda tangan tidak valid")
+  .default("");
+
 const entrySchema = z.object({
   kategori: z.string().min(1),
   aktif: z.boolean().default(false),
@@ -39,6 +46,7 @@ const entrySchema = z.object({
   sasaran: z.string().default(""),
   sasaranNama: z.string().default(""),
   sasaranHubungan: z.string().default(""),
+  sasaranTtd: ttdSchema,
   metode: z.array(z.string()).default([]),
   sarana: z.array(z.string()).default([]),
   saranaLain: z.string().default(""),
