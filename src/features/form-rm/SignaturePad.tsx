@@ -2,7 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import SignaturePadLib from "signature_pad";
-import { ArrowLeft, Camera, Check, Eraser, PenLine, RotateCcw, Trash2, Upload } from "lucide-react";
+import {
+  ArrowLeft,
+  Camera,
+  Check,
+  Eraser,
+  Loader2,
+  PenLine,
+  RotateCcw,
+  Smartphone,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { cn } from "@/lib/cn";
 import { ImageCropper } from "@/features/form-rm/ImageCropper";
 import {
@@ -15,22 +26,32 @@ import {
   processPhoto,
 } from "@/features/form-rm/signature";
 
-type Mode = "" | "draw" | "upload" | "camera";
+type Mode = "" | "draw" | "upload" | "camera" | "remote";
 const DEFAULT_CROP: CropRect = { x: 0.05, y: 0.05, w: 0.9, h: 0.9 };
 
-/** Penangkap tanda tangan: pilih metode → gambar/unggah/kamera → crop & sesuaikan. */
+type RemoteSession = { token: string; qr: string; url: string };
+
+/** Penangkap tanda tangan: pilih metode → gambar/unggah/kamera/via HP → crop & sesuaikan. */
 export function SignaturePad({
   label,
   value,
   onChange,
+  context = "",
 }: {
   label: string;
   value: string;
   onChange: (dataUrl: string) => void;
+  /** Konteks (mis. nama pasien) yang tampil di HP saat TTD jarak jauh. */
+  context?: string;
 }) {
   const [editing, setEditing] = useState(!value);
   const [mode, setMode] = useState<Mode>("");
   const [error, setError] = useState<string | null>(null);
+
+  // TTD jarak jauh (hand-off ke HP via QR).
+  const [remote, setRemote] = useState<RemoteSession | null>(null);
+  const [remoteErr, setRemoteErr] = useState<string | null>(null);
+  const [remoteLoading, setRemoteLoading] = useState(false);
 
   // Sumber (gambar/unggah/kamera) → crop + ambang + ukuran → hasil biner (preview).
   const [srcImage, setSrcImage] = useState<string | null>(null);
@@ -146,7 +167,63 @@ export function SignaturePad({
     setThreshold(PHOTO_THRESHOLD_DEFAULT);
     setMaxDim(PHOTO_MAXDIM_DEFAULT);
     setError(null);
+    setRemote(null);
+    setRemoteErr(null);
+    setRemoteLoading(false);
   }
+
+  /** Mulai TTD jarak jauh: minta sesi (token+QR) lalu tampilkan QR untuk discan HP. */
+  async function startRemote() {
+    resetCapture();
+    setCamError(null);
+    setMode("remote");
+    setRemoteLoading(true);
+    try {
+      const res = await fetch("/api/sign/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label, context }),
+      });
+      if (!res.ok) throw new Error("gagal");
+      const { data } = (await res.json()) as { data: RemoteSession };
+      setRemote({ token: data.token, qr: data.qr, url: data.url });
+    } catch {
+      setRemoteErr("Tidak bisa membuat sesi TTD. Coba lagi.");
+    } finally {
+      setRemoteLoading(false);
+    }
+  }
+
+  // Poll status sesi TTD jarak jauh; saat HP mengirim → isi field otomatis.
+  useEffect(() => {
+    if (mode !== "remote" || !remote) return;
+    let alive = true;
+    const id = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/sign/${remote.token}`);
+        if (!res.ok || !alive) return;
+        const { data } = (await res.json()) as {
+          data: { status: string; payload: string | null };
+        };
+        if (!alive) return;
+        if (data.status === "signed" && data.payload) {
+          clearInterval(id);
+          commit(data.payload);
+        } else if (data.status === "expired") {
+          clearInterval(id);
+          setRemote(null);
+          setRemoteErr("Sesi kadaluarsa. Buat QR baru.");
+        }
+      } catch {
+        /* abaikan galat sesaat, lanjut poll */
+      }
+    }, 2000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, remote]);
   function chooseMode(m: Mode) {
     resetCapture();
     setCamError(null);
@@ -271,8 +348,9 @@ export function SignaturePad({
       <div className="rounded-[var(--radius-md)] border border-border bg-surface p-2">
         {/* 1) Pemilih metode */}
         {mode === "" && (
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <MethodBtn icon={<PenLine className="size-5" />} label="Gambar" onClick={() => chooseMode("draw")} />
+            <MethodBtn icon={<Smartphone className="size-5" />} label="Via HP" onClick={startRemote} />
             <MethodBtn icon={<Upload className="size-5" />} label="Unggah" onClick={() => chooseMode("upload")} />
             <MethodBtn icon={<Camera className="size-5" />} label="Kamera" onClick={() => chooseMode("camera")} />
           </div>
@@ -354,6 +432,38 @@ export function SignaturePad({
                 Gunakan
               </PrimaryBtn>
             </div>
+          </div>
+        )}
+
+        {/* 4) Via HP — TTD jarak jauh (scan QR di HP) */}
+        {mode === "remote" && (
+          <div>
+            <BackBtn onClick={() => chooseMode("")} />
+            {remoteLoading ? (
+              <div className="flex h-[180px] flex-col items-center justify-center gap-2 text-fg-muted">
+                <Loader2 className="size-6 animate-spin" />
+                <span className="text-xs">Menyiapkan sesi…</span>
+              </div>
+            ) : remoteErr ? (
+              <div className="flex h-[180px] flex-col items-center justify-center gap-3 px-3 text-center">
+                <p className="text-xs text-danger">{remoteErr}</p>
+                <PrimaryBtn onClick={startRemote} icon={<RotateCcw className="size-3.5" />}>Coba lagi</PrimaryBtn>
+              </div>
+            ) : remote ? (
+              <div className="flex flex-col items-center gap-2 py-1 text-center">
+                <p className="text-xs text-fg-muted">Scan QR ini dengan HP untuk menandatangani.</p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={remote.qr}
+                  alt="QR tanda tangan"
+                  className="size-40 rounded-[var(--radius-md)] border border-border bg-white p-1.5"
+                />
+                <p className="inline-flex items-center gap-1.5 text-xs font-medium text-brand">
+                  <Loader2 className="size-3.5 animate-spin" /> Menunggu tanda tangan dari HP…
+                </p>
+                <p className="max-w-full break-all text-[10px] text-fg-subtle">{remote.url}</p>
+              </div>
+            ) : null}
           </div>
         )}
 

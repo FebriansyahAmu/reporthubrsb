@@ -6,6 +6,13 @@ const LOGIN_PATH = "/";
 const DEFAULT_HOME = "/kunjungan";
 
 /**
+ * Rute publik (tanpa login): halaman TTD jarak jauh yang dibuka pasien/keluarga
+ * lewat HP + endpoint token-nya. Kapabilitas dijaga oleh token acak, bukan sesi.
+ * `POST /api/sign/create` tetap wajib login — dijaga di dalam handler-nya sendiri.
+ */
+const PUBLIC_PREFIXES = ["/sign", "/api/sign"];
+
+/**
  * Proteksi seluruh route (kecuali /api/auth & aset statis, lihat matcher).
  * Next.js 16: konvensi "middleware" diganti menjadi "proxy" (file `src/proxy.ts`,
  * export bernama `proxy`).
@@ -17,6 +24,11 @@ const DEFAULT_HOME = "/kunjungan";
  */
 export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+
+  if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    return NextResponse.next();
+  }
+
   const access = req.cookies.get(ACCESS_COOKIE)?.value;
   const user = access ? await verifyAccessToken(access) : null;
 

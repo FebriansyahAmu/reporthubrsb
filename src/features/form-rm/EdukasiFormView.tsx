@@ -174,6 +174,7 @@ export function EdukasiFormView({
               key={entry.kategori}
               entry={entry}
               topik={topikByKategori.get(entry.kategori) ?? []}
+              patientName={header.nama}
               onPatch={(p) => patchEntry(i, p)}
             />
           ))}
@@ -237,10 +238,12 @@ export function EdukasiFormView({
 function EntryCard({
   entry,
   topik,
+  patientName,
   onPatch,
 }: {
   entry: EdukasiEntry;
   topik: string[];
+  patientName: string;
   onPatch: (p: Partial<EdukasiEntry>) => void;
 }) {
   // Saat kategori diaktifkan, auto-isi Tanggal & Jam = sekarang (bila masih kosong).
@@ -347,6 +350,7 @@ function EntryCard({
               label="Tanda Tangan Sasaran / Keluarga"
               value={entry.sasaranTtd}
               onChange={(v) => onPatch({ sasaranTtd: v })}
+              context={[patientName, entry.sasaranNama, entry.kategori].filter(Boolean).join(" · ")}
             />
           </div>
 
