@@ -108,3 +108,45 @@ export type EdukasiContext = {
   saved: FormRmSaved<EdukasiForm> | null;
   header: FormRmHeader;
 };
+
+// ---------------------------------------------------------------------------
+// Persetujuan Umum Rawat Inap / General Consent (RM.03)
+// ---------------------------------------------------------------------------
+
+/** Data isian General Consent (RM.03). Teks legal I–X bersifat tetap (di konstanta). */
+export type ConsentForm = {
+  /** Waktu pendaftaran (ISO lokal "YYYY-MM-DDTHH:mm"). */
+  waktuPendaftaran: string;
+  ruanganRawat: string;
+  kelas: string;
+  /** NIK pasien (isian, karena tak ditarik dari SIMGOS). */
+  nik: string;
+  // Penanggung Jawab
+  pjNama: string;
+  pjJenisKelamin: "" | "Laki-Laki" | "Perempuan";
+  pjUmur: string;
+  pjHubungan: string;
+  pjAlamat: string;
+  pjTelepon: string;
+  /** III — pihak yang diberi wewenang menerima informasi (maks 3). */
+  pelepasanInfo: string[];
+  /** IV — izin akses pengunjung. */
+  izinPrivasi: "" | "Mengijinkan" | "Tidak Mengijinkan";
+  /** IV — permintaan khusus nama/profesi (maks 2). */
+  permintaanKhusus: string[];
+  // Tanda tangan
+  pasienNama: string;
+  /** PNG data-URL. */
+  pasienTtd: string;
+  petugasNama: string;
+  /** PNG data-URL. */
+  petugasTtd: string;
+  /** Tanggal tanda tangan (ISO "YYYY-MM-DD"). */
+  tanggalTtd: string;
+};
+
+/** Respons GET form Consent: rekaman tersimpan (bila ada) + header pasien. */
+export type ConsentContext = {
+  saved: FormRmSaved<ConsentForm> | null;
+  header: FormRmHeader;
+};

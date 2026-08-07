@@ -175,6 +175,7 @@ export function EdukasiFormView({
               entry={entry}
               topik={topikByKategori.get(entry.kategori) ?? []}
               patientName={header.nama}
+              reuseTtd={form.entries.find((e, j) => j !== i && e.sasaranTtd)?.sasaranTtd ?? ""}
               onPatch={(p) => patchEntry(i, p)}
             />
           ))}
@@ -239,11 +240,13 @@ function EntryCard({
   entry,
   topik,
   patientName,
+  reuseTtd,
   onPatch,
 }: {
   entry: EdukasiEntry;
   topik: string[];
   patientName: string;
+  reuseTtd: string;
   onPatch: (p: Partial<EdukasiEntry>) => void;
 }) {
   // Saat kategori diaktifkan, auto-isi Tanggal & Jam = sekarang (bila masih kosong).
@@ -351,6 +354,7 @@ function EntryCard({
               value={entry.sasaranTtd}
               onChange={(v) => onPatch({ sasaranTtd: v })}
               context={[patientName, entry.sasaranNama, entry.kategori].filter(Boolean).join(" · ")}
+              reuse={reuseTtd}
             />
           </div>
 

@@ -18,6 +18,7 @@ import { cn } from "@/lib/cn";
 import { formatDateTime } from "@/lib/format";
 import { getFormRmHeader, formRmExists } from "@/server/modules/form-rm/form-rm.service";
 import { EDUKASI_JENIS } from "@/features/form-rm/edukasi.constants";
+import { CONSENT_JENIS } from "@/features/form-rm/consent.constants";
 
 export const metadata = { title: "Detail Form RM · ReportHub RSB" };
 export const dynamic = "force-dynamic";
@@ -58,7 +59,10 @@ export default async function FormRmDetailPage({
     );
   }
 
-  const edukasiTerisi = await formRmExists(nopen, EDUKASI_JENIS).catch(() => false);
+  const [edukasiTerisi, consentTerisi] = await Promise.all([
+    formRmExists(nopen, EDUKASI_JENIS).catch(() => false),
+    formRmExists(nopen, CONSENT_JENIS).catch(() => false),
+  ]);
 
   const forms: FormCardData[] = [
     {
@@ -83,6 +87,8 @@ export default async function FormRmDetailPage({
       label: "Persetujuan Umum (General Consent)",
       icon: FileHeart,
       desc: "Persetujuan umum rawat inap pasien.",
+      href: `/form-rm/${nopen}/consent`,
+      terisi: consentTerisi,
     },
   ];
 
@@ -127,7 +133,7 @@ export default async function FormRmDetailPage({
         </div>
         <p className="mt-3 text-xs text-fg-subtle">
           Form diisi sendiri oleh admisi/petugas dan disimpan ke ReportHub (SIMRS tetap
-          read-only). RM.01 &amp; RM.03 menyusul.
+          read-only). RM.01 menyusul.
         </p>
       </div>
     </FadeIn>

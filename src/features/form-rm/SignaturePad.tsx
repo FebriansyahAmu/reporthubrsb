@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   Camera,
   Check,
+  Copy,
   Eraser,
   Loader2,
   PenLine,
@@ -37,12 +38,15 @@ export function SignaturePad({
   value,
   onChange,
   context = "",
+  reuse = "",
 }: {
   label: string;
   value: string;
   onChange: (dataUrl: string) => void;
   /** Konteks (mis. nama pasien) yang tampil di HP saat TTD jarak jauh. */
   context?: string;
+  /** TTD dari slot lain yang bisa dipakai ulang (sekali klik) bila slot ini kosong. */
+  reuse?: string;
 }) {
   const [editing, setEditing] = useState(!value);
   const [mode, setMode] = useState<Mode>("");
@@ -348,11 +352,33 @@ export function SignaturePad({
       <div className="rounded-[var(--radius-md)] border border-border bg-surface p-2">
         {/* 1) Pemilih metode */}
         {mode === "" && (
-          <div className="grid grid-cols-2 gap-2">
-            <MethodBtn icon={<PenLine className="size-5" />} label="Gambar" onClick={() => chooseMode("draw")} />
-            <MethodBtn icon={<Smartphone className="size-5" />} label="Via HP" onClick={startRemote} />
-            <MethodBtn icon={<Upload className="size-5" />} label="Unggah" onClick={() => chooseMode("upload")} />
-            <MethodBtn icon={<Camera className="size-5" />} label="Kamera" onClick={() => chooseMode("camera")} />
+          <div className="space-y-2">
+            {reuse && (
+              <button
+                type="button"
+                onClick={() => commit(reuse)}
+                className="flex w-full items-center gap-3 rounded-[var(--radius-md)] border border-brand/40 bg-brand-soft px-3 py-2 text-left transition-colors hover:border-brand/60"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={reuse}
+                  alt="TTD sebelumnya"
+                  className="h-9 w-16 shrink-0 rounded-[var(--radius-sm)] border border-border bg-white object-contain"
+                />
+                <span className="min-w-0">
+                  <span className="flex items-center gap-1.5 text-sm font-medium text-brand-soft-fg">
+                    <Copy className="size-3.5" /> Pakai TTD sebelumnya
+                  </span>
+                  <span className="block text-xs text-fg-muted">Salin tanda tangan yang tadi dibubuhkan</span>
+                </span>
+              </button>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <MethodBtn icon={<PenLine className="size-5" />} label="Gambar" onClick={() => chooseMode("draw")} />
+              <MethodBtn icon={<Smartphone className="size-5" />} label="Via HP" onClick={startRemote} />
+              <MethodBtn icon={<Upload className="size-5" />} label="Unggah" onClick={() => chooseMode("upload")} />
+              <MethodBtn icon={<Camera className="size-5" />} label="Kamera" onClick={() => chooseMode("camera")} />
+            </div>
           </div>
         )}
 

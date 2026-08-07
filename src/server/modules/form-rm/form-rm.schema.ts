@@ -73,3 +73,41 @@ export const edukasiSaveSchema = z.object({
 });
 
 export type EdukasiSaveInput = z.infer<typeof edukasiSaveSchema>;
+
+// --- General Consent (RM.03) ---------------------------------------------
+
+const str = (max = 300) => z.string().max(max).default("");
+
+export const consentFormSchema = z.object({
+  waktuPendaftaran: str(30),
+  ruanganRawat: str(120),
+  kelas: str(60),
+  nik: str(32),
+  pjNama: str(120),
+  pjJenisKelamin: z.enum(["", "Laki-Laki", "Perempuan"]).default(""),
+  pjUmur: str(20),
+  pjHubungan: str(60),
+  pjAlamat: str(400),
+  pjTelepon: str(40),
+  pelepasanInfo: z.array(z.string().max(160)).max(3).default([]),
+  izinPrivasi: z.enum(["", "Mengijinkan", "Tidak Mengijinkan"]).default(""),
+  permintaanKhusus: z.array(z.string().max(160)).max(2).default([]),
+  pasienNama: str(120),
+  pasienTtd: ttdSchema,
+  petugasNama: str(120),
+  petugasTtd: ttdSchema,
+  tanggalTtd: str(30),
+});
+
+export const consentSaveSchema = z.object({
+  data: consentFormSchema,
+  header: z
+    .object({
+      norm: z.string().optional(),
+      nama: z.string().optional(),
+      ruang: z.string().optional(),
+    })
+    .default({}),
+});
+
+export type ConsentSaveInput = z.infer<typeof consentSaveSchema>;

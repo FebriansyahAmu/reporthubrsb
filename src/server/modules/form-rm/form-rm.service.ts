@@ -6,7 +6,10 @@ import { queryKunjunganRange } from "@/server/modules/pelayanan/pelayanan.dal";
 import { mapKunjunganPelayanan } from "@/server/modules/pelayanan/pelayanan.mapper";
 import { queryFormRmHeader } from "./form-rm.dal";
 import { EDUKASI_JENIS } from "@/features/form-rm/edukasi.constants";
+import { CONSENT_JENIS } from "@/features/form-rm/consent.constants";
 import type {
+  ConsentContext,
+  ConsentForm,
   EdukasiContext,
   EdukasiForm,
   FormRmHeader,
@@ -145,6 +148,25 @@ export async function getEdukasiContext(nopen: string): Promise<EdukasiContext |
     getFormRmHeader(nopen),
   ]);
   if (!header) return null;
+  return { saved, header };
+}
+
+/** Konteks form General Consent (RM.03): rekaman tersimpan + header pasien SIMGOS. */
+export async function getConsentContext(nopen: string): Promise<ConsentContext | null> {
+  const [rec, header] = await Promise.all([
+    getAppDb().formRm.findUnique({ where: { nopen_jenis: { nopen, jenis: CONSENT_JENIS } } }),
+    getFormRmHeader(nopen),
+  ]);
+  if (!header) return null;
+  const saved: FormRmSaved<ConsentForm> | null = rec
+    ? {
+        nopen: rec.nopen,
+        jenis: rec.jenis,
+        data: rec.data as unknown as ConsentForm,
+        updatedAt: rec.updatedAt.toISOString(),
+        updatedBy: rec.updatedBy ?? null,
+      }
+    : null;
   return { saved, header };
 }
 
