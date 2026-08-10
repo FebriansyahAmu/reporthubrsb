@@ -111,3 +111,85 @@ export const consentSaveSchema = z.object({
 });
 
 export type ConsentSaveInput = z.infer<typeof consentSaveSchema>;
+
+// --- Ringkasan Masuk & Keluar (RM.01) ------------------------------------
+
+const yaTidak = z.enum(["", "Ya", "Tidak"]).default("");
+const skBarisSchema = z.object({ teks: str(200), lama: str(60) });
+
+export const ringkasanFormSchema = z.object({
+  alamat: str(300),
+  telp: str(40),
+  dirawatKe: str(20),
+  golDarah: str(20),
+  pendidikan: str(30),
+  pendidikanLain: str(60),
+  bangsa: z.enum(["", "Indonesia", "Asing"]).default(""),
+  agama: str(30),
+  statusPerkawinan: str(30),
+  pekerjaan: str(30),
+  caraMasuk: str(30),
+  jenisPelayanan: str(30),
+  namaOrangTua: str(120),
+  pekerjaanOrangTua: str(60),
+  keluargaNama: str(120),
+  keluargaAlamat: str(300),
+  keluargaTelp: str(40),
+  tglMasuk: str(30),
+  tglKeluar: str(30),
+  lamaRawat: str(30),
+  diagnosaSementara: str(300),
+  dpjp: str(120),
+  peserta: z.enum(["", "BPJS", "Asuransi", "Umum"]).default(""),
+  izinKeluar: str(40),
+  diagnosaUtama: str(300),
+  diagnosaUtamaKode: str(30),
+  diagnosaSekunder: str(400),
+  diagnosaSekunderKode: str(60),
+  komplikasi: str(300),
+  komplikasiKode: str(30),
+  penyebabLuar: str(300),
+  penyebabLuarKode: str(30),
+  operasi: str(300),
+  operasiKode: str(30),
+  catatan: str(600),
+  infeksiNosokomial: str(200),
+  penyebabInfeksiNosokomial: str(200),
+  imunisasi: z.array(z.string().max(40)).max(10).default([]),
+  dokterMerawatNama: str(120),
+  dokterMerawatTtd: ttdSchema,
+  keadaanKeluar: str(30),
+  sebabKematianAktif: z.boolean().default(false),
+  skA: str(200),
+  skALama: str(60),
+  skB: str(200),
+  skBLama: str(60),
+  skC: str(200),
+  skCLama: str(60),
+  skLain: z.array(skBarisSchema).max(3).default([]),
+  rudaPaksaMacam: str(30),
+  rudaPaksaCara: str(200),
+  rudaPaksaSifat: str(200),
+  lahirMatiJanin: yaTidak,
+  lahirMatiSebab: str(200),
+  persalinan: yaTidak,
+  kehamilan: yaTidak,
+  operasiKhususAda: yaTidak,
+  operasiKhususJenis: str(200),
+  sebabKematianTanggal: str(30),
+  dokterKematianNama: str(120),
+  dokterKematianTtd: ttdSchema,
+});
+
+export const ringkasanSaveSchema = z.object({
+  data: ringkasanFormSchema,
+  header: z
+    .object({
+      norm: z.string().optional(),
+      nama: z.string().optional(),
+      ruang: z.string().optional(),
+    })
+    .default({}),
+});
+
+export type RingkasanSaveInput = z.infer<typeof ringkasanSaveSchema>;

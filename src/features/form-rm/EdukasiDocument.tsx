@@ -86,8 +86,12 @@ export function EdukasiDocument({
       {/* Kepala surat + identitas */}
       <div className="rm-head">
         <div className="rm-head-l">
-          <div className="rm-rs">{RUMAH_SAKIT}</div>
-          <div className="rm-alamat">{ALAMAT}</div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="rm-logo" src="/logo/logoboltim.png" alt="Logo Bolaang Mongondow Timur" />
+          <div>
+            <div className="rm-rs">{RUMAH_SAKIT}</div>
+            <div className="rm-alamat">{ALAMAT}</div>
+          </div>
         </div>
         <table className="rm-id">
           <tbody>
@@ -257,6 +261,8 @@ const CSS = `
 }
 .rm21 * { box-sizing: border-box; }
 .rm-head { display: flex; align-items: stretch; justify-content: space-between; gap: 6mm; }
+.rm-head-l { display: flex; align-items: center; gap: 4mm; }
+.rm-logo { height: 17mm; width: auto; object-fit: contain; flex-shrink: 0; }
 .rm-rs { font-size: 15pt; font-weight: 800; letter-spacing: .3px; }
 .rm-alamat { font-size: 8pt; color: #222; margin-top: 1mm; }
 .rm-id { border-collapse: collapse; font-size: 9pt; min-width: 92mm; }

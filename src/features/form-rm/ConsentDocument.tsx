@@ -80,7 +80,8 @@ export function ConsentDocument({
           <tbody>
             <tr>
               <td className="gc-kop-logo">
-                <div className="gc-logo">LOGO</div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img className="gc-logo" src="/logo/logoboltim.png" alt="Logo Bolaang Mongondow Timur" />
               </td>
               <td className="gc-kop-rs">
                 <div className="gc-rs">{CONSENT_RS.nama}</div>
@@ -250,9 +251,8 @@ const CSS = `
 /* Kop */
 .gc-kop { width: 100%; border-collapse: collapse; }
 .gc-kop td { border: .8pt solid #000; padding: 1mm 2mm; vertical-align: middle; }
-.gc-kop-logo { width: 16mm; text-align: center; }
-.gc-logo { width: 12mm; height: 12mm; border: .8pt solid #000; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center; font-size: 6pt; color: #555; margin: 0 auto; }
+.gc-kop-logo { width: 18mm; text-align: center; }
+.gc-logo { display: block; height: 15mm; width: auto; max-width: 16mm; margin: 0 auto; object-fit: contain; }
 .gc-rs { font-size: 11pt; font-weight: 800; }
 .gc-alamat { font-size: 7pt; }
 .gc-kop-id { width: 74mm; font-size: 8pt; line-height: 1.5; }

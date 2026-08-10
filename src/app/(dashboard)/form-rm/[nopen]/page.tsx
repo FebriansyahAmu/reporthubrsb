@@ -19,6 +19,7 @@ import { formatDateTime } from "@/lib/format";
 import { getFormRmHeader, formRmExists } from "@/server/modules/form-rm/form-rm.service";
 import { EDUKASI_JENIS } from "@/features/form-rm/edukasi.constants";
 import { CONSENT_JENIS } from "@/features/form-rm/consent.constants";
+import { RINGKASAN_JENIS } from "@/features/form-rm/ringkasan.constants";
 
 export const metadata = { title: "Detail Form RM · ReportHub RSB" };
 export const dynamic = "force-dynamic";
@@ -59,9 +60,10 @@ export default async function FormRmDetailPage({
     );
   }
 
-  const [edukasiTerisi, consentTerisi] = await Promise.all([
+  const [edukasiTerisi, consentTerisi, ringkasanTerisi] = await Promise.all([
     formRmExists(nopen, EDUKASI_JENIS).catch(() => false),
     formRmExists(nopen, CONSENT_JENIS).catch(() => false),
+    formRmExists(nopen, RINGKASAN_JENIS).catch(() => false),
   ]);
 
   const forms: FormCardData[] = [
@@ -79,7 +81,9 @@ export default async function FormRmDetailPage({
       kode: "RM.01",
       label: "Ringkasan Masuk & Keluar",
       icon: FileText,
-      desc: "Ringkasan data masuk dan keluar rawat inap.",
+      desc: "Ringkasan data masuk/keluar & sebab kematian.",
+      href: `/form-rm/${nopen}/ringkasan`,
+      terisi: ringkasanTerisi,
     },
     {
       key: "consent",
@@ -133,7 +137,7 @@ export default async function FormRmDetailPage({
         </div>
         <p className="mt-3 text-xs text-fg-subtle">
           Form diisi sendiri oleh admisi/petugas dan disimpan ke ReportHub (SIMRS tetap
-          read-only). RM.01 menyusul.
+          read-only).
         </p>
       </div>
     </FadeIn>

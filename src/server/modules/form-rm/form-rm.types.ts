@@ -152,3 +152,117 @@ export type ConsentContext = {
   saved: FormRmSaved<ConsentForm> | null;
   header: FormRmHeader;
 };
+
+// ---------------------------------------------------------------------------
+// Ringkasan Masuk & Keluar (RM.01) — termasuk Sebab Kematian
+// ---------------------------------------------------------------------------
+
+/** Satu baris rantai/entri Sebab Kematian (teks + lama sakit s/d meninggal). */
+export type SebabKematianBaris = { teks: string; lama: string };
+
+/** Data isian Ringkasan Masuk & Keluar (RM.01). */
+export type RingkasanForm = {
+  // Identitas & sosial (banyak di-prefill dari SIMGOS)
+  alamat: string;
+  telp: string;
+  dirawatKe: string;
+  golDarah: string;
+  pendidikan: string; // salah satu PENDIDIKAN_OPTS, atau "" (pakai pendidikanLain)
+  pendidikanLain: string;
+  bangsa: "" | "Indonesia" | "Asing";
+  agama: string;
+  statusPerkawinan: string;
+  pekerjaan: string;
+  caraMasuk: string;
+  jenisPelayanan: string;
+  namaOrangTua: string;
+  pekerjaanOrangTua: string;
+  keluargaNama: string;
+  keluargaAlamat: string;
+  keluargaTelp: string;
+  // Perawatan
+  tglMasuk: string; // ISO lokal "YYYY-MM-DDTHH:mm"
+  tglKeluar: string; // ISO lokal
+  lamaRawat: string;
+  diagnosaSementara: string;
+  dpjp: string;
+  peserta: "" | "BPJS" | "Asuransi" | "Umum";
+  izinKeluar: string;
+  // Diagnosa akhir + kode ICD
+  diagnosaUtama: string;
+  diagnosaUtamaKode: string;
+  diagnosaSekunder: string;
+  diagnosaSekunderKode: string;
+  komplikasi: string;
+  komplikasiKode: string;
+  penyebabLuar: string;
+  penyebabLuarKode: string;
+  operasi: string;
+  operasiKode: string;
+  catatan: string;
+  infeksiNosokomial: string;
+  penyebabInfeksiNosokomial: string;
+  imunisasi: string[];
+  dokterMerawatNama: string;
+  /** PNG data-URL. */
+  dokterMerawatTtd: string;
+  keadaanKeluar: string;
+  // ===== Halaman 2: Sebab Kematian (hanya bila toggle aktif) =====
+  sebabKematianAktif: boolean;
+  // I. Sebab kematian (rantai a → b → c) + lama masing-masing
+  skA: string;
+  skALama: string;
+  skB: string;
+  skBLama: string;
+  skC: string;
+  skCLama: string;
+  // II. Penyakit-penyakit lain yang mempengaruhi (3 baris)
+  skLain: SebabKematianBaris[];
+  // Keterangan khusus
+  rudaPaksaMacam: string; // RUDA_PAKSA_OPTS
+  rudaPaksaCara: string;
+  rudaPaksaSifat: string;
+  lahirMatiJanin: "" | "Ya" | "Tidak";
+  lahirMatiSebab: string;
+  persalinan: "" | "Ya" | "Tidak";
+  kehamilan: "" | "Ya" | "Tidak";
+  operasiKhususAda: "" | "Ya" | "Tidak";
+  operasiKhususJenis: string;
+  // TTD pemberi keterangan sebab kematian
+  sebabKematianTanggal: string; // ISO "YYYY-MM-DD"
+  dokterKematianNama: string;
+  /** PNG data-URL. */
+  dokterKematianTtd: string;
+};
+
+/**
+ * Nilai prefill RM.01 dari SIMGOS (sudah diformat siap-isi). Dipakai hanya saat
+ * form belum pernah disimpan; setelah disimpan, isian dari reporthub yang dipakai.
+ */
+export type RingkasanPrefill = {
+  alamat: string;
+  golDarah: string;
+  dirawatKe: string;
+  pendidikan: string;
+  pendidikanLain: string;
+  bangsa: "" | "Indonesia" | "Asing";
+  agama: string;
+  statusPerkawinan: string;
+  pekerjaan: string;
+  tglMasuk: string;
+  tglKeluar: string;
+  lamaRawat: string;
+  dpjp: string;
+  peserta: "" | "BPJS" | "Asuransi" | "Umum";
+  diagnosaUtama: string;
+  diagnosaUtamaKode: string;
+  diagnosaSekunder: string;
+  diagnosaSekunderKode: string;
+};
+
+/** Respons GET form Ringkasan (RM.01): rekaman tersimpan + header + prefill SIMGOS. */
+export type RingkasanContext = {
+  saved: FormRmSaved<RingkasanForm> | null;
+  header: FormRmHeader;
+  prefill: RingkasanPrefill;
+};
