@@ -36,6 +36,8 @@ export type FormRmHeader = {
   umur: string | null;
   ruang: string;
   masuk: string;
+  /** NIK dari SIMGOS (kartu identitas KTP) bila ada; "" bila belum terdaftar. */
+  nik: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -119,7 +121,7 @@ export type ConsentForm = {
   waktuPendaftaran: string;
   ruanganRawat: string;
   kelas: string;
-  /** NIK pasien (isian, karena tak ditarik dari SIMGOS). */
+  /** NIK pasien — prefill dari SIMGOS (kartu identitas) bila ada, bisa disunting. */
   nik: string;
   // Penanggung Jawab
   pjNama: string;

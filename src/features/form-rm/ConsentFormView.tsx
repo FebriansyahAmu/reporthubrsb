@@ -30,14 +30,21 @@ export function ConsentFormView({
   initialSaved: FormRmSaved<ConsentForm> | null;
 }) {
   const [form, setForm] = useState<ConsentForm>(() => {
-    if (initialSaved?.data) return { ...emptyConsentForm(), ...initialSaved.data };
     const base = emptyConsentForm();
-    base.waktuPendaftaran = header.masuk.slice(0, 16); // "YYYY-MM-DDTHH:mm"
-    base.ruanganRawat = header.ruang && header.ruang !== "—" ? header.ruang : "";
-    base.pasienNama = header.nama && header.nama !== "—" ? header.nama : "";
-    base.tanggalTtd = toYmd(new Date());
+    if (initialSaved?.data) {
+      Object.assign(base, initialSaved.data);
+    } else {
+      base.waktuPendaftaran = header.masuk.slice(0, 16); // "YYYY-MM-DDTHH:mm"
+      base.ruanganRawat = header.ruang && header.ruang !== "—" ? header.ruang : "";
+      base.pasienNama = header.nama && header.nama !== "—" ? header.nama : "";
+      base.tanggalTtd = toYmd(new Date());
+    }
+    // NIK: prefill dari SIMRS bila field masih kosong (termasuk rekaman lama).
+    if (!base.nik && header.nik) base.nik = header.nik;
     return base;
   });
+  // Apakah NIK datang otomatis dari SIMRS (untuk hint & badge di UI).
+  const nikDariSimrs = !!header.nik && form.nik === header.nik;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tersimpan, setTersimpan] = useState(!!initialSaved);
@@ -91,7 +98,14 @@ export function ConsentFormView({
               .join(" ")}
           />
           <div className="sm:col-span-2 lg:col-span-1">
-            <Label htmlFor="nik">NIK</Label>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="nik">NIK</Label>
+              {nikDariSimrs && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-1.5 py-0.5 text-[10px] font-medium text-success">
+                  <Check className="size-2.5" /> SIMRS
+                </span>
+              )}
+            </div>
             <Input
               id="nik"
               inputMode="numeric"
@@ -99,6 +113,11 @@ export function ConsentFormView({
               onChange={(e) => set("nik", e.target.value)}
               placeholder="Nomor Induk Kependudukan"
             />
+            <p className="mt-1 text-[11px] text-fg-subtle">
+              {nikDariSimrs
+                ? "Otomatis dari data SIMRS — dapat disesuaikan."
+                : "Tidak ditemukan di SIMRS, isi manual."}
+            </p>
           </div>
         </div>
       </Card>

@@ -111,6 +111,7 @@ export async function getFormRmHeader(nopen: string): Promise<FormRmHeader | nul
     umur: hitungUmur(lahir && !Number.isNaN(lahir.getTime()) ? lahir : null),
     ruang: h.RUANG?.trim() || "—",
     masuk: toIso(h.MASUK) ?? new Date().toISOString(),
+    nik: h.NIK?.trim() || "",
   };
 }
 

@@ -10,11 +10,14 @@ export type FormRmHeaderRow = {
   TANGGAL_LAHIR: Date | string | null;
   RUANG: string | null;
   MASUK: Date | string | null;
+  /** NIK (kartu identitas JENIS=1/KTP) bila terdaftar di SIMGOS, else null. */
+  NIK: string | null;
 };
 
 /**
  * Identitas pasien + ruang/waktu masuk leg awal untuk kepala formulir RM.
  * Ruang diambil dari leg IGD bila ada (prioritas), lalu leg terawal. READ-ONLY.
+ * NIK diambil dari `master.kartu_identitas_pasien` (JENIS=1 = KTP) via NORM.
  * Null bila NOPEN tak ada / pendaftaran tak aktif.
  */
 export async function queryFormRmHeader(nopen: string): Promise<FormRmHeaderRow | null> {
@@ -29,7 +32,11 @@ export async function queryFormRmHeader(nopen: string): Promise<FormRmHeaderRow 
            (SELECT k.MASUK
               FROM ${SIMGOS_DB.PENDAFTARAN}.kunjungan k
               WHERE k.NOPEN = pp.NOMOR AND k.STATUS <> 0
-              ORDER BY k.MASUK ASC LIMIT 1) AS MASUK
+              ORDER BY k.MASUK ASC LIMIT 1) AS MASUK,
+           (SELECT ki.NOMOR
+              FROM ${SIMGOS_DB.MASTER}.kartu_identitas_pasien ki
+              WHERE ki.NORM = ps.NORM AND ki.JENIS = 1
+              LIMIT 1) AS NIK
     FROM ${SIMGOS_DB.PENDAFTARAN}.pendaftaran pp
     JOIN ${SIMGOS_DB.MASTER}.pasien ps ON ps.NORM = pp.NORM
     WHERE pp.NOMOR = ? AND pp.STATUS = 1
