@@ -1,4 +1,6 @@
 import {
+  ArrowDownLeft,
+  ArrowUpRight,
   BedDouble,
   ClipboardList,
   CreditCard,
@@ -9,7 +11,6 @@ import {
   NotebookText,
   Pill,
   ShieldCheck,
-  Stethoscope,
   TrendingUp,
   UserRound,
   Users,
@@ -101,15 +102,28 @@ export const LAPORAN_CATALOG: ReportGroup[] = [
         status: "segera",
       },
       {
-        title: "Laporan Rujukan",
-        description: "Rekap rujukan masuk dan keluar antar fasilitas kesehatan.",
-        icon: Stethoscope,
-        status: "segera",
-      },
-      {
         title: "Sensus Harian Rawat Inap",
         description: "Kondisi harian bed, pasien masuk, keluar, dan pindah ruangan.",
         icon: BedDouble,
+        status: "segera",
+      },
+    ],
+  },
+  {
+    title: "Rujukan",
+    description: "Rujukan antar fasilitas kesehatan (data BPJS).",
+    items: [
+      {
+        title: "Rujukan Keluar",
+        description: "Daftar pasien yang dirujuk keluar — faskes tujuan, diagnosa, & jenis pelayanan.",
+        icon: ArrowUpRight,
+        status: "tersedia",
+        href: "/laporan/rujukan-keluar",
+      },
+      {
+        title: "Rujukan Masuk",
+        description: "Daftar rujukan masuk dari faskes lain ke rumah sakit.",
+        icon: ArrowDownLeft,
         status: "segera",
       },
     ],
