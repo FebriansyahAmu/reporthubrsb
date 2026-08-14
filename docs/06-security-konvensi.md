@@ -25,6 +25,13 @@ tambahan, tapi bagian inti desain.
 - Middleware Next.js melindungi grup route `(dashboard)` dan `/api/**`.
 
 ### 2.2 Otorisasi (RBAC)
+
+> 🔄 **Diperbarui:** peta role→permission **statis** di bawah ini adalah rencana
+> awal. Desain final adalah **RBAC dinamis berbasis modul** (peran di DB + grant
+> per modul/aksi + katalog modul di kode + guard halaman & API). Lihat blueprint
+> lengkap di **[rbac/README.md](./rbac/README.md)**. Tabel di bawah dipertahankan
+> sebagai gambaran konsep permission.
+
 Role di DB aplikasi (`ADMIN`, `OPERATOR`, `VIEWER`) → dipetakan ke permission:
 
 | Permission | ADMIN | OPERATOR | VIEWER |

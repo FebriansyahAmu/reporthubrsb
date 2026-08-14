@@ -70,6 +70,7 @@ Detail penegakan ada di [03-database-prisma.md](./03-database-prisma.md) dan
 | — | [workflows/kunjungan-pasien.md](./workflows/kunjungan-pasien.md) | Workflow fitur Kunjungan Pasien |
 | — | [workflows/laporan-kunjungan-pasien.md](./workflows/laporan-kunjungan-pasien.md) | Workflow Laporan Kunjungan Pasien |
 | — | [workflows/cetak-resume-medik.md](./workflows/cetak-resume-medik.md) | Workflow Cetak Resume Medik |
+| — | [rbac/README.md](./rbac/README.md) | **RBAC & Registrasi Pengguna** — blueprint (model data, otorisasi, katalog modul, Master › Pengguna, rencana) |
 
 ---
 
