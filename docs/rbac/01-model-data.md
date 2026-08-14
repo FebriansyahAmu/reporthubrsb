@@ -145,7 +145,7 @@ model User {
 | Field UI (permintaan) | Kolom | Tipe | Wajib | Catatan |
 |---|---|---|---|---|
 | NIK | `nik` | varchar(16) UNIQUE, null | tidak | **PII**. Jika diisi: tepat 16 digit. Unik. |
-| NIP | `nip` | varchar(30), null | tidak | Bisa jadi kandidat `username` (lihat [04](./04-master-pengguna.md)). |
+| NIP | `nip` | varchar(30), null | tidak | Nomor induk pegawai. **Bukan** `username` — username field mandiri. |
 | Gelar depan | `gelarDepan` | varchar(30), null | tidak | mis. "dr.", "Ns." |
 | Nama lengkap | `name` | varchar(120) | **ya** | Tanpa gelar. |
 | Gelar belakang | `gelarBelakang` | varchar(40), null | tidak | mis. "S.Kep", "SpA" |

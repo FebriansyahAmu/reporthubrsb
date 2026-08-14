@@ -60,7 +60,7 @@ Dua kelompok field. **Profil** = yang diminta user; **Akun** = wajib untuk login
 
 | Field | Wajib | Aturan (Zod) | Default/UX |
 |---|:---:|---|---|
-| Username | ya | lowercase, `^[a-z0-9._-]{3,30}$`, unik | **Prefill dari NIP** (bisa diubah) |
+| Username | ya | lowercase, `^[a-z0-9._-]{3,30}$`, unik | **Field mandiri** — diketik admin, **bukan** turunan NIK/NIP |
 | Peran | ya | ada di tabel `roles` | Select peran (default: kosong → user pilih) |
 | Sandi awal | ya¹ | min 8, tak sama username, cek daftar sandi lemah | **Generate** tombol "Buat sandi" → tampil sekali |
 | Wajib ganti sandi | — | boolean | Default **true** (dipaksa ganti saat login pertama) |
@@ -123,7 +123,7 @@ memformat, atau kirim `nikMasked`). Contoh item:
 ```jsonc
 {
   "id": "clx…",
-  "username": "198… / budi",
+  "username": "budi",
   "namaLengkap": "dr. Budi Santoso, SpPD",
   "nip": "198703112010011002",
   "roleKey": "operator",

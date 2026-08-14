@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { formRmListQuerySchema } from "@/server/modules/form-rm/form-rm.schema";
 import { getFormRmList } from "@/server/modules/form-rm/form-rm.service";
+import { authorize } from "@/server/rbac/guard";
 import { ok, fail } from "@/server/lib/http";
 
 export const runtime = "nodejs";
@@ -11,6 +12,7 @@ export const runtime = "nodejs";
  */
 export async function GET(req: NextRequest) {
   try {
+    await authorize("form-rm", "view");
     const sp = Object.fromEntries(req.nextUrl.searchParams);
     const input = formRmListQuerySchema.parse(sp);
     const data = await getFormRmList({

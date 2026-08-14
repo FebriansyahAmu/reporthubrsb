@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { kunjunganPelayananQuerySchema } from "@/server/modules/pelayanan/pelayanan.schema";
 import { getKunjunganPelayanan } from "@/server/modules/pelayanan/pelayanan.service";
+import { authorize } from "@/server/rbac/guard";
 import { ok, fail } from "@/server/lib/http";
 
 export const runtime = "nodejs";
@@ -12,6 +13,7 @@ export const runtime = "nodejs";
  */
 export async function GET(req: NextRequest) {
   try {
+    await authorize("monitoring.pelayanan", "view");
     const sp = Object.fromEntries(req.nextUrl.searchParams);
     const input = kunjunganPelayananQuerySchema.parse(sp);
     const data = await getKunjunganPelayanan(input);

@@ -6,8 +6,10 @@ import {
   Hourglass,
   LayoutGrid,
   ListChecks,
+  ShieldCheck,
   Stethoscope,
   Users,
+  UsersRound,
   type LucideIcon,
 } from "lucide-react";
 
@@ -16,6 +18,8 @@ export type NavItem = {
   label: string;
   icon: LucideIcon;
   description?: string;
+  /** Modul RBAC yang mengatur akses item ini (lihat src/server/rbac/modules.ts). */
+  moduleKey: string;
 };
 
 export type NavSection = {
@@ -32,6 +36,7 @@ export const NAV: NavSection[] = [
         label: "Kunjungan Pasien",
         icon: Users,
         description: "Daftar kunjungan pasien",
+        moduleKey: "kunjungan",
       },
     ],
   },
@@ -43,6 +48,7 @@ export const NAV: NavSection[] = [
         label: "Antrean BPJS",
         icon: ListChecks,
         description: "Monitoring Task 1–7 antrean BPJS",
+        moduleKey: "monitoring.antrean-bpjs",
       },
     ],
   },
@@ -54,24 +60,28 @@ export const NAV: NavSection[] = [
         label: "Kunjungan",
         icon: Activity,
         description: "Kunjungan & lama rawat per rentang waktu",
+        moduleKey: "monitoring.pelayanan",
       },
       {
         href: "/monitoring/pelayanan/belum-final",
         label: "Belum Difinalkan",
         icon: Hourglass,
         description: "Kunjungan belum ditutup (KELUAR kosong)",
+        moduleKey: "monitoring.pelayanan",
       },
       {
         href: "/monitoring/pelayanan/diagnosa",
         label: "Kelengkapan Diagnosa",
         icon: Stethoscope,
         description: "Kunjungan final tanpa diagnosa / ICD",
+        moduleKey: "monitoring.pelayanan",
       },
       {
         href: "/monitoring/pelayanan/resume",
         label: "Kelengkapan Resume",
         icon: ClipboardList,
         description: "Kunjungan final tanpa resume medis",
+        moduleKey: "monitoring.pelayanan",
       },
     ],
   },
@@ -83,6 +93,7 @@ export const NAV: NavSection[] = [
         label: "Berkas Klaim RM",
         icon: FolderCheck,
         description: "Berkas pasien final untuk klaim",
+        moduleKey: "berkas-klaim",
       },
     ],
   },
@@ -94,6 +105,7 @@ export const NAV: NavSection[] = [
         label: "Form RM (Admisi)",
         icon: FileSignature,
         description: "Isi formulir RM pasien saat pendaftaran",
+        moduleKey: "form-rm",
       },
     ],
   },
@@ -106,7 +118,34 @@ export const NAV: NavSection[] = [
         label: "Pusat Laporan",
         icon: LayoutGrid,
         description: "Katalog semua laporan",
+        moduleKey: "laporan",
+      },
+    ],
+  },
+  {
+    title: "Master",
+    items: [
+      {
+        href: "/master/pengguna",
+        label: "Pengguna",
+        icon: UsersRound,
+        description: "Kelola akun & data pengguna",
+        moduleKey: "master.pengguna",
+      },
+      {
+        href: "/master/peran",
+        label: "Peran & Hak Akses",
+        icon: ShieldCheck,
+        description: "Peran dan izin akses per modul",
+        moduleKey: "master.peran",
       },
     ],
   },
 ];
+
+/** Filter NAV berdasarkan kunci modul yang boleh diakses; buang section kosong. */
+export function filterNav(sections: NavSection[], allowed: ReadonlySet<string>): NavSection[] {
+  return sections
+    .map((s) => ({ ...s, items: s.items.filter((i) => allowed.has(i.moduleKey)) }))
+    .filter((s) => s.items.length > 0);
+}

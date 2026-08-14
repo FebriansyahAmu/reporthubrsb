@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { buktiPelayananSaveSchema } from "@/server/modules/berkas-klaim/berkas-klaim.bukti.schema";
 import { getBuktiContext, saveBukti } from "@/server/modules/berkas-klaim/berkas-klaim.bukti.service";
 import { getCurrentUser } from "@/server/auth/session";
+import { authorize } from "@/server/rbac/guard";
 import { ok, fail } from "@/server/lib/http";
 
 export const runtime = "nodejs";
@@ -12,6 +13,7 @@ export async function GET(
   { params }: { params: Promise<{ nopen: string }> },
 ) {
   try {
+    await authorize("berkas-klaim", "view");
     const { nopen } = await params;
     const data = await getBuktiContext(nopen);
     return ok(data);
@@ -26,6 +28,7 @@ export async function POST(
   { params }: { params: Promise<{ nopen: string }> },
 ) {
   try {
+    await authorize("berkas-klaim", "update");
     const { nopen } = await params;
     const body = await req.json();
     const input = buktiPelayananSaveSchema.parse(body);

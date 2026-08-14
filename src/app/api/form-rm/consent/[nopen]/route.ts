@@ -3,6 +3,7 @@ import { consentSaveSchema } from "@/server/modules/form-rm/form-rm.schema";
 import { getConsentContext, saveFormRm } from "@/server/modules/form-rm/form-rm.service";
 import { CONSENT_JENIS } from "@/features/form-rm/consent.constants";
 import { getCurrentUser } from "@/server/auth/session";
+import { authorize } from "@/server/rbac/guard";
 import { ok, fail } from "@/server/lib/http";
 
 export const runtime = "nodejs";
@@ -13,6 +14,7 @@ export async function GET(
   { params }: { params: Promise<{ nopen: string }> },
 ) {
   try {
+    await authorize("form-rm", "view");
     const { nopen } = await params;
     const ctx = await getConsentContext(nopen);
     if (!ctx) return fail(new Error("NOPEN tidak ditemukan"));
@@ -28,6 +30,7 @@ export async function POST(
   { params }: { params: Promise<{ nopen: string }> },
 ) {
   try {
+    await authorize("form-rm", "update");
     const { nopen } = await params;
     const input = consentSaveSchema.parse(await req.json());
     const user = await getCurrentUser();

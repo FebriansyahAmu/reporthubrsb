@@ -54,8 +54,11 @@ Yang **belum ada** dan akan dibangun:
    benar-benar ada; hanya **grant** (peran→modul→aksi) yang disimpan di DB.
 5. **Fail closed.** Bila izin tak bisa dipastikan (error resolusi, modul tak
    dikenal), akses **ditolak**, bukan diizinkan.
-6. **Tidak mengunci diri sendiri.** Peran `admin` = **superadmin** (akses penuh
-   implisit), dilindungi dari penghapusan/penonaktifan izin.
+6. **Superadmin bypass semua peran/izin.** Peran `admin` = **superadmin**: memiliki
+   **hak akses penuh ke seluruh sistem** dan **melewati (bypass) semua pengecekan
+   izin** — `can()` selalu `true` untuknya, termasuk untuk modul yang **baru**
+   ditambahkan nanti tanpa perlu seed grant. Dilindungi dari penghapusan/penurunan
+   izin agar tidak ada kondisi "terkunci di luar".
 7. **Data pribadi (PII) dijaga.** NIK & tanggal lahir sensitif — dibatasi izinnya,
    tak pernah masuk log, dan disamarkan di daftar.
 8. **SIMGOS tetap READ-ONLY.** Semua state RBAC ada di DB aplikasi `reporthub`.

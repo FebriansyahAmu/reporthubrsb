@@ -8,11 +8,11 @@ export function hashToken(token: string): string {
 }
 
 export function findUserByUsername(username: string) {
-  return getAppDb().user.findUnique({ where: { username } });
+  return getAppDb().user.findUnique({ where: { username }, include: { role: true } });
 }
 
 export function findUserById(id: string) {
-  return getAppDb().user.findUnique({ where: { id } });
+  return getAppDb().user.findUnique({ where: { id }, include: { role: true } });
 }
 
 export function touchLastLogin(id: string) {

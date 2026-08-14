@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { REPORTS } from "@/server/modules/report/report.registry";
 import { getSimgosReportPdf } from "@/server/modules/report/report-engine";
+import { getCurrentUser } from "@/server/auth/session";
+import { can } from "@/server/rbac/permissions";
 
 export const runtime = "nodejs";
 
@@ -16,6 +18,13 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ report: string; nopen: string }> },
 ) {
+  // Authz: cetak dokumen SIMGOS = izin cetak berkas klaim.
+  const user = await getCurrentUser();
+  if (!user) return new Response("Belum login.", { status: 401 });
+  if (!(await can(user.role, "berkas-klaim", "print"))) {
+    return new Response("Tidak memiliki akses.", { status: 403 });
+  }
+
   const { report, nopen } = await params;
 
   const def = REPORTS[report];

@@ -1,13 +1,24 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Activity, X } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { NAV } from "./nav";
+import { NAV, filterNav } from "./nav";
 
-export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+export function Sidebar({
+  allowedModules,
+  onNavigate,
+}: {
+  allowedModules: string[];
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
+  const sections = useMemo(
+    () => filterNav(NAV, new Set(allowedModules)),
+    [allowedModules],
+  );
 
   return (
     <div className="flex h-full flex-col bg-surface">
@@ -33,7 +44,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* Nav */}
       <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
-        {NAV.map((section) => (
+        {sections.map((section) => (
           <div key={section.title}>
             <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">
               {section.title}

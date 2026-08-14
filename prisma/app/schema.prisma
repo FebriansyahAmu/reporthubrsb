@@ -15,28 +15,91 @@ datasource db {
   provider = "mysql"
 }
 
-enum Role {
-  ADMIN
-  OPERATOR
-  VIEWER
+/// Peran aplikasi (RBAC dinamis). `admin` = superadmin: akses penuh seluruh sistem,
+/// melewati semua pengecekan izin. `isSystem` melindungi peran bawaan dari
+/// dihapus/di-rename. Lihat docs/rbac/01-model-data.md.
+model Role {
+  id           String   @id @default(cuid())
+  key          String   @unique
+  name         String
+  description  String?
+  isSystem     Boolean  @default(false) @map("is_system")
+  isSuperadmin Boolean  @default(false) @map("is_superadmin")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  permissions RolePermission[]
+  users       User[]
+
+  @@map("roles")
+}
+
+/// Grant izin per-peran. Kehadiran baris = izin diberikan. `moduleKey`/`action`
+/// divalidasi terhadap katalog modul di kode (src/server/rbac/modules.ts).
+model RolePermission {
+  id        String   @id @default(cuid())
+  roleId    String   @map("role_id")
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  moduleKey String   @map("module_key")
+  action    String   @default("view")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([roleId, moduleKey, action])
+  @@index([roleId])
+  @@map("role_permissions")
 }
 
 /// Pengguna aplikasi. Password disimpan sebagai hash bcrypt (tidak pernah plaintext).
+/// Peran memakai FK `roleId` (menggantikan enum lama). Kolom profil diisi lewat
+/// modul Master › Pengguna. NIK & tanggal lahir = PII sensitif.
 model User {
-  id           String    @id @default(cuid())
-  username     String    @unique
-  email        String?   @unique
-  name         String
-  passwordHash String    @map("password_hash")
-  role         Role      @default(VIEWER)
-  isActive     Boolean   @default(true) @map("is_active")
-  lastLoginAt  DateTime? @map("last_login_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  id           String @id @default(cuid())
+  username     String @unique
+  email        String? @unique
+  passwordHash String  @map("password_hash")
+
+  roleId String @map("role_id")
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  // Profil
+  nik           String?   @unique
+  nip           String?
+  gelarDepan    String?   @map("gelar_depan")
+  name          String
+  gelarBelakang String?   @map("gelar_belakang")
+  tanggalLahir  DateTime? @map("tanggal_lahir") @db.Date
+  agama         String?
+  phone         String?
+
+  isActive           Boolean   @default(true) @map("is_active")
+  mustChangePassword Boolean   @default(true) @map("must_change_password")
+  lastLoginAt        DateTime? @map("last_login_at")
+  createdBy          String?   @map("created_by")
+  updatedBy          String?   @map("updated_by")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
   refreshTokens RefreshToken[]
 
+  @@index([roleId])
   @@map("users")
+}
+
+/// Jejak audit aksi administratif (buat/ubah user, ganti grant, reset sandi, dll).
+/// Disimpan di DB aplikasi (bukan SIMGOS). Tanpa PII penuh / sandi di metadata.
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?  @map("actor_id")
+  actorName String?  @map("actor_name")
+  action    String
+  targetId  String?  @map("target_id")
+  metadata  Json?
+  ip        String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([actorId])
+  @@index([action])
+  @@map("audit_log")
 }
 
 /// Bukti Pelayanan yang DIISI SENDIRI oleh petugas (bukan data SIMGOS).

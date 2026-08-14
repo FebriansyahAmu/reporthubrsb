@@ -16,14 +16,15 @@ export type IssuedTokens = { access: string; refresh: string; user: AuthUser };
 type Meta = { userAgent?: string | null; ip?: string | null };
 
 async function issueTokens(
-  user: { id: string; username: string; name: string; role: string },
+  user: { id: string; username: string; name: string; role: { key: string } },
   meta: Meta,
 ): Promise<IssuedTokens> {
+  const roleKey = user.role.key;
   const access = await signAccessToken({
     sub: user.id,
     username: user.username,
     name: user.name,
-    role: user.role,
+    role: roleKey,
   });
   const jti = crypto.randomUUID();
   const refresh = await signRefreshToken(user.id, jti);
@@ -37,7 +38,7 @@ async function issueTokens(
   return {
     access,
     refresh,
-    user: { id: user.id, username: user.username, name: user.name, role: user.role },
+    user: { id: user.id, username: user.username, name: user.name, role: roleKey },
   };
 }
 

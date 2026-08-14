@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { resumeQuerySchema } from "@/server/modules/pelayanan/pelayanan.schema";
 import { getResumeKelengkapan } from "@/server/modules/pelayanan/pelayanan.service";
+import { authorize } from "@/server/rbac/guard";
 import { ok, fail } from "@/server/lib/http";
 
 export const runtime = "nodejs";
@@ -11,6 +12,7 @@ export const runtime = "nodejs";
  */
 export async function GET(req: NextRequest) {
   try {
+    await authorize("monitoring.pelayanan", "view");
     const sp = Object.fromEntries(req.nextUrl.searchParams);
     const input = resumeQuerySchema.parse(sp);
     const data = await getResumeKelengkapan(input);

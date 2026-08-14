@@ -2,7 +2,10 @@ import { NextRequest } from "next/server";
 import { resumeMedisParamSchema } from "@/server/modules/resume-medis/resume-medis.schema";
 import { getResumeMedis } from "@/server/modules/resume-medis/resume-medis.service";
 import { NotFoundError } from "@/server/lib/errors";
+import { authorize } from "@/server/rbac/guard";
 import { ok, fail } from "@/server/lib/http";
+
+export const runtime = "nodejs";
 
 /**
  * GET /api/laporan/resume-medis/[id]
@@ -13,6 +16,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    await authorize("laporan", "view");
     const { id } = resumeMedisParamSchema.parse(await params);
     const dto = await getResumeMedis(id);
     if (!dto) throw new NotFoundError("Resume medis tidak ditemukan");

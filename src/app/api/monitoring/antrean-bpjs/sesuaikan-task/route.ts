@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { sesuaikanTask5 } from "@/server/modules/antrean/antrean.write.service";
+import { authorize } from "@/server/rbac/guard";
 import { ok, fail } from "@/server/lib/http";
 
 export const runtime = "nodejs";
@@ -17,6 +18,7 @@ const bodySchema = z.object({
  */
 export async function POST(req: NextRequest) {
   try {
+    await authorize("monitoring.antrean-bpjs", "update");
     const body = bodySchema.parse(await req.json());
     const result = await sesuaikanTask5(body.antrian);
     return ok(result);

@@ -8,9 +8,11 @@ import { Topbar, type TopbarUser } from "./Topbar";
 export function AppShell({
   children,
   user,
+  allowedModules,
 }: {
   children: React.ReactNode;
   user: TopbarUser | null;
+  allowedModules: string[];
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -19,7 +21,7 @@ export function AppShell({
       {/* Sidebar desktop */}
       <aside className="no-print hidden w-64 shrink-0 border-r border-border lg:block">
         <div className="sticky top-0 h-screen">
-          <Sidebar />
+          <Sidebar allowedModules={allowedModules} />
         </div>
       </aside>
 
@@ -41,7 +43,7 @@ export function AppShell({
               exit={{ x: "-100%" }}
               transition={{ type: "tween", duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
             >
-              <Sidebar onNavigate={() => setMobileOpen(false)} />
+              <Sidebar allowedModules={allowedModules} onNavigate={() => setMobileOpen(false)} />
             </motion.aside>
           </>
         )}
