@@ -38,3 +38,24 @@ export type RujukanKeluarFilter = {
   jnsPelayanan?: JenisPelayanan;
   search?: string;
 };
+
+/** Baris export Excel — lengkap & sudah berlabel manusiawi. */
+export type RujukanKeluarExportItem = {
+  tglRujukan: string;
+  tglRencanaKunjungan: string;
+  tglBerlakuKunjungan: string;
+  noRujukan: string;
+  noSep: string;
+  noKartu: string;
+  pasienNama: string;
+  pasienNik: string;
+  jenisLabel: string;
+  diagRujukan: string;
+  tujuanKode: string;
+  tujuanNama: string;
+  poliKode: string;
+  poliNama: string;
+  catatan: string;
+  statusLabel: string;
+  pembuat: string;
+};

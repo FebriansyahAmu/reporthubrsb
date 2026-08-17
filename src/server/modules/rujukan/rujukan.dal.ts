@@ -83,6 +83,38 @@ export async function queryRujukanKeluar(
   return getSimgos().$queryRawUnsafe<RujukanRow[]>(sql, ...params);
 }
 
+/** Baris lengkap untuk EXPORT (kolom lebih banyak, tanpa paginasi). */
+export type RujukanExportRow = RujukanRow & {
+  tglBerlakuKunjungan: string | null;
+  noKartu: string | null;
+  pembuat: string | null;
+};
+
+/**
+ * Semua rujukan yang cocok filter (untuk export Excel) — tanpa paginasi, dibatasi
+ * `cap` baris agar aman. Kolom lengkap. Menghormati filter tanggal/jenis/cari.
+ */
+export async function queryRujukanKeluarAll(
+  f: RujukanKeluarFilter,
+  cap: number,
+): Promise<RujukanExportRow[]> {
+  const { where, params } = buildWhere(f);
+  const sql = `
+    SELECT r.noRujukan, r.noSep,
+           DATE_FORMAT(r.tglRujukan, '%Y-%m-%d') AS tglRujukan,
+           DATE_FORMAT(r.tglRencanaKunjungan, '%Y-%m-%d') AS tglRencanaKunjungan,
+           DATE_FORMAT(r.tglBerlakuKunjungan, '%Y-%m-%d') AS tglBerlakuKunjungan,
+           r.jnsPelayanan, r.diagRujukan, r.catatan, r.status,
+           r.ppkDirujuk, r.poliRujukan, r.user AS pembuat,
+           ps.nama AS pasienNama, ps.nik AS pasienNik, k.noKartu AS noKartu,
+           ppk.nama AS tujuanNama, po.nama AS poliNama
+    ${JOINS}
+    ${where}
+    ORDER BY r.tglRujukan DESC, r.noRujukan DESC
+    LIMIT ${Math.trunc(cap)}`;
+  return getSimgos().$queryRawUnsafe<RujukanExportRow[]>(sql, ...params);
+}
+
 /**
  * Hitung jumlah per jenis pelayanan (mengabaikan filter jenis → untuk chip),
  * menghormati filter tanggal & pencarian.

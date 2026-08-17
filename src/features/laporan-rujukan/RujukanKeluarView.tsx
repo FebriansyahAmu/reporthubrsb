@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
 import {
+  AlertCircle,
   ArrowUpRight,
   Building2,
   CalendarDays,
   Clock,
+  FileSpreadsheet,
   FileText,
   RefreshCw,
   RotateCcw,
@@ -60,6 +62,9 @@ export function RujukanKeluarView() {
   const [page, setPage] = useState(1);
   const search = useDebounce(searchInput, 350);
 
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
   const rangeInvalid = !!from && !!to && from > to;
 
   const filterKey = `${from}|${to}|${jenis}|${search}`;
@@ -93,6 +98,42 @@ export function RujukanKeluarView() {
     setSearchInput("");
   }
 
+  async function doExport() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const p = new URLSearchParams();
+      if (from) p.set("from", from);
+      if (to) p.set("to", to);
+      if (jenis) p.set("jnsPelayanan", jenis);
+      if (search) p.set("search", search);
+      const res = await fetch(`/api/laporan/rujukan-keluar/export?${p.toString()}`);
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? "Gagal mengekspor data.");
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") ?? "";
+      const m = /filename="?([^"]+)"?/.exec(cd);
+      const filename = m ? m[1] : "Rujukan-Keluar.xlsx";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Gagal mengekspor data.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const total = meta?.total ?? 0;
+  const canExport = !rangeInvalid && !loading && total > 0;
+
   return (
     <div className="space-y-5">
       {/* Status bar */}
@@ -105,15 +146,35 @@ export function RujukanKeluarView() {
             <span>Memuat…</span>
           )}
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<RefreshCw className={cn("size-4", loading && "animate-spin")} />}
-          onClick={() => reload()}
-        >
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<FileSpreadsheet className="size-4" />}
+            loading={exporting}
+            disabled={!canExport}
+            onClick={doExport}
+            title={total > 0 ? "Unduh sesuai filter" : "Tidak ada data untuk diekspor"}
+          >
+            Export Excel
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<RefreshCw className={cn("size-4", loading && "animate-spin")} />}
+            onClick={() => reload()}
+          >
+            Refresh
+          </Button>
+        </div>
       </div>
+
+      {exportError && (
+        <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
+          <AlertCircle className="size-4 shrink-0" />
+          {exportError}
+        </div>
+      )}
 
       {/* Ringkasan */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

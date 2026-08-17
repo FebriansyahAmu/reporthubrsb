@@ -1,8 +1,24 @@
 import "server-only";
-import { countRujukanKeluar, queryRujukanKeluar } from "./rujukan.dal";
-import { mapRujukan } from "./rujukan.mapper";
-import type { RujukanKeluarFilter, RujukanKeluarResult } from "./rujukan.types";
+import { countRujukanKeluar, queryRujukanKeluar, queryRujukanKeluarAll } from "./rujukan.dal";
+import { mapRujukan, mapRujukanExport } from "./rujukan.mapper";
+import type {
+  RujukanKeluarExportItem,
+  RujukanKeluarFilter,
+  RujukanKeluarResult,
+} from "./rujukan.types";
 import type { RujukanKeluarQuery } from "./rujukan.schema";
+
+/** Batas aman jumlah baris export (hindari file raksasa). */
+export const RUJUKAN_EXPORT_CAP = 10_000;
+
+function toFilter(input: RujukanKeluarQuery): RujukanKeluarFilter {
+  return {
+    from: input.from,
+    to: input.to,
+    jnsPelayanan: input.jnsPelayanan as RujukanKeluarFilter["jnsPelayanan"],
+    search: input.search,
+  };
+}
 
 /**
  * Rujukan keluar terbaru (default 10 terakhir), dapat difilter tanggal/jenis/cari.
@@ -10,12 +26,7 @@ import type { RujukanKeluarQuery } from "./rujukan.schema";
  */
 export async function getRujukanKeluar(input: RujukanKeluarQuery): Promise<RujukanKeluarResult> {
   const { page, pageSize } = input;
-  const filter: RujukanKeluarFilter = {
-    from: input.from,
-    to: input.to,
-    jnsPelayanan: input.jnsPelayanan as RujukanKeluarFilter["jnsPelayanan"],
-    search: input.search,
-  };
+  const filter = toFilter(input);
   const offset = (page - 1) * pageSize;
 
   const [rows, counts] = await Promise.all([
@@ -41,4 +52,12 @@ export async function getRujukanKeluar(input: RujukanKeluarQuery): Promise<Rujuk
     },
     updatedAt: new Date().toISOString(),
   };
+}
+
+/** Semua baris rujukan (berlabel lengkap) sesuai filter — untuk export Excel. */
+export async function getRujukanKeluarExport(
+  input: RujukanKeluarQuery,
+): Promise<RujukanKeluarExportItem[]> {
+  const rows = await queryRujukanKeluarAll(toFilter(input), RUJUKAN_EXPORT_CAP);
+  return rows.map(mapRujukanExport);
 }
