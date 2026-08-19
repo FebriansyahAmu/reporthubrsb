@@ -17,6 +17,35 @@ const timeFmt = new Intl.DateTimeFormat("id-ID", {
   minute: "2-digit",
 });
 
+const numberFmt = new Intl.NumberFormat("id-ID");
+const rupiahFmt = new Intl.NumberFormat("id-ID", {
+  style: "currency",
+  currency: "IDR",
+  maximumFractionDigits: 0,
+});
+
+/** Angka dengan pemisah ribuan gaya Indonesia (mis. 1.809). */
+export function formatNumber(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  return numberFmt.format(n);
+}
+
+/** Rupiah tanpa desimal (mis. "Rp2.194.200"). */
+export function formatRupiah(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  return rupiahFmt.format(n);
+}
+
+/** Rupiah ringkas untuk angka besar (mis. "Rp9,4 jt", "Rp1,2 rb"). */
+export function formatRupiahRingkas(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000_000) return `Rp${(n / 1_000_000_000).toFixed(1).replace(".", ",")} M`;
+  if (abs >= 1_000_000) return `Rp${(n / 1_000_000).toFixed(1).replace(".", ",")} jt`;
+  if (abs >= 1_000) return `Rp${(n / 1_000).toFixed(0)} rb`;
+  return rupiahFmt.format(n);
+}
+
 export function formatDate(iso: string | Date | null | undefined): string {
   if (!iso) return "—";
   return dateFmt.format(new Date(iso));

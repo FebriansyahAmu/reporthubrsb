@@ -12,6 +12,7 @@ import {
   Pill,
   ShieldCheck,
   TrendingUp,
+  Trophy,
   UserRound,
   Users,
   type LucideIcon,
@@ -150,6 +151,13 @@ export const LAPORAN_CATALOG: ReportGroup[] = [
     title: "Farmasi & Penunjang",
     description: "Laporan unit penunjang.",
     items: [
+      {
+        title: "10 Obat Terbanyak",
+        description: "Peringkat obat & alkes paling banyak dikeluarkan farmasi — filter kategori & cara bayar.",
+        icon: Trophy,
+        status: "tersedia",
+        href: "/laporan/farmasi-obat",
+      },
       {
         title: "Laporan Pemakaian Obat",
         description: "Rekap penggunaan & distribusi obat per periode.",

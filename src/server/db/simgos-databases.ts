@@ -20,6 +20,10 @@ export const SIMGOS_DB = {
   LAPORAN: "laporan",
   /** Data master: `ruangan` (klasifikasi RI/RJ/IGD), unit, dokter, dll. */
   MASTER: "master",
+  /** Inventori farmasi: `barang`, `kategori`, `penggolongan_barang`. */
+  INVENTORY: "inventory",
+  /** Tagihan/pembayaran: `rincian_tagihan` (tarif per item layanan). */
+  PEMBAYARAN: "pembayaran",
   /** Antrean/registrasi online BPJS: `reservasi`, `task_action_antrian`. */
   REGONLINE: "regonline",
   /** Bridging BPJS/VClaim: `kunjungan` (noSEP per noKartu+tglSEP), `peserta` (noKartu↔nik). */
