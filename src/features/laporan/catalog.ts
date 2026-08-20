@@ -97,10 +97,12 @@ export const LAPORAN_CATALOG: ReportGroup[] = [
         href: "/laporan/resume-medik",
       },
       {
-        title: "10 Besar Penyakit",
-        description: "Peringkat diagnosa (ICD-10) terbanyak pada periode tertentu.",
+        title: "10 Penyakit Terbanyak",
+        description:
+          "Peringkat diagnosa ICD-10 terbanyak — filter jenis layanan (RJ/IGD/RI), cara bayar & diagnosa utama.",
         icon: TrendingUp,
-        status: "segera",
+        status: "tersedia",
+        href: "/laporan/penyakit",
       },
       {
         title: "Sensus Harian Rawat Inap",
