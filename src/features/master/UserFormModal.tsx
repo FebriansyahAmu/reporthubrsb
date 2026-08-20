@@ -6,7 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Field";
 import { Select } from "@/components/ui/Select";
-import { DatePicker } from "@/components/ui/DatePicker";
+import { DateTextInput } from "@/components/ui/DateTextInput";
 import { Switch } from "@/components/ui/Switch";
 import { cn } from "@/lib/cn";
 import { AGAMA_VALUES, generatePassword } from "@/features/master/master.constants";
@@ -78,6 +78,7 @@ export function UserFormModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [tglLahirValid, setTglLahirValid] = useState(true);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -116,6 +117,7 @@ export function UserFormModal({
     if (form.name.trim().length < 2) return "Nama lengkap wajib diisi.";
     if (mode === "create" && form.password.length < 8) return "Sandi minimal 8 karakter.";
     if (form.nik.trim() && !/^\d{16}$/.test(form.nik.trim())) return "NIK harus 16 digit.";
+    if (!tglLahirValid) return "Tanggal lahir tidak valid — gunakan format HH-BB-TTTT.";
     return null;
   }
 
@@ -150,7 +152,7 @@ export function UserFormModal({
       }
       onClose();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Gagal menyimpan. Coba lagi.");
+      setError(e instanceof ApiError ? messageFromApiError(e) : "Gagal menyimpan. Coba lagi.");
     } finally {
       setSaving(false);
     }
@@ -335,7 +337,12 @@ export function UserFormModal({
             </Fld>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Fld label="Tanggal lahir">
-                <DatePicker value={form.tanggalLahir} onChange={(v) => set("tanggalLahir", v)} max={todayYmd()} />
+                <DateTextInput
+                  value={form.tanggalLahir}
+                  onChange={(v) => set("tanggalLahir", v)}
+                  onValidChange={setTglLahirValid}
+                  max={todayYmd()}
+                />
               </Fld>
               <Fld label="Agama">
                 <Select value={form.agama} onChange={(v) => set("agama", v)} options={agamaOptions} placeholder="Pilih agama…" />
@@ -349,6 +356,37 @@ export function UserFormModal({
       )}
     </Modal>
   );
+}
+
+/** Label ramah untuk kunci field (dipakai saat menampilkan galat validasi server). */
+const FIELD_LABEL: Record<string, string> = {
+  username: "Username",
+  roleKey: "Peran",
+  password: "Sandi",
+  name: "Nama lengkap",
+  nik: "NIK",
+  nip: "NIP",
+  gelarDepan: "Gelar depan",
+  gelarBelakang: "Gelar belakang",
+  tanggalLahir: "Tanggal lahir",
+  agama: "Agama",
+  phone: "No. HP / WA",
+};
+
+/**
+ * Ubah ApiError → pesan yang menyebut FIELD spesifik. Tanpa ini, galat validasi
+ * server hanya tampil generik ("Input tidak valid") sehingga pengguna mengira
+ * data "tidak tersimpan" padahal ada isian yang perlu diperbaiki.
+ */
+function messageFromApiError(e: ApiError): string {
+  const fe = e.fieldErrors;
+  if (fe) {
+    const parts = Object.entries(fe)
+      .filter(([, msgs]) => msgs && msgs.length)
+      .map(([k, msgs]) => `${FIELD_LABEL[k] ?? k}: ${msgs[0]}`);
+    if (parts.length) return parts.join(" · ");
+  }
+  return e.message;
 }
 
 function SubHead({ children }: { children: React.ReactNode }) {
