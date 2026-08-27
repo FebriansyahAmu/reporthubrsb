@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import Image from "next/image";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { NAV, filterNav } from "./nav";
+import { visibleWorkspaces, workspaceKeyForPath } from "./workspaces";
 
 export function Sidebar({
   allowedModules,
@@ -16,10 +16,14 @@ export function Sidebar({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const sections = useMemo(
-    () => filterNav(NAV, new Set(allowedModules)),
+  // Isolasi modul: sidebar hanya menampilkan halaman modul yang sedang aktif.
+  const modules = useMemo(
+    () => visibleWorkspaces(new Set(allowedModules)),
     [allowedModules],
   );
+  const activeKey = workspaceKeyForPath(pathname);
+  const active = modules.find((w) => w.key === activeKey) ?? modules[0] ?? null;
+  const ActiveIcon = active?.icon;
 
   return (
     <div className="flex h-full flex-col bg-surface">
@@ -48,16 +52,17 @@ export function Sidebar({
         )}
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
-        {sections.map((section) => (
-          <div key={section.title}>
-            <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">
-              {section.title}
+      {/* Nav — modul aktif saja (isolasi) */}
+      <nav className="flex-1 overflow-y-auto px-3 py-5">
+        {active ? (
+          <div>
+            <p className="flex items-center gap-2 px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">
+              {ActiveIcon && <ActiveIcon className="size-3.5" />}
+              {active.label}
             </p>
             <ul className="space-y-1">
-              {section.items.map((item) => {
-                const active =
+              {active.items.map((item) => {
+                const isActive =
                   pathname === item.href || pathname.startsWith(item.href + "/");
                 const Icon = item.icon;
                 return (
@@ -68,7 +73,7 @@ export function Sidebar({
                       className={cn(
                         "group flex items-center gap-3 rounded-[var(--radius-md)] px-3 py-2 text-sm font-medium transition-colors",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring",
-                        active
+                        isActive
                           ? "bg-brand-soft text-brand-soft-fg"
                           : "text-fg-muted hover:bg-surface-2 hover:text-fg",
                       )}
@@ -76,7 +81,7 @@ export function Sidebar({
                       <Icon
                         className={cn(
                           "size-[18px] shrink-0",
-                          active ? "text-brand" : "text-fg-subtle group-hover:text-fg-muted",
+                          isActive ? "text-brand" : "text-fg-subtle group-hover:text-fg-muted",
                         )}
                       />
                       <span className="truncate">{item.label}</span>
@@ -86,7 +91,9 @@ export function Sidebar({
               })}
             </ul>
           </div>
-        ))}
+        ) : (
+          <p className="px-3 text-sm text-fg-muted">Tidak ada modul yang tersedia.</p>
+        )}
       </nav>
 
       {/* Footer note */}

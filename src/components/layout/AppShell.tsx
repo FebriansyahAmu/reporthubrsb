@@ -51,7 +51,11 @@ export function AppShell({
 
       {/* Konten */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar onMenu={() => setMobileOpen(true)} user={user} />
+        <Topbar
+          onMenu={() => setMobileOpen(true)}
+          user={user}
+          allowedModules={allowedModules}
+        />
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <div className="w-full">{children}</div>
         </main>
