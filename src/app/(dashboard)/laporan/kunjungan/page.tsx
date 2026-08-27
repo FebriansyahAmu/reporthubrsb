@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
 import { LaporanKunjunganView } from "@/features/laporan-kunjungan/LaporanKunjunganView";
 
-export const metadata = { title: "Laporan Kunjungan · ReportHub RSB" };
+export const metadata = { title: "Laporan Kunjungan · AuditTrail RS BOLTIM" };
 
 export default function LaporanKunjunganPage() {
   return (

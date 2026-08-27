@@ -1,6 +1,6 @@
 import { Download } from "lucide-react";
 
-export const metadata = { title: "Pratinjau Dokumen · ReportHub RSB" };
+export const metadata = { title: "Pratinjau Dokumen · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 const LABEL: Record<string, string> = {

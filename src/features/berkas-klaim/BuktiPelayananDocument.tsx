@@ -172,7 +172,7 @@ export function BuktiPelayananDocument({ data }: { data: BuktiPelayananReport })
 
       <div className="bp-foot no-print">
         Sumber: SIMGOS (read-only) · Bukti Pelayanan{" "}
-        {data.tersimpan ? "tersimpan di ReportHub" : "prefill dari SIMRS (belum disimpan)"} ·{" "}
+        {data.tersimpan ? "tersimpan di AuditTrail RS BOLTIM" : "prefill dari SIMRS (belum disimpan)"} ·{" "}
         {data.rows.length} tindakan · Kolom &ldquo;TT &amp; Nama Dokter/Petugas&rdquo; = QR nama
         (scan untuk membaca).
       </div>

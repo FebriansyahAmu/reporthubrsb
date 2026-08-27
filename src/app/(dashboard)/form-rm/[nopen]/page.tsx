@@ -21,7 +21,7 @@ import { EDUKASI_JENIS } from "@/features/form-rm/edukasi.constants";
 import { CONSENT_JENIS } from "@/features/form-rm/consent.constants";
 import { RINGKASAN_JENIS } from "@/features/form-rm/ringkasan.constants";
 
-export const metadata = { title: "Detail Form RM · ReportHub RSB" };
+export const metadata = { title: "Detail Form RM · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 type FormCardData = {
@@ -136,7 +136,7 @@ export default async function FormRmDetailPage({
           ))}
         </div>
         <p className="mt-3 text-xs text-fg-subtle">
-          Form diisi sendiri oleh admisi/petugas dan disimpan ke ReportHub (SIMRS tetap
+          Form diisi sendiri oleh admisi/petugas dan disimpan ke AuditTrail RS BOLTIM (SIMRS tetap
           read-only).
         </p>
       </div>

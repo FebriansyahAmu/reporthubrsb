@@ -28,7 +28,7 @@ import type {
   KategoriKunjungan,
 } from "@/server/modules/berkas-klaim/berkas-klaim.types";
 
-export const metadata = { title: "Detail Berkas Klaim · ReportHub RSB" };
+export const metadata = { title: "Detail Berkas Klaim · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 const KATEGORI_TONE: Record<KategoriKunjungan, "brand" | "accent" | "warning"> = {
@@ -175,7 +175,7 @@ export default async function BerkasDetailPage({
         </div>
         <p className="mt-3 text-xs text-fg-subtle">
           Kartu hijau berarti datanya sudah ada. <span className="text-fg-muted">Bukti Pelayanan</span> diisi
-          sendiri (tarik tindakan dari SIMRS, simpan ke ReportHub). <span className="text-warning">SEP</span> belum
+          sendiri (tarik tindakan dari SIMRS, simpan ke AuditTrail RS BOLTIM). <span className="text-warning">SEP</span> belum
           terhubung (perlu pemetaan BPJS lebih lanjut).
         </p>
       </div>

@@ -5,7 +5,7 @@ import { EdukasiDocument } from "@/features/form-rm/EdukasiDocument";
 import { PrintToolbar } from "@/components/report/PrintToolbar";
 import { qrSvgDataUriMap } from "@/server/lib/qr";
 
-export const metadata = { title: "Cetak Edukasi RM.21 · ReportHub RSB" };
+export const metadata = { title: "Cetak Edukasi RM.21 · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default async function EdukasiPrintPage({

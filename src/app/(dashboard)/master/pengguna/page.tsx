@@ -3,7 +3,7 @@ import { listRoles } from "@/server/modules/master/master.service";
 import { PenggunaView } from "@/features/master/PenggunaView";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Pengguna · Master · ReportHub RSB" };
+export const metadata = { title: "Pengguna · Master · AuditTrail RS BOLTIM" };
 
 export default async function PenggunaPage() {
   const user = await requireModule("master.pengguna");

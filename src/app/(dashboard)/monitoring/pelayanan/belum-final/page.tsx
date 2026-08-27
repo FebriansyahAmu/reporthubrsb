@@ -3,7 +3,7 @@ import { FadeIn } from "@/components/motion/Motion";
 import { BelumFinalView } from "@/features/monitoring-pelayanan/BelumFinalView";
 import { getRuanganKunjunganList } from "@/server/modules/ruangan/ruangan.service";
 
-export const metadata = { title: "Belum Difinalkan · ReportHub RSB" };
+export const metadata = { title: "Belum Difinalkan · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default async function BelumFinalPage() {

@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
 import { FarmasiObatView } from "@/features/laporan-farmasi/FarmasiObatView";
 
-export const metadata = { title: "10 Obat Terbanyak · Pusat Laporan · ReportHub RSB" };
+export const metadata = { title: "10 Obat Terbanyak · Pusat Laporan · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default function FarmasiObatPage() {

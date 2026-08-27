@@ -123,7 +123,7 @@ export function ResumePulangDocument({
       />
 
       <footer className="mt-6 border-t border-neutral-300 pt-2 text-[10px] text-neutral-500">
-        Resume Pulang · Dicetak dari ReportHub RSB pada {formatDateTime(new Date())}. Sumber:
+        Resume Pulang · Dicetak dari AuditTrail RS BOLTIM pada {formatDateTime(new Date())}. Sumber:
         SIMGOS · medicalrecord.CetakMR2 (read-only). QR pada blok DPJP memuat nama dokter
         (scan untuk membaca).
       </footer>

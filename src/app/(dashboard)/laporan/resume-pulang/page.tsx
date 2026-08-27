@@ -4,7 +4,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { PasienResumeList } from "@/components/report/PasienResumeList";
 import { getResumeMedisList } from "@/server/modules/resume-medis/resume-medis.service";
 
-export const metadata = { title: "Resume Pulang · ReportHub RSB" };
+export const metadata = { title: "Resume Pulang · AuditTrail RS BOLTIM" };
 
 export default async function ResumePulangListPage() {
   const list = await getResumeMedisList();

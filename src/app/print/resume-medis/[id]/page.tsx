@@ -4,7 +4,7 @@ import { getResumeMedis } from "@/server/modules/resume-medis/resume-medis.servi
 import { ResumeMedisDocument } from "@/features/resume-medis/ResumeMedisDocument";
 import { PrintToolbar } from "@/components/report/PrintToolbar";
 
-export const metadata = { title: "Resume Medis · ReportHub RSB" };
+export const metadata = { title: "Resume Medis · AuditTrail RS BOLTIM" };
 
 export default async function ResumeMedisPrintPage({
   params,

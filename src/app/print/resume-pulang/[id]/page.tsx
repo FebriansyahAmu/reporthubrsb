@@ -5,7 +5,7 @@ import { qrSvgDataUri } from "@/server/lib/qr";
 import { ResumePulangDocument } from "@/features/resume-pulang/ResumePulangDocument";
 import { PrintToolbar } from "@/components/report/PrintToolbar";
 
-export const metadata = { title: "Resume Pulang · ReportHub RSB" };
+export const metadata = { title: "Resume Pulang · AuditTrail RS BOLTIM" };
 
 export default async function ResumePulangPrintPage({
   params,

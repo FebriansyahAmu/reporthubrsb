@@ -3,7 +3,7 @@ import { ShieldX, ArrowLeft } from "lucide-react";
 import { FadeIn } from "@/components/motion/Motion";
 import { Card } from "@/components/ui/Card";
 
-export const metadata = { title: "Akses Ditolak · ReportHub RSB" };
+export const metadata = { title: "Akses Ditolak · AuditTrail RS BOLTIM" };
 
 export default function ForbiddenPage() {
   return (

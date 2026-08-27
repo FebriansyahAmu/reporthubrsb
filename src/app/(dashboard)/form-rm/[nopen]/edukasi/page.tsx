@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { EdukasiFormView } from "@/features/form-rm/EdukasiFormView";
 import { getEdukasiContext } from "@/server/modules/form-rm/form-rm.service";
 
-export const metadata = { title: "Edukasi Pasien (RM.21) · ReportHub RSB" };
+export const metadata = { title: "Edukasi Pasien (RM.21) · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default async function EdukasiFormPage({

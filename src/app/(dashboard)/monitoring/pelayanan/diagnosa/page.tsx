@@ -3,7 +3,7 @@ import { FadeIn } from "@/components/motion/Motion";
 import { DiagnosaView } from "@/features/monitoring-pelayanan/DiagnosaView";
 import { getRuanganKunjunganList } from "@/server/modules/ruangan/ruangan.service";
 
-export const metadata = { title: "Kelengkapan Diagnosa · ReportHub RSB" };
+export const metadata = { title: "Kelengkapan Diagnosa · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default async function DiagnosaPage() {

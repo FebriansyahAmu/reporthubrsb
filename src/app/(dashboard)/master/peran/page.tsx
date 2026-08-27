@@ -3,7 +3,7 @@ import { MODULES } from "@/server/rbac/modules";
 import { PeranView } from "@/features/master/PeranView";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Peran & Hak Akses · Master · ReportHub RSB" };
+export const metadata = { title: "Peran & Hak Akses · Master · AuditTrail RS BOLTIM" };
 
 export default async function PeranPage() {
   const user = await requireModule("master.peran");

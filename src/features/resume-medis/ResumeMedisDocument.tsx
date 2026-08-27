@@ -259,7 +259,7 @@ export function ResumeMedisDocument({ dto }: { dto: ResumeMedisDto }) {
         <div className="mt-auto pt-6">
           <div className="flex items-end justify-between gap-3 border-t border-neutral-300 pt-2 text-[10px] text-neutral-500">
             <span>
-              Dicetak dari ReportHub RSB pada {formatDateTime(new Date())}. Sumber: SIMGOS ·
+              Dicetak dari AuditTrail RS BOLTIM pada {formatDateTime(new Date())}. Sumber: SIMGOS ·
               medicalrecord.CetakMR2 (read-only). Dokumen ini bersifat rahasia dan hanya
               untuk keperluan pelayanan medis.
             </span>

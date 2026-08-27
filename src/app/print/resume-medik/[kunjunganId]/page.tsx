@@ -4,7 +4,7 @@ import { getResumeMedik } from "@/lib/mock/data";
 import { ResumeDocument } from "@/features/resume-medik/ResumeDocument";
 import { PrintToolbar } from "@/features/resume-medik/PrintToolbar";
 
-export const metadata = { title: "Resume Medik · ReportHub RSB" };
+export const metadata = { title: "Resume Medik · AuditTrail RS BOLTIM" };
 
 export default async function ResumeMedikPrintPage({
   params,

@@ -65,7 +65,7 @@ function OptList({
 /**
  * Formulir cetak "EDUKASI PASIEN DAN KELUARGA TERINTEGRASI" (RM.21) — reproduksi
  * isi form web ke tata letak kertas (F4 landscape). Read-only: hanya menampilkan
- * data yang tersimpan di ReportHub.
+ * data yang tersimpan di AuditTrail RS BOLTIM.
  */
 export function EdukasiDocument({
   header,
@@ -246,7 +246,7 @@ export function EdukasiDocument({
       )}
 
       <div className="rm-foot no-print">
-        Formulir RM.21 · diisi via ReportHub RSB · sumber identitas: SIMGOS (read-only).
+        Formulir RM.21 · diisi via AuditTrail RS BOLTIM · sumber identitas: SIMGOS (read-only).
       </div>
     </article>
   );

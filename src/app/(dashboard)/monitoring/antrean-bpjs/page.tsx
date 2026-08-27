@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
 import { AntreanBpjsView } from "@/features/monitoring/AntreanBpjsView";
 
-export const metadata = { title: "Monitoring Antrean BPJS · ReportHub RSB" };
+export const metadata = { title: "Monitoring Antrean BPJS · AuditTrail RS BOLTIM" };
 
 export default function MonitoringAntreanBpjsPage() {
   return (

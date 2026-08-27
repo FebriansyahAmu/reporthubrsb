@@ -2,7 +2,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
 import { ResumeMedikSearchView } from "@/features/resume-medik/ResumeMedikSearchView";
 
-export const metadata = { title: "Cetak Resume Medik · ReportHub RSB" };
+export const metadata = { title: "Cetak Resume Medik · AuditTrail RS BOLTIM" };
 
 export default function ResumeMedikPage() {
   return (

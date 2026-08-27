@@ -4,7 +4,7 @@ import { MobileSignView } from "@/features/sign/MobileSignView";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Tanda Tangan · ReportHub RSB" };
+export const metadata = { title: "Tanda Tangan · AuditTrail RS BOLTIM" };
 
 /** Kunci zoom agar gesture jari sepenuhnya untuk menggambar (bukan pinch/zoom). */
 export const viewport = {

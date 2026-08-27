@@ -3,7 +3,7 @@ import { FadeIn } from "@/components/motion/Motion";
 import { ResumeView } from "@/features/monitoring-pelayanan/ResumeView";
 import { getRuanganKunjunganList } from "@/server/modules/ruangan/ruangan.service";
 
-export const metadata = { title: "Kelengkapan Resume Medis · ReportHub RSB" };
+export const metadata = { title: "Kelengkapan Resume Medis · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default async function ResumePage() {

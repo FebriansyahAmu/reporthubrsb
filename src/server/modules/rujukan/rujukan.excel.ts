@@ -58,7 +58,7 @@ export async function buildRujukanExcel(
   meta: RujukanExportMeta,
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "ReportHub RSB";
+  wb.creator = "AuditTrail RS BOLTIM";
   wb.created = meta.generatedAt;
 
   const ws = wb.addWorksheet("Rujukan Keluar", {

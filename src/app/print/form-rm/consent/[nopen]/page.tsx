@@ -4,7 +4,7 @@ import { getConsentContext } from "@/server/modules/form-rm/form-rm.service";
 import { ConsentDocument } from "@/features/form-rm/ConsentDocument";
 import { PrintToolbar } from "@/components/report/PrintToolbar";
 
-export const metadata = { title: "Cetak General Consent RM.03 · ReportHub RSB" };
+export const metadata = { title: "Cetak General Consent RM.03 · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default async function ConsentPrintPage({

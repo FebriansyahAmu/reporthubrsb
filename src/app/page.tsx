@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { BarChart3, FileText, ShieldCheck } from "lucide-react";
 import { LoginForm } from "@/features/auth/LoginForm";
 
-export const metadata: Metadata = { title: "Masuk · ReportHub RSB" };
+export const metadata: Metadata = { title: "Masuk · AuditTrail RS BOLTIM" };
 
 function safePath(v: string | undefined): string {
   if (!v || !v.startsWith("/") || v.startsWith("//")) return "/kunjungan";
@@ -31,11 +32,18 @@ export default async function LoginPage({
           className="pointer-events-none absolute -bottom-32 -left-16 size-96 rounded-full bg-black/10 blur-3xl"
         />
 
-        <div className="relative flex items-center gap-2.5">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25 backdrop-blur">
-            <BarChart3 className="size-5" />
+        <div className="relative flex items-center gap-3">
+          <div className="flex size-11 items-center justify-center rounded-xl bg-white p-1 shadow-sm ring-1 ring-white/25">
+            <Image
+              src="/logo/logoboltim.png"
+              alt="Lambang Kabupaten Bolaang Mongondow Timur"
+              width={34}
+              height={43}
+              priority
+              className="object-contain"
+            />
           </div>
-          <span className="text-lg font-semibold tracking-tight">ReportHub RSB</span>
+          <span className="text-lg font-semibold tracking-tight">AuditTrail RS BOLTIM</span>
         </div>
 
         <div className="relative max-w-md">
@@ -55,7 +63,7 @@ export default async function LoginPage({
         </div>
 
         <p className="relative text-xs text-white/60">
-          © {new Date().getFullYear()} ReportHub RSB
+          © {new Date().getFullYear()} AuditTrail RS BOLTIM
         </p>
       </section>
 
@@ -64,11 +72,17 @@ export default async function LoginPage({
         <div className="w-full max-w-sm">
           {/* Logo (mobile) */}
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-brand text-brand-fg">
-              <BarChart3 className="size-5" />
+            <div className="flex size-10 items-center justify-center rounded-xl bg-surface p-1 ring-1 ring-border">
+              <Image
+                src="/logo/logoboltim.png"
+                alt="Lambang Kabupaten Bolaang Mongondow Timur"
+                width={30}
+                height={38}
+                className="object-contain"
+              />
             </div>
             <span className="text-lg font-semibold tracking-tight text-fg">
-              ReportHub RSB
+              AuditTrail RS BOLTIM
             </span>
           </div>
 

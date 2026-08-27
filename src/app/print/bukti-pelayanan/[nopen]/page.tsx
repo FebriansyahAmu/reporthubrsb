@@ -4,7 +4,7 @@ import { PrintToolbar } from "@/components/report/PrintToolbar";
 import { BuktiPelayananDocument } from "@/features/berkas-klaim/BuktiPelayananDocument";
 import { getBuktiPelayananReport } from "@/server/modules/berkas-klaim/berkas-klaim.bukti-report.service";
 
-export const metadata = { title: "Bukti Pelayanan JKN-KIS · ReportHub RSB" };
+export const metadata = { title: "Bukti Pelayanan JKN-KIS · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default async function BuktiPelayananPrintPage({

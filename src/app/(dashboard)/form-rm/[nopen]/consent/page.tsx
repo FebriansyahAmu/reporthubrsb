@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { ConsentFormView } from "@/features/form-rm/ConsentFormView";
 import { getConsentContext } from "@/server/modules/form-rm/form-rm.service";
 
-export const metadata = { title: "General Consent (RM.03) · ReportHub RSB" };
+export const metadata = { title: "General Consent (RM.03) · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default async function ConsentFormPage({

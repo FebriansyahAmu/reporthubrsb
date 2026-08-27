@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
 import { PenyakitView } from "@/features/laporan-penyakit/PenyakitView";
 
-export const metadata = { title: "10 Penyakit Terbanyak · Pusat Laporan · ReportHub RSB" };
+export const metadata = { title: "10 Penyakit Terbanyak · Pusat Laporan · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default function PenyakitPage() {

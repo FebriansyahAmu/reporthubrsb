@@ -3,7 +3,7 @@ import { FadeIn } from "@/components/motion/Motion";
 import { ResumeMedisBrowser } from "@/features/resume-medis/ResumeMedisBrowser";
 import { getRuanganKunjunganList } from "@/server/modules/ruangan/ruangan.service";
 
-export const metadata = { title: "Resume Medis · ReportHub RSB" };
+export const metadata = { title: "Resume Medis · AuditTrail RS BOLTIM" };
 // Selalu render dinamis: data ruangan diambil dari SIMGOS saat request.
 export const dynamic = "force-dynamic";
 

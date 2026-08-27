@@ -3,7 +3,8 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, X } from "lucide-react";
+import Image from "next/image";
+import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { NAV, filterNav } from "./nav";
 
@@ -24,12 +25,17 @@ export function Sidebar({
     <div className="flex h-full flex-col bg-surface">
       {/* Brand */}
       <div className="flex h-16 items-center gap-2.5 border-b border-border px-5">
-        <div className="flex size-8 items-center justify-center rounded-[var(--radius-md)] bg-brand text-brand-fg">
-          <Activity className="size-5" strokeWidth={2.4} />
-        </div>
+        <Image
+          src="/logo/logoboltim.png"
+          alt="Lambang Kabupaten Bolaang Mongondow Timur"
+          width={30}
+          height={38}
+          priority
+          className="shrink-0 object-contain"
+        />
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-fg">ReportHub</p>
-          <p className="truncate text-[11px] text-fg-muted">RS Balikpapan</p>
+          <p className="truncate text-sm font-semibold text-fg">AuditTrail</p>
+          <p className="truncate text-[11px] text-fg-muted">RS BOLTIM</p>
         </div>
         {onNavigate && (
           <button

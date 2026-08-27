@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { RingkasanFormView } from "@/features/form-rm/RingkasanFormView";
 import { getRingkasanContext } from "@/server/modules/form-rm/form-rm.service";
 
-export const metadata = { title: "Ringkasan Masuk & Keluar (RM.01) · ReportHub RSB" };
+export const metadata = { title: "Ringkasan Masuk & Keluar (RM.01) · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default async function RingkasanFormPage({

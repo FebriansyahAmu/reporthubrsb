@@ -155,7 +155,7 @@ export function ResumeDocument({ resume }: { resume: ResumeMedik }) {
       </div>
 
       <footer className="mt-8 border-t border-neutral-300 pt-2 text-[10px] text-neutral-500">
-        Dokumen ini dicetak dari ReportHub RSB pada {formatDateTime(new Date())}. Data
+        Dokumen ini dicetak dari AuditTrail RS BOLTIM pada {formatDateTime(new Date())}. Data
         bersumber dari SIMGOS (read-only).
       </footer>
     </article>

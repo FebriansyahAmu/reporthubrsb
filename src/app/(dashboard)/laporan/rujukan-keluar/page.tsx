@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
 import { RujukanKeluarView } from "@/features/laporan-rujukan/RujukanKeluarView";
 
-export const metadata = { title: "Rujukan Keluar · Pusat Laporan · ReportHub RSB" };
+export const metadata = { title: "Rujukan Keluar · Pusat Laporan · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default function RujukanKeluarPage() {

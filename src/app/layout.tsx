@@ -13,9 +13,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ReportHub RSB",
+  title: "AuditTrail RS BOLTIM",
   description:
     "Pelaporan & cetak untuk melengkapi cetakan yang tidak disediakan SIMGOS.",
+  icons: { icon: "/logo/logoboltim.png" },
 };
 
 export default function RootLayout({

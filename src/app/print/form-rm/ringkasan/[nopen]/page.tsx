@@ -4,7 +4,7 @@ import { getRingkasanContext } from "@/server/modules/form-rm/form-rm.service";
 import { RingkasanDocument } from "@/features/form-rm/RingkasanDocument";
 import { PrintToolbar } from "@/components/report/PrintToolbar";
 
-export const metadata = { title: "Cetak Ringkasan Masuk & Keluar RM.01 · ReportHub RSB" };
+export const metadata = { title: "Cetak Ringkasan Masuk & Keluar RM.01 · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default async function RingkasanPrintPage({

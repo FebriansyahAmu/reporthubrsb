@@ -3,7 +3,7 @@ import { FadeIn } from "@/components/motion/Motion";
 import { KunjunganPelayananView } from "@/features/monitoring-pelayanan/KunjunganPelayananView";
 import { getRuanganKunjunganList } from "@/server/modules/ruangan/ruangan.service";
 
-export const metadata = { title: "Monitoring Kunjungan · ReportHub RSB" };
+export const metadata = { title: "Monitoring Kunjungan · AuditTrail RS BOLTIM" };
 // Data ruangan diambil dari SIMGOS saat request.
 export const dynamic = "force-dynamic";
 

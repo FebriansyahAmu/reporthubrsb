@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
 import { PengunjungView } from "@/features/laporan-pengunjung/PengunjungView";
 
-export const metadata = { title: "Laporan Pengunjung Per Pasien · Pusat Laporan · ReportHub RSB" };
+export const metadata = { title: "Laporan Pengunjung Per Pasien · Pusat Laporan · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default function PengunjungPage() {

@@ -57,7 +57,7 @@ export async function buildReportWorkbook<T>(opts: BuildReportOptions<T>): Promi
   const { columns, rows } = opts;
   const lastCol = columns.length; // 1-indexed
   const wb = new ExcelJS.Workbook();
-  wb.creator = "ReportHub RSB";
+  wb.creator = "AuditTrail RS BOLTIM";
   wb.created = opts.generatedAt;
 
   // Tata letak baris atas.
