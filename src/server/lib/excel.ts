@@ -28,7 +28,7 @@ export function stampWita(d: Date): string {
 export type ExcelColumn<T> = {
   header: string;
   width: number;
-  value: (row: T) => string | number | null | undefined;
+  value: (row: T, index: number) => string | number | null | undefined;
   align?: "left" | "center" | "right";
   /** Format angka Excel, mis. "#,##0" atau '"Rp"#,##0'. */
   numFmt?: string;
@@ -124,7 +124,7 @@ export async function buildReportWorkbook<T>(opts: BuildReportOptions<T>): Promi
     const excelRow = ws.getRow(dataStart + ri);
     columns.forEach((c, ci) => {
       const cell = excelRow.getCell(ci + 1);
-      const v = c.value(row);
+      const v = c.value(row, ri);
       cell.value = v ?? "";
       if (c.text) cell.numFmt = "@";
       else if (typeof v === "number" && c.numFmt) cell.numFmt = c.numFmt;

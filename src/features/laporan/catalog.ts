@@ -51,6 +51,14 @@ export const LAPORAN_CATALOG: ReportGroup[] = [
         href: "/laporan/kunjungan",
       },
       {
+        title: "Pengunjung Per Pasien",
+        description:
+          "Daftar kunjungan per pasien (RJ/IGD/RI) per ruangan — IGD dibedakan rawat jalan vs lanjut rawat inap. Ekspor Excel.",
+        icon: ClipboardList,
+        status: "tersedia",
+        href: "/laporan/pengunjung",
+      },
+      {
         title: "Kunjungan per Poli / Unit",
         description: "Rekapitulasi jumlah kunjungan dikelompokkan per poli atau unit.",
         icon: Users,
