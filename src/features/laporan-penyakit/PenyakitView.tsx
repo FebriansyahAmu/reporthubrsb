@@ -9,9 +9,11 @@ import {
 } from "framer-motion";
 import {
   Activity,
+  AlertCircle,
   ClipboardList,
   Clock,
   Crown,
+  FileSpreadsheet,
   Hash,
   RefreshCw,
   RotateCcw,
@@ -26,6 +28,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/feedback/States";
 import { cn } from "@/lib/cn";
 import { useAsyncData } from "@/lib/useAsyncData";
+import { downloadFromEndpoint } from "@/lib/download";
 import { formatDate, formatJam, formatNumber } from "@/lib/format";
 import type {
   CaraBayar,
@@ -120,6 +123,8 @@ export function PenyakitView() {
   const [caraBayar, setCaraBayar] = useState<CaraBayar>(0);
   const [utama, setUtama] = useState(true);
   const [metric, setMetric] = useState<UrutMetric>("kasus");
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const rangeInvalid = !!from && !!to && from > to;
 
@@ -156,6 +161,28 @@ export function PenyakitView() {
     setMetric("kasus");
   }
 
+  async function doExport() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const p = new URLSearchParams({
+        from,
+        to,
+        jenis: String(jenis),
+        caraBayar: String(caraBayar),
+        utama: utama ? "1" : "0",
+        metric,
+      });
+      await downloadFromEndpoint(`/api/laporan/penyakit/export?${p.toString()}`, "10-Penyakit-Terbanyak.xlsx");
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Gagal mengekspor data.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const canExport = !rangeInvalid && !loading && items.length > 0;
+
   const leader = items[0] ?? null;
   const maxVal = leader ? (metric === "kasus" ? leader.kasus : leader.pasien) : 0;
   const share = summary?.kasusShare ?? 0;
@@ -172,15 +199,34 @@ export function PenyakitView() {
             <span>Memuat…</span>
           )}
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<RefreshCw className={cn("size-4", loading && "animate-spin")} />}
-          onClick={() => reload()}
-        >
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<RefreshCw className={cn("size-4", loading && "animate-spin")} />}
+            onClick={() => reload()}
+          >
+            Refresh
+          </Button>
+          <Button
+            size="sm"
+            icon={<FileSpreadsheet className="size-4" />}
+            loading={exporting}
+            disabled={!canExport}
+            onClick={doExport}
+            title={items.length > 0 ? "Unduh Excel sesuai filter" : "Tidak ada data untuk diekspor"}
+          >
+            Export Excel
+          </Button>
+        </div>
       </div>
+
+      {exportError && (
+        <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
+          <AlertCircle className="size-4 shrink-0" />
+          {exportError}
+        </div>
+      )}
 
       {/* Filter */}
       <Card className="p-4">

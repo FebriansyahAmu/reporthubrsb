@@ -15,6 +15,11 @@ export const obatTerbanyakQuerySchema = z
       .int()
       .refine((v) => v === 0 || v === 1 || v === 2, "caraBayar harus 0, 1, atau 2")
       .default(0),
+    jenis: z.coerce
+      .number()
+      .int()
+      .refine((v) => v === 0 || v === 1 || v === 2 || v === 3, "jenis harus 0, 1, 2, atau 3")
+      .default(0),
     kategori: z
       .string()
       .trim()

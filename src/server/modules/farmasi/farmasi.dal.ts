@@ -19,15 +19,28 @@ const JENIS_FARMASI = 11;
 /**
  * Sub-query per baris resep (satu baris per `layanan.farmasi.ID`). Hanya join yang
  * MEMENGARUHI inklusi baris & nilai yang dipertahankan (rt untuk tarif, pk untuk
- * ruangan/status, pp untuk validitas pendaftaran, pj bila difilter cara bayar).
- * Semua LEFT JOIN "kosmetik" milik SP dibuang → hasil identik tapi jauh lebih cepat.
+ * ruangan/status, pp untuk validitas pendaftaran, pj bila difilter cara bayar,
+ * rantai ASAL bila difilter jenis layanan). Semua LEFT JOIN "kosmetik" milik SP
+ * dibuang → hasil identik tapi jauh lebih cepat.
+ *
+ * Jenis layanan ASAL resep = `ra.JENIS_KUNJUNGAN` ruangan kunjungan asal, ditelusur
+ * `pk.REF → layanan.order_resep o → o.KUNJUNGAN → kunjungan asal → asal.RUANGAN`
+ * (persis rantai `JENISRESEP` di SP). Ruangan farmasi sendiri selalu JENIS=11, jadi
+ * RJ/GD/RI HARUS diambil dari asal.
  *
  * `qty`/`nilai` dibungkus MAX agar aman terhadap ONLY_FULL_GROUP_BY & fan-out.
- * Tanggal & cara bayar di-bind (`?`); tak ada nilai user yang di-concat di sini.
+ * Tanggal & cara bayar di-bind (`?`); `jenis` (0..3, tervalidasi schema) di-inline.
  */
-function innerSql(caraBayar: number): string {
+function innerSql(caraBayar: number, jenis: number): string {
   const pjJoin = caraBayar > 0 ? `LEFT JOIN ${PENDAFTARAN}.penjamin pj ON pp.NOMOR = pj.NOPEN` : "";
   const pjCond = caraBayar > 0 ? "AND pj.JENIS = ?" : "";
+  const asalJoin =
+    jenis > 0
+      ? `LEFT JOIN ${LAYANAN}.order_resep o ON o.NOMOR = pk.REF
+      LEFT JOIN ${PENDAFTARAN}.kunjungan asal ON o.KUNJUNGAN = asal.NOMOR
+      LEFT JOIN ${MASTER}.ruangan ra ON asal.RUANGAN = ra.ID AND ra.JENIS = 5`
+      : "";
+  const asalCond = jenis > 0 ? `AND ra.JENIS_KUNJUNGAN = ${jenis}` : "";
   return `
     SELECT lf.FARMASI AS farmasi,
            MAX(lf.JUMLAH) AS qty,
@@ -36,6 +49,7 @@ function innerSql(caraBayar: number): string {
       LEFT JOIN ${BAYAR}.rincian_tagihan rt ON lf.ID = rt.REF_ID AND rt.JENIS = 4
     , ${PENDAFTARAN}.kunjungan pk
       LEFT JOIN ${MASTER}.ruangan rg ON pk.RUANGAN = rg.ID AND rg.JENIS = 5
+      ${asalJoin}
     , ${PENDAFTARAN}.pendaftaran pp
       ${pjJoin}
     WHERE lf.\`STATUS\` = 2
@@ -43,6 +57,7 @@ function innerSql(caraBayar: number): string {
       AND pk.NOPEN = pp.NOMOR
       AND rg.JENIS_KUNJUNGAN = ${JENIS_FARMASI}
       AND lf.TANGGAL BETWEEN ? AND ?
+      ${asalCond}
       ${pjCond}
     GROUP BY lf.ID, lf.FARMASI`;
 }
@@ -83,7 +98,7 @@ export async function queryTopObat(f: ObatFilter): Promise<TopObatRow[]> {
            IF(ib.JENIS_GENERIK = 1, 1, 0) AS generik,
            mr.DESKRIPSI AS merk,
            SUM(t.qty) AS qty, SUM(t.nilai) AS nilai, COUNT(*) AS resep
-    FROM ( ${innerSql(f.caraBayar)} ) t
+    FROM ( ${innerSql(f.caraBayar, f.jenis)} ) t
     JOIN ${INV}.barang ib ON ib.ID = t.farmasi
     LEFT JOIN ${INV}.kategori ik ON ik.ID = ib.KATEGORI
     LEFT JOIN ${MASTER}.referensi mr ON mr.ID = ib.MERK AND mr.JENIS = 39
@@ -105,7 +120,7 @@ export async function queryObatGrandTotal(f: ObatFilter): Promise<GrandTotalRow>
   const sql = `
     SELECT COUNT(DISTINCT ib.ID) AS jenisObat,
            SUM(t.qty) AS totalQty, SUM(t.nilai) AS totalNilai
-    FROM ( ${innerSql(f.caraBayar)} ) t
+    FROM ( ${innerSql(f.caraBayar, f.jenis)} ) t
     JOIN ${INV}.barang ib ON ib.ID = t.farmasi
     LEFT JOIN ${INV}.kategori ik ON ik.ID = ib.KATEGORI
     ${kategoriWhere(f.kategori)}`;

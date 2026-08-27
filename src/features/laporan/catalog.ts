@@ -155,7 +155,7 @@ export const LAPORAN_CATALOG: ReportGroup[] = [
     items: [
       {
         title: "10 Obat Terbanyak",
-        description: "Peringkat obat & alkes paling banyak dikeluarkan farmasi — filter kategori & cara bayar.",
+        description: "Peringkat obat & alkes paling banyak dikeluarkan farmasi — filter jenis layanan, kategori & cara bayar.",
         icon: Trophy,
         status: "tersedia",
         href: "/laporan/farmasi-obat",

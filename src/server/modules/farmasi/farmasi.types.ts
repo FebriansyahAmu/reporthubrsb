@@ -10,6 +10,13 @@
 /** 0 = semua, 1 = Umum/tanpa asuransi, 2 = BPJS/JKN (referensi JENIS=10). */
 export type CaraBayar = 0 | 1 | 2;
 
+/**
+ * Jenis layanan ASAL resep (referensi JENIS=15): 0 = semua, 1 = Rawat Jalan,
+ * 2 = Gawat Darurat, 3 = Rawat Inap. Ditentukan dari ruangan kunjungan ASAL
+ * peresepan (via `order_resep`), BUKAN ruangan farmasi (yang selalu JENIS=11).
+ */
+export type JenisLayanan = 0 | 1 | 2 | 3;
+
 /** Metrik pemeringkatan "terbanyak". */
 export type UrutMetric = "qty" | "nilai";
 
@@ -54,6 +61,7 @@ export type ObatTerbanyakResult = {
   periode: { from: string; to: string };
   metric: UrutMetric;
   caraBayar: CaraBayar;
+  jenis: JenisLayanan;
   updatedAt: string; // ISO
 };
 
@@ -62,6 +70,8 @@ export type ObatFilter = {
   from: string; // YYYY-MM-DD
   to: string; // YYYY-MM-DD
   caraBayar: CaraBayar;
+  /** Jenis layanan asal resep (0 = semua). */
+  jenis: JenisLayanan;
   /** Daftar ID kategori (numerik, prefix-match). Kosong = semua kategori. */
   kategori: string[];
   metric: UrutMetric;

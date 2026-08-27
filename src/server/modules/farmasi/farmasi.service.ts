@@ -4,6 +4,7 @@ import { mapObat, readGrandTotal } from "./farmasi.mapper";
 import { parseKategoriCsv, type ObatTerbanyakQuery } from "./farmasi.schema";
 import type {
   CaraBayar,
+  JenisLayanan,
   KategoriOption,
   ObatFilter,
   ObatTerbanyakResult,
@@ -17,6 +18,7 @@ function toFilter(input: ObatTerbanyakQuery): ObatFilter {
     from: input.from,
     to: input.to,
     caraBayar: input.caraBayar as CaraBayar,
+    jenis: input.jenis as JenisLayanan,
     kategori: parseKategoriCsv(input.kategori),
     metric: input.metric,
     limit: TOP_OBAT_LIMIT,
@@ -55,6 +57,7 @@ export async function getObatTerbanyak(input: ObatTerbanyakQuery): Promise<ObatT
     periode: { from: filter.from, to: filter.to },
     metric: filter.metric,
     caraBayar: filter.caraBayar,
+    jenis: filter.jenis,
     updatedAt: new Date().toISOString(),
   };
 }

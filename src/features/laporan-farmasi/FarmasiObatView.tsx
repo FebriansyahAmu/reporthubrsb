@@ -8,11 +8,13 @@ import {
   type Variants,
 } from "framer-motion";
 import {
+  AlertCircle,
   BadgeCheck,
   Check,
   Clock,
   Coins,
   Crown,
+  FileSpreadsheet,
   Layers,
   Package,
   Pill,
@@ -32,9 +34,11 @@ import { PopoverPanel } from "@/components/ui/Popover";
 import { EmptyState, ErrorState } from "@/components/feedback/States";
 import { cn } from "@/lib/cn";
 import { useAsyncData } from "@/lib/useAsyncData";
+import { downloadFromEndpoint } from "@/lib/download";
 import { formatDate, formatJam, formatNumber, formatRupiah, formatRupiahRingkas } from "@/lib/format";
 import type {
   CaraBayar,
+  JenisLayanan,
   KategoriOption,
   ObatTerbanyakItem,
   ObatTerbanyakResult,
@@ -81,6 +85,13 @@ const CARA_BAYAR: { key: CaraBayar; label: string }[] = [
   { key: 1, label: "Umum" },
 ];
 
+const JENIS: { key: JenisLayanan; label: string }[] = [
+  { key: 0, label: "Semua" },
+  { key: 1, label: "Rawat Jalan" },
+  { key: 2, label: "Gawat Darurat" },
+  { key: 3, label: "Rawat Inap" },
+];
+
 const METRICS: { key: UrutMetric; label: string }[] = [
   { key: "qty", label: "Kuantitas" },
   { key: "nilai", label: "Nilai (Rp)" },
@@ -90,6 +101,7 @@ async function fetchObat(args: {
   from: string;
   to: string;
   caraBayar: CaraBayar;
+  jenis: JenisLayanan;
   kategori: string[];
   metric: UrutMetric;
 }): Promise<ObatTerbanyakResult> {
@@ -97,6 +109,7 @@ async function fetchObat(args: {
     from: args.from,
     to: args.to,
     caraBayar: String(args.caraBayar),
+    jenis: String(args.jenis),
     metric: args.metric,
   });
   if (args.kategori.length) p.set("kategori", args.kategori.join(","));
@@ -121,21 +134,24 @@ export function FarmasiObatView() {
   const [to, setTo] = useState(initial.to);
   const [preset, setPreset] = useState<PresetKey | "">("bulan-ini");
   const [caraBayar, setCaraBayar] = useState<CaraBayar>(0);
+  const [jenis, setJenis] = useState<JenisLayanan>(0);
   const [kategori, setKategori] = useState<string[]>([]);
   const [metric, setMetric] = useState<UrutMetric>("qty");
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const rangeInvalid = !!from && !!to && from > to;
 
   const { result, loading, error, reload } = useAsyncData<ObatTerbanyakResult>(
-    () => fetchObat({ from, to, caraBayar, kategori, metric }),
-    [from, to, caraBayar, kategori.join(","), metric],
+    () => fetchObat({ from, to, caraBayar, jenis, kategori, metric }),
+    [from, to, caraBayar, jenis, kategori.join(","), metric],
   );
   const kat = useAsyncData<KategoriOption[]>(fetchKategori, []);
 
   const items = result?.data ?? [];
   const summary = result?.summary ?? null;
   const updatedAt = result?.updatedAt ?? null;
-  const hasFilter = caraBayar !== 0 || kategori.length > 0 || preset !== "bulan-ini";
+  const hasFilter = caraBayar !== 0 || jenis !== 0 || kategori.length > 0 || preset !== "bulan-ini";
 
   function applyPreset(key: PresetKey) {
     const r = presetRange(key);
@@ -154,9 +170,32 @@ export function FarmasiObatView() {
   function resetFilter() {
     applyPreset("bulan-ini");
     setCaraBayar(0);
+    setJenis(0);
     setKategori([]);
     setMetric("qty");
   }
+
+  async function doExport() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const p = new URLSearchParams({
+        from,
+        to,
+        caraBayar: String(caraBayar),
+        jenis: String(jenis),
+        metric,
+      });
+      if (kategori.length) p.set("kategori", kategori.join(","));
+      await downloadFromEndpoint(`/api/laporan/farmasi-obat/export?${p.toString()}`, "10-Obat-Terbanyak.xlsx");
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Gagal mengekspor data.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const canExport = !rangeInvalid && !loading && items.length > 0;
 
   const leader = items[0] ?? null;
   const maxVal = leader ? (metric === "qty" ? leader.qty : leader.nilai) : 0;
@@ -179,15 +218,34 @@ export function FarmasiObatView() {
             <span>Memuat…</span>
           )}
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<RefreshCw className={cn("size-4", loading && "animate-spin")} />}
-          onClick={() => reload()}
-        >
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<RefreshCw className={cn("size-4", loading && "animate-spin")} />}
+            onClick={() => reload()}
+          >
+            Refresh
+          </Button>
+          <Button
+            size="sm"
+            icon={<FileSpreadsheet className="size-4" />}
+            loading={exporting}
+            disabled={!canExport}
+            onClick={doExport}
+            title={items.length > 0 ? "Unduh Excel sesuai filter" : "Tidak ada data untuk diekspor"}
+          >
+            Export Excel
+          </Button>
+        </div>
       </div>
+
+      {exportError && (
+        <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">
+          <AlertCircle className="size-4 shrink-0" />
+          {exportError}
+        </div>
+      )}
 
       {/* Filter */}
       <Card className="p-4">
@@ -216,6 +274,16 @@ export function FarmasiObatView() {
         {rangeInvalid && (
           <p className="mt-2 text-xs text-danger">Tanggal awal melebihi tanggal akhir.</p>
         )}
+
+        {/* Jenis layanan (asal resep) */}
+        <div className="mt-4">
+          <Label>Jenis layanan</Label>
+          <Segmented
+            options={JENIS.map((jn) => ({ key: String(jn.key), label: jn.label }))}
+            value={String(jenis)}
+            onChange={(v) => setJenis(Number(v) as JenisLayanan)}
+          />
+        </div>
 
         {/* Kategori + Cara bayar + reset */}
         <div className="mt-4 flex flex-wrap items-end gap-x-6 gap-y-3">
@@ -285,7 +353,10 @@ export function FarmasiObatView() {
             <Pill className="size-4" />
           </span>
           <div>
-            <h3 className="text-sm font-semibold text-fg">Peringkat 10 besar</h3>
+            <h3 className="text-sm font-semibold text-fg">
+              Peringkat 10 besar
+              {jenis !== 0 && ` · ${JENIS.find((j) => j.key === jenis)?.label ?? ""}`}
+            </h3>
             <p className="text-[11px] text-fg-subtle">
               {formatDate(from)} – {formatDate(to)}
             </p>
