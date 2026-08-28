@@ -6,7 +6,7 @@ import { LoginForm } from "@/features/auth/LoginForm";
 export const metadata: Metadata = { title: "Masuk · AuditTrail RS BOLTIM" };
 
 function safePath(v: string | undefined): string {
-  if (!v || !v.startsWith("/") || v.startsWith("//")) return "/kunjungan";
+  if (!v || !v.startsWith("/") || v.startsWith("//")) return "/dashboard";
   return v;
 }
 

@@ -4,6 +4,7 @@ import {
   FileSignature,
   FolderCheck,
   Hourglass,
+  LayoutDashboard,
   LayoutGrid,
   ListChecks,
   Settings,
@@ -46,6 +47,21 @@ export type Workspace = {
 };
 
 export const WORKSPACES: Workspace[] = [
+  {
+    key: "dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    description: "Statistik ringkas kunjungan, tren & sensus",
+    items: [
+      {
+        href: "/dashboard",
+        label: "Ringkasan Statistik",
+        icon: LayoutDashboard,
+        description: "Statistik ringkas kunjungan, tren & sensus",
+        moduleKey: "dashboard",
+      },
+    ],
+  },
   {
     key: "monitoring-pelayanan",
     label: "Monitoring Pelayanan",

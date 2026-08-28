@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 
 /** Callback hanya boleh path relatif internal (cegah open-redirect). */
 function safePath(v: string | null): string {
-  if (!v || !v.startsWith("/") || v.startsWith("//")) return "/kunjungan";
+  if (!v || !v.startsWith("/") || v.startsWith("//")) return "/dashboard";
   return v;
 }
 

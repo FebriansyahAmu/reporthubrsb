@@ -41,6 +41,15 @@
   --danger: #cf4436;
   --danger-soft: #fbe9e6;
 
+  /* Chart palette — kategorikal CVD-safe (divalidasi). Warna mengikuti ENTITAS
+     (RJ=teal, IGD=terracotta, RI=gold), urutan tetap — bukan peringkat. */
+  --chart-rj: #0b8f80; /* Rawat Jalan */
+  --chart-igd: #bf5836; /* IGD */
+  --chart-ri: #b07d10; /* Rawat Inap */
+  --chart-grid: rgba(26, 25, 25, 0.07);
+  --chart-axis: #8f7d75;
+  --chart-track: #efe7df;
+
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
@@ -75,6 +84,12 @@
     --warning-soft: #2c2109;
     --danger: #f2685f;
     --danger-soft: #331714;
+    --chart-rj: #1f9a8b;
+    --chart-igd: #d97350;
+    --chart-ri: #b98a24;
+    --chart-grid: rgba(244, 237, 231, 0.1);
+    --chart-axis: #8a786f;
+    --chart-track: #2b2726;
   }
 }
 
@@ -102,6 +117,12 @@
   --warning-soft: #2c2109;
   --danger: #f2685f;
   --danger-soft: #331714;
+  --chart-rj: #1f9a8b;
+  --chart-igd: #d97350;
+  --chart-ri: #b98a24;
+  --chart-grid: rgba(244, 237, 231, 0.1);
+  --chart-axis: #8a786f;
+  --chart-track: #2b2726;
 }
 
 /* =========================================================================
@@ -133,6 +154,13 @@
   --color-warning-soft: var(--warning-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+
+  --color-chart-rj: var(--chart-rj);
+  --color-chart-igd: var(--chart-igd);
+  --color-chart-ri: var(--chart-ri);
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-axis: var(--chart-axis);
+  --color-chart-track: var(--chart-track);
 
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);

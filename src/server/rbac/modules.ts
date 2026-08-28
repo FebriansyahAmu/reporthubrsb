@@ -12,6 +12,7 @@ import {
   Activity,
   FileSignature,
   FolderCheck,
+  LayoutDashboard,
   LayoutGrid,
   ListChecks,
   ShieldCheck,
@@ -40,6 +41,17 @@ export type AppModule = {
 };
 
 export const MODULES: readonly AppModule[] = [
+  {
+    key: "dashboard",
+    group: "Dashboard",
+    label: "Dashboard",
+    description: "Statistik ringkas kunjungan, tren & sensus",
+    icon: LayoutDashboard,
+    navHref: "/dashboard",
+    apiPrefixes: ["/api/dashboard"],
+    actions: ["view"],
+    order: 5,
+  },
   {
     key: "kunjungan",
     group: "Menu",

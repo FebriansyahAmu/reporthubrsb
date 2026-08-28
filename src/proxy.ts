@@ -3,7 +3,7 @@ import { verifyAccessToken } from "@/server/auth/tokens";
 import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/server/auth/cookie-names";
 
 const LOGIN_PATH = "/";
-const DEFAULT_HOME = "/kunjungan";
+const DEFAULT_HOME = "/dashboard";
 
 /**
  * Rute publik (tanpa login): halaman TTD jarak jauh yang dibuka pasien/keluarga

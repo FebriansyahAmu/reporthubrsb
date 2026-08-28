@@ -44,6 +44,7 @@ const rid = (p) => `${p}_${crypto.randomBytes(10).toString("hex")}`; // id acak 
 // --- Katalog grant awal (samakan dgn src/server/rbac/modules.ts) ---
 const GRANTS = {
   operator: [
+    "dashboard:view",
     "kunjungan:view",
     "monitoring.antrean-bpjs:view", "monitoring.antrean-bpjs:update",
     "monitoring.pelayanan:view",
@@ -52,6 +53,7 @@ const GRANTS = {
     "laporan:view", "laporan:print",
   ],
   viewer: [
+    "dashboard:view",
     "kunjungan:view",
     "monitoring.antrean-bpjs:view",
     "monitoring.pelayanan:view",
