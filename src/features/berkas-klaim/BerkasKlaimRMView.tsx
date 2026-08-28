@@ -15,7 +15,9 @@ import {
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { Input, InputWithIcon, Label } from "@/components/ui/Field";
+import { InputWithIcon, Label } from "@/components/ui/Field";
+import { DatePicker } from "@/components/ui/DatePicker";
+import { Select, type SelectGroup } from "@/components/ui/Select";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Pagination } from "@/components/ui/Pagination";
@@ -117,6 +119,19 @@ export function BerkasKlaimRMView({
     return g;
   }, [ruanganOptions]);
 
+  // Opsi ruangan berkelompok (RI/RJ/IGD) untuk Select ter-style. Grup berlabel
+  // kosong = opsi "Semua ruangan" tanpa header.
+  const ruanganGroups = useMemo<SelectGroup[]>(
+    () => [
+      { label: "", options: [{ value: "", label: "Semua ruangan" }] },
+      ...KATEGORI.filter((k) => ruanganByKategori[k].length).map((k) => ({
+        label: k,
+        options: ruanganByKategori[k].map((r) => ({ value: r.id, label: r.nama })),
+      })),
+    ],
+    [ruanganByKategori],
+  );
+
   const kategoriTabs: { key: KategoriFilter; label: string }[] = [
     { key: "Semua", label: "Semua" },
     ...KATEGORI.map((k) => ({ key: k as KategoriFilter, label: k })),
@@ -156,11 +171,11 @@ export function BerkasKlaimRMView({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <Label htmlFor="from">Dari tanggal</Label>
-            <Input id="from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
+            <DatePicker id="from" value={from} max={to} onChange={setFrom} clearable={false} />
           </div>
           <div>
             <Label htmlFor="to">Sampai tanggal</Label>
-            <Input id="to" type="date" value={to} max={today} min={from} onChange={(e) => setTo(e.target.value)} />
+            <DatePicker id="to" value={to} min={from} max={today} onChange={setTo} clearable={false} />
           </div>
           <div>
             <Label htmlFor="cari">Cari</Label>
@@ -174,25 +189,13 @@ export function BerkasKlaimRMView({
           </div>
           <div className="lg:col-span-3">
             <Label htmlFor="ruangan">Ruangan</Label>
-            <select
+            <Select
               id="ruangan"
               value={ruanganId}
-              onChange={(e) => setRuanganId(e.target.value)}
-              className="h-10 w-full rounded-[var(--radius-md)] border border-border bg-surface px-3 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-            >
-              <option value="">Semua ruangan</option>
-              {KATEGORI.map((k) =>
-                ruanganByKategori[k].length ? (
-                  <optgroup key={k} label={k}>
-                    {ruanganByKategori[k].map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.nama}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null,
-              )}
-            </select>
+              onChange={setRuanganId}
+              options={ruanganGroups}
+              placeholder="Semua ruangan"
+            />
           </div>
         </div>
 

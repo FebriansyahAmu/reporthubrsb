@@ -77,6 +77,10 @@ export type BuktiPelayananForm = {
   penjamin: string;
   noSep: string;
   catatan: string;
+  /** Nama peserta/keluarga penandatangan — kolom "TT & Nama Peserta/Keluarga". */
+  pesertaNama: string;
+  /** Tanda tangan peserta/keluarga (PNG data-URL) — tampil di tiap baris tindakan. */
+  pesertaTtd: string;
   tindakan: BuktiTindakanRow[];
 };
 

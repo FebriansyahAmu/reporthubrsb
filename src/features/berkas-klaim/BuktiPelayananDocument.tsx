@@ -115,7 +115,13 @@ export function BuktiPelayananDocument({ data }: { data: BuktiPelayananReport })
               <td>{r.ruang}</td>
               <td className="bp-center">{r.tanggal}</td>
               <td className="bp-left">{r.tindakan}</td>
-              <td />
+              <td className="bp-center">
+                {data.pesertaTtd ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className="bp-ttd" src={data.pesertaTtd} alt="TTD peserta / keluarga" />
+                ) : null}
+                {data.pesertaNama ? <div className="bp-ttd-nama">{data.pesertaNama}</div> : null}
+              </td>
               <td className="bp-center">
                 {r.pelaksanaQr ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -173,8 +179,8 @@ export function BuktiPelayananDocument({ data }: { data: BuktiPelayananReport })
       <div className="bp-foot no-print">
         Sumber: SIMGOS (read-only) · Bukti Pelayanan{" "}
         {data.tersimpan ? "tersimpan di AuditTrail RS BOLTIM" : "prefill dari SIMRS (belum disimpan)"} ·{" "}
-        {data.rows.length} tindakan · Kolom &ldquo;TT &amp; Nama Dokter/Petugas&rdquo; = QR nama
-        (scan untuk membaca).
+        {data.rows.length} tindakan · Kolom &ldquo;TT &amp; Nama Peserta/Keluarga&rdquo; = tanda
+        tangan peserta · &ldquo;TT &amp; Nama Dokter/Petugas&rdquo; = QR nama (scan untuk membaca).
       </div>
     </article>
   );
@@ -240,6 +246,9 @@ const CSS = `
 /* QR nama petugas: vektor, dicetak tajam; latar putih sebagai quiet-zone tambahan. */
 .bp-qr { display: block; width: 11mm; height: 11mm; margin: 0 auto; background: #fff; }
 .bp-qr-a { width: 13mm; height: 13mm; }
+/* TT peserta/keluarga: gambar tinta hitam (transparan) ditempel di tiap baris. */
+.bp-ttd { display: block; max-width: 20mm; max-height: 8mm; margin: 0 auto; object-fit: contain; }
+.bp-ttd-nama { margin-top: .3mm; font-size: 6.5pt; line-height: 1.05; overflow-wrap: anywhere; }
 .bp-keluar { text-align: left; height: auto; padding: 1.5mm 1.9mm; }
 .bp-gap { height: 4mm; }
 

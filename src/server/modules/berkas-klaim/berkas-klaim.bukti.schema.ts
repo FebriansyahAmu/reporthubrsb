@@ -15,6 +15,10 @@ export const buktiPelayananFormSchema = z.object({
   penjamin: z.string().trim().max(50).default(""),
   noSep: z.string().trim().max(50).default(""),
   catatan: z.string().trim().max(2000).default(""),
+  /** Nama peserta/keluarga penandatangan (kolom TT & Nama Peserta/Keluarga). */
+  pesertaNama: z.string().trim().max(150).default(""),
+  /** Tanda tangan peserta/keluarga sebagai PNG data-URL (boleh kosong). */
+  pesertaTtd: z.string().max(2_000_000).default(""),
   tindakan: z.array(buktiTindakanRowSchema).max(200).default([]),
 });
 

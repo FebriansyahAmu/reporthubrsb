@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Field";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { cn } from "@/lib/cn";
 import type {
   BuktiPelayananContext,
@@ -29,6 +30,7 @@ function emptyForm(
   tanggalDefault: string,
   tindakan: BuktiTindakanRow[],
   dpjp: string,
+  pesertaNama: string,
 ): BuktiPelayananForm {
   return {
     tanggalPelayanan: tanggalDefault,
@@ -36,8 +38,15 @@ function emptyForm(
     penjamin: "BPJS",
     noSep: "",
     catatan: "",
+    pesertaNama,
+    pesertaTtd: "",
     tindakan,
   };
+}
+
+/** Lengkapi field TT untuk rekaman lama (sebelum fitur TTD peserta ada). */
+function normalizeForm(f: BuktiPelayananForm, patientName: string): BuktiPelayananForm {
+  return { ...f, pesertaNama: f.pesertaNama || patientName, pesertaTtd: f.pesertaTtd || "" };
 }
 
 export function BuktiPelayananModal({
@@ -74,8 +83,8 @@ export function BuktiPelayananModal({
         const ctx = json.data;
         setForm(
           ctx.saved
-            ? ctx.saved.data
-            : emptyForm(header.tanggalDefault, ctx.tindakanSimgos, ctx.dpjpSimgos),
+            ? normalizeForm(ctx.saved.data, header.nama)
+            : emptyForm(header.tanggalDefault, ctx.tindakanSimgos, ctx.dpjpSimgos, header.nama),
         );
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : "Terjadi kesalahan");
@@ -86,7 +95,7 @@ export function BuktiPelayananModal({
     return () => {
       alive = false;
     };
-  }, [open, nopen, header.tanggalDefault]);
+  }, [open, nopen, header.tanggalDefault, header.nama]);
 
   function patch(p: Partial<BuktiPelayananForm>) {
     setForm((f) => (f ? { ...f, ...p } : f));
@@ -287,6 +296,35 @@ export function BuktiPelayananModal({
               placeholder="Catatan tambahan untuk bukti pelayanan…"
               className="w-full rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
             />
+          </div>
+
+          {/* Tanda tangan peserta / keluarga */}
+          <div className="rounded-[var(--radius-md)] border border-border bg-surface-2/40 p-3">
+            <Label className="mb-0">Tanda tangan peserta / keluarga</Label>
+            <p className="mb-3 mt-0.5 text-[11px] text-fg-subtle">
+              Tanda tangan &amp; nama ini muncul di kolom &ldquo;TT &amp; Nama Peserta/Keluarga&rdquo;
+              pada <span className="font-medium text-fg-muted">setiap baris tindakan</span> saat
+              dicetak.
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="pesertaNama">Nama peserta / keluarga</Label>
+                <Input
+                  id="pesertaNama"
+                  value={form.pesertaNama}
+                  onChange={(e) => patch({ pesertaNama: e.target.value })}
+                  placeholder="Nama yang menandatangani"
+                />
+              </div>
+              <div>
+                <SignaturePad
+                  label="Tanda tangan"
+                  value={form.pesertaTtd}
+                  onChange={(v) => patch({ pesertaTtd: v })}
+                  context={header.nama}
+                />
+              </div>
+            </div>
           </div>
 
           {error && (

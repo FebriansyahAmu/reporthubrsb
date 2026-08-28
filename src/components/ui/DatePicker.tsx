@@ -61,7 +61,7 @@ const TRIGGER =
   "focus-visible:outline-none focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand-ring/40 " +
   "disabled:opacity-50 disabled:pointer-events-none";
 
-/** Grid kalender satu bulan dengan navigasi bulan & tahun. */
+/** Grid kalender satu bulan dengan pemilih hari / bulan / tahun. */
 function MonthCalendar({
   selected,
   onSelect,
@@ -78,6 +78,8 @@ function MonthCalendar({
     const base = selected ?? today;
     return new Date(base.getFullYear(), base.getMonth(), 1);
   });
+  // "days" = grid tanggal, "months" = pilih bulan, "years" = pilih tahun.
+  const [mode, setMode] = useState<"days" | "months" | "years">("days");
 
   const cells = useMemo(() => {
     const firstDow = view.getDay(); // 0=Min
@@ -91,57 +93,141 @@ function MonthCalendar({
 
   const shift = (months: number) =>
     setView((v) => new Date(v.getFullYear(), v.getMonth() + months, 1));
+  const shiftYear = (years: number) =>
+    setView((v) => new Date(v.getFullYear() + years, v.getMonth(), 1));
 
-  const outOfRange = (d: Date) =>
-    (min && d < new Date(min.getFullYear(), min.getMonth(), min.getDate())) ||
-    (max && d > new Date(max.getFullYear(), max.getMonth(), max.getDate()));
+  const dOnly = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const outOfRange = (d: Date) => (min && dOnly(d) < dOnly(min)) || (max && dOnly(d) > dOnly(max));
+  const monthOut = (y: number, m: number) =>
+    (min && new Date(y, m + 1, 0) < dOnly(min)) || (max && new Date(y, m, 1) > dOnly(max));
+  const yearOut = (y: number) =>
+    (min && new Date(y, 11, 31) < dOnly(min)) || (max && new Date(y, 0, 1) > dOnly(max));
+
+  const year = view.getFullYear();
+  const yearStart = Math.floor(year / 12) * 12;
+
+  const cellCls = (isSel: boolean, isCur: boolean, disabled: boolean | null | undefined) =>
+    cn(
+      "flex items-center justify-center rounded-[var(--radius-sm)] text-sm tabular-nums transition-colors",
+      disabled && "cursor-not-allowed text-fg-subtle/40",
+      !disabled && !isSel && "text-fg hover:bg-surface-2",
+      isSel && "bg-brand font-semibold text-brand-fg hover:bg-brand-hover",
+      !isSel && isCur && "font-semibold text-brand ring-1 ring-inset ring-brand/40",
+    );
+  const titleCls =
+    "rounded-[var(--radius-sm)] px-2 py-0.5 text-sm font-semibold text-fg tabular-nums transition-colors hover:bg-surface-2";
 
   return (
     <div className="w-[16.5rem] p-1.5">
+      {/* Header navigasi (berbeda per mode) */}
       <div className="mb-1.5 flex items-center justify-between">
-        <div className="flex items-center gap-0.5">
-          <NavBtn onClick={() => shift(-12)} label="Tahun sebelumnya"><ChevronsLeft className="size-4" /></NavBtn>
-          <NavBtn onClick={() => shift(-1)} label="Bulan sebelumnya"><ChevronLeft className="size-4" /></NavBtn>
-        </div>
-        <span className="text-sm font-semibold text-fg tabular-nums">
-          {MONTHS_LONG[view.getMonth()]} {view.getFullYear()}
-        </span>
-        <div className="flex items-center gap-0.5">
-          <NavBtn onClick={() => shift(1)} label="Bulan berikutnya"><ChevronRight className="size-4" /></NavBtn>
-          <NavBtn onClick={() => shift(12)} label="Tahun berikutnya"><ChevronsRight className="size-4" /></NavBtn>
-        </div>
+        {mode === "days" && (
+          <>
+            <div className="flex items-center gap-0.5">
+              <NavBtn onClick={() => shift(-12)} label="Tahun sebelumnya"><ChevronsLeft className="size-4" /></NavBtn>
+              <NavBtn onClick={() => shift(-1)} label="Bulan sebelumnya"><ChevronLeft className="size-4" /></NavBtn>
+            </div>
+            <button type="button" onClick={() => setMode("years")} className={titleCls}>
+              {MONTHS_LONG[view.getMonth()]} {year}
+            </button>
+            <div className="flex items-center gap-0.5">
+              <NavBtn onClick={() => shift(1)} label="Bulan berikutnya"><ChevronRight className="size-4" /></NavBtn>
+              <NavBtn onClick={() => shift(12)} label="Tahun berikutnya"><ChevronsRight className="size-4" /></NavBtn>
+            </div>
+          </>
+        )}
+        {mode === "months" && (
+          <>
+            <NavBtn onClick={() => shiftYear(-1)} label="Tahun sebelumnya"><ChevronLeft className="size-4" /></NavBtn>
+            <button type="button" onClick={() => setMode("years")} className={titleCls}>
+              {year}
+            </button>
+            <NavBtn onClick={() => shiftYear(1)} label="Tahun berikutnya"><ChevronRight className="size-4" /></NavBtn>
+          </>
+        )}
+        {mode === "years" && (
+          <>
+            <NavBtn onClick={() => shiftYear(-12)} label="12 tahun sebelumnya"><ChevronLeft className="size-4" /></NavBtn>
+            <span className="text-sm font-semibold text-fg tabular-nums">
+              {yearStart}–{yearStart + 11}
+            </span>
+            <NavBtn onClick={() => shiftYear(12)} label="12 tahun berikutnya"><ChevronRight className="size-4" /></NavBtn>
+          </>
+        )}
       </div>
 
-      <div className="grid grid-cols-7 gap-0.5">
-        {WEEKDAYS.map((w) => (
-          <div key={w} className="py-1 text-center text-[11px] font-medium text-fg-subtle">
-            {w}
-          </div>
-        ))}
-        {cells.map((d, i) => {
-          if (!d) return <div key={`b-${i}`} />;
-          const isSel = selected && sameYmd(d, selected);
-          const isToday = sameYmd(d, today);
-          const disabled = outOfRange(d);
-          return (
-            <button
-              key={toYmd(d)}
-              type="button"
-              disabled={disabled}
-              onClick={() => onSelect(d)}
-              className={cn(
-                "flex h-8 items-center justify-center rounded-[var(--radius-sm)] text-sm tabular-nums transition-colors",
-                disabled && "cursor-not-allowed text-fg-subtle/40",
-                !disabled && !isSel && "text-fg hover:bg-surface-2",
-                isSel && "bg-brand font-semibold text-brand-fg hover:bg-brand-hover",
-                !isSel && isToday && "font-semibold text-brand ring-1 ring-inset ring-brand/40",
-              )}
-            >
-              {d.getDate()}
-            </button>
-          );
-        })}
-      </div>
+      {/* Body per mode */}
+      {mode === "days" && (
+        <div className="grid grid-cols-7 gap-0.5">
+          {WEEKDAYS.map((w) => (
+            <div key={w} className="py-1 text-center text-[11px] font-medium text-fg-subtle">
+              {w}
+            </div>
+          ))}
+          {cells.map((d, i) => {
+            if (!d) return <div key={`b-${i}`} />;
+            return (
+              <button
+                key={toYmd(d)}
+                type="button"
+                disabled={outOfRange(d)}
+                onClick={() => onSelect(d)}
+                className={cn("h-8", cellCls(!!(selected && sameYmd(d, selected)), sameYmd(d, today), outOfRange(d)))}
+              >
+                {d.getDate()}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {mode === "months" && (
+        <div className="grid grid-cols-3 gap-1">
+          {MONTHS_SHORT.map((mLabel, m) => {
+            const disabled = monthOut(year, m);
+            const isSel = !!selected && selected.getFullYear() === year && selected.getMonth() === m;
+            const isCur = today.getFullYear() === year && today.getMonth() === m;
+            return (
+              <button
+                key={m}
+                type="button"
+                disabled={disabled}
+                onClick={() => {
+                  setView(new Date(year, m, 1));
+                  setMode("days");
+                }}
+                className={cn("h-9", cellCls(isSel, isCur, disabled))}
+              >
+                {mLabel}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {mode === "years" && (
+        <div className="grid grid-cols-3 gap-1">
+          {Array.from({ length: 12 }, (_, i) => yearStart + i).map((y) => {
+            const disabled = yearOut(y);
+            const isSel = !!selected && selected.getFullYear() === y;
+            const isCur = today.getFullYear() === y;
+            return (
+              <button
+                key={y}
+                type="button"
+                disabled={disabled}
+                onClick={() => {
+                  setView(new Date(y, view.getMonth(), 1));
+                  setMode("months");
+                }}
+                className={cn("h-9", cellCls(isSel, isCur, disabled))}
+              >
+                {y}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

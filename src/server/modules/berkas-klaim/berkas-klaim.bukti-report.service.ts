@@ -73,6 +73,10 @@ export type BuktiPelayananReport = {
   /** QR (SVG data-URI) meng-encode nama DPJP untuk kolom "TT Dokter" Tabel A. */
   dpjpQr: string;
   penjamin: string;
+  /** Nama peserta/keluarga penandatangan (kolom TT Peserta di tiap baris Tabel B). */
+  pesertaNama: string;
+  /** Tanda tangan peserta/keluarga (PNG data-URL); "" bila belum ditandatangani. */
+  pesertaTtd: string;
   /** Tabel B — semua tindakan 1:1. */
   rows: BuktiReportRow[];
   /** true bila dari Bukti tersimpan (bukan prefill SIMGOS mentah). */
@@ -148,6 +152,9 @@ export async function getBuktiPelayananReport(
     dpjp,
     dpjpQr: qrOf(dpjp),
     penjamin: saved?.data.penjamin?.trim() || "BPJS Kesehatan",
+    pesertaNama:
+      saved?.data.pesertaNama?.trim() || h.NAMA_PESERTA?.trim() || h.NAMA?.trim() || "",
+    pesertaTtd: saved?.data.pesertaTtd?.trim() || "",
     rows,
     tersimpan: !!saved,
     dicetakPada: new Date().toISOString(),

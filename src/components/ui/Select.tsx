@@ -7,6 +7,11 @@ import { Input } from "@/components/ui/Field";
 import { PopoverPanel } from "@/components/ui/Popover";
 
 export type SelectOption = { value: string; label: string };
+export type SelectGroup = { label: string; options: SelectOption[] };
+export type SelectOptions = SelectOption[] | string[] | SelectGroup[];
+
+/** Item render internal: header grup (non-interaktif) atau opsi (indeks ke flat). */
+type RenderItem = { kind: "header"; label: string } | { kind: "option"; index: number };
 
 const TRIGGER =
   "flex h-10 w-full items-center justify-between gap-2 rounded-[var(--radius-md)] border border-border " +
@@ -16,6 +21,31 @@ const TRIGGER =
 
 function toOptions(options: SelectOption[] | string[]): SelectOption[] {
   return options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
+}
+
+function isGroups(o: SelectOptions): o is SelectGroup[] {
+  return o.length > 0 && typeof o[0] === "object" && o[0] !== null && "options" in (o[0] as object);
+}
+
+/**
+ * Ratakan opsi (flat = untuk lookup nilai & navigasi keyboard) sekaligus susun
+ * daftar render (dengan header grup). Header dgn label kosong tidak dirender.
+ */
+function normalize(options: SelectOptions): { flat: SelectOption[]; render: RenderItem[] } {
+  if (isGroups(options)) {
+    const flat: SelectOption[] = [];
+    const render: RenderItem[] = [];
+    for (const g of options) {
+      if (g.label) render.push({ kind: "header", label: g.label });
+      for (const o of g.options) {
+        render.push({ kind: "option", index: flat.length });
+        flat.push(o);
+      }
+    }
+    return { flat, render };
+  }
+  const flat = toOptions(options);
+  return { flat, render: flat.map((_, i) => ({ kind: "option", index: i })) };
 }
 
 /**
@@ -34,14 +64,14 @@ export function Select({
 }: {
   value: string;
   onChange: (v: string) => void;
-  options: SelectOption[] | string[];
+  options: SelectOptions;
   placeholder?: string;
   disabled?: boolean;
   id?: string;
   className?: string;
   invalid?: boolean;
 }) {
-  const opts = useMemo(() => toOptions(options), [options]);
+  const { flat: opts, render } = useMemo(() => normalize(options), [options]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
@@ -123,7 +153,20 @@ export function Select({
           onKeyDown={onListKey}
           className="max-h-[16rem] min-w-[9rem] py-0.5 outline-none"
         >
-          {opts.map((o, i) => {
+          {render.map((item, ri) => {
+            if (item.kind === "header") {
+              return (
+                <li
+                  key={`h-${ri}`}
+                  role="presentation"
+                  className="px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-fg-subtle first:pt-1"
+                >
+                  {item.label}
+                </li>
+              );
+            }
+            const i = item.index;
+            const o = opts[i];
             const isSel = o.value === value;
             const isActive = i === active;
             return (
