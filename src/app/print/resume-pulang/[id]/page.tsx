@@ -27,10 +27,10 @@ export default async function ResumePulangPrintPage({
           Data untuk ID ini tidak tersedia.
         </p>
         <Link
-          href="/laporan/resume-pulang"
+          href={`/berkas-klaim/rm/${id}`}
           className="mt-6 inline-flex h-9 items-center rounded-md border border-border bg-surface px-4 text-sm font-medium text-fg transition-colors hover:bg-surface-2"
         >
-          Kembali ke daftar
+          Kembali ke Berkas Klaim
         </Link>
       </div>
     );
@@ -43,7 +43,7 @@ export default async function ResumePulangPrintPage({
       <PrintToolbar
         title={`Resume Pulang · ${dto.pasien.nama}`}
         subtitle={dto.pasien.norm ?? undefined}
-        backHref="/laporan/resume-pulang"
+        backHref={`/berkas-klaim/rm/${id}`}
       />
       <ResumePulangDocument dto={dto} dpjpQr={dpjpQr} />
     </>
