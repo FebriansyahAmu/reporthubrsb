@@ -10,7 +10,6 @@ import {
   Settings,
   ShieldCheck,
   Stethoscope,
-  Users,
   UsersRound,
   type LucideIcon,
 } from "lucide-react";
@@ -68,13 +67,6 @@ export const WORKSPACES: Workspace[] = [
     icon: Activity,
     description: "Kunjungan pasien, kelengkapan diagnosa & resume",
     items: [
-      {
-        href: "/kunjungan",
-        label: "Kunjungan Pasien",
-        icon: Users,
-        description: "Daftar kunjungan pasien",
-        moduleKey: "kunjungan",
-      },
       {
         href: "/monitoring/pelayanan/kunjungan",
         label: "Kunjungan & Lama Rawat",

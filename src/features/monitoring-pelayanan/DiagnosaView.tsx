@@ -14,7 +14,9 @@ import {
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { Input, InputWithIcon, Label } from "@/components/ui/Field";
+import { InputWithIcon, Label } from "@/components/ui/Field";
+import { DatePicker } from "@/components/ui/DatePicker";
+import { Select, type SelectGroup, type SelectOption } from "@/components/ui/Select";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Pagination } from "@/components/ui/Pagination";
@@ -35,6 +37,11 @@ import type { RuanganOption } from "@/server/modules/kunjungan/kunjungan.types";
 
 const KATEGORI: KategoriKunjungan[] = ["Rawat Inap", "Rawat Jalan Klinik", "IGD"];
 const PAGE_SIZE = 12;
+
+const KATEGORI_OPTIONS: SelectOption[] = [
+  { value: "Semua", label: "Semua kategori" },
+  ...KATEGORI.map((k) => ({ value: k, label: k })),
+];
 
 type StatusFilter = "Semua" | DiagnosaStatus;
 
@@ -127,6 +134,21 @@ export function DiagnosaView({
     return g;
   }, [ruanganOptions]);
 
+  // Opsi ruangan berkelompok untuk <Select>: grup berlabel kosong = "Semua
+  // ruangan" (tanpa header), lalu grup per kategori (RI / RJ / IGD).
+  const ruanganGroups = useMemo<SelectGroup[]>(() => {
+    const groups: SelectGroup[] = [
+      { label: "", options: [{ value: "", label: "Semua ruangan" }] },
+    ];
+    for (const k of KATEGORI) {
+      const opts = ruanganByKategori[k];
+      if (opts.length) {
+        groups.push({ label: k, options: opts.map((r) => ({ value: r.id, label: r.nama })) });
+      }
+    }
+    return groups;
+  }, [ruanganByKategori]);
+
   const statusTabs: { key: StatusFilter; label: string }[] = [
     { key: "Semua", label: "Semua" },
     ...DIAGNOSA_STATUS_ORDER.map((s) => ({ key: s as StatusFilter, label: DIAGNOSA_STATUS_META[s].label })),
@@ -166,11 +188,11 @@ export function DiagnosaView({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <Label htmlFor="from">Dari tanggal</Label>
-            <Input id="from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
+            <DatePicker id="from" value={from} max={to} clearable={false} onChange={setFrom} />
           </div>
           <div>
             <Label htmlFor="to">Sampai tanggal</Label>
-            <Input id="to" type="date" value={to} max={today} min={from} onChange={(e) => setTo(e.target.value)} />
+            <DatePicker id="to" value={to} min={from} max={today} clearable={false} onChange={setTo} />
           </div>
           <div>
             <Label htmlFor="cari">Cari</Label>
@@ -184,41 +206,22 @@ export function DiagnosaView({
           </div>
           <div>
             <Label htmlFor="kategori">Kategori</Label>
-            <select
+            <Select
               id="kategori"
               value={kategori}
-              onChange={(e) => setKategori(e.target.value as "Semua" | KategoriKunjungan)}
-              className="h-10 w-full rounded-[var(--radius-md)] border border-border bg-surface px-3 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-            >
-              <option value="Semua">Semua kategori</option>
-              {KATEGORI.map((k) => (
-                <option key={k} value={k}>
-                  {k}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setKategori(v as "Semua" | KategoriKunjungan)}
+              options={KATEGORI_OPTIONS}
+            />
           </div>
           <div className="lg:col-span-2">
             <Label htmlFor="ruangan">Ruangan</Label>
-            <select
+            <Select
               id="ruangan"
               value={ruanganId}
-              onChange={(e) => setRuanganId(e.target.value)}
-              className="h-10 w-full rounded-[var(--radius-md)] border border-border bg-surface px-3 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-            >
-              <option value="">Semua ruangan</option>
-              {KATEGORI.map((k) =>
-                ruanganByKategori[k].length ? (
-                  <optgroup key={k} label={k}>
-                    {ruanganByKategori[k].map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.nama}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null,
-              )}
-            </select>
+              onChange={setRuanganId}
+              options={ruanganGroups}
+              placeholder="Semua ruangan"
+            />
           </div>
         </div>
 

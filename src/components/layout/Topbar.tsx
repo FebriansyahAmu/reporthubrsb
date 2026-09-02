@@ -1,7 +1,6 @@
 "use client";
 
 import { Menu } from "lucide-react";
-import { ThemeToggle } from "./ThemeToggle";
 import { UserMenu, type MenuUser } from "./UserMenu";
 import { ModuleSwitcher } from "./ModuleSwitcher";
 import { AdminMenu } from "./AdminMenu";
@@ -31,7 +30,6 @@ export function Topbar({
 
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
         <AdminMenu allowedModules={allowedModules} />
-        <ThemeToggle />
         <div className="hidden h-6 w-px bg-border sm:block" />
         <UserMenu user={user} />
       </div>

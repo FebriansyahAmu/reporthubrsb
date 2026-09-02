@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
    * TTD jarak jauh) — tanpa ini, dari IP LAN halaman ter-render tapi JS client
    * tak jalan (tidak ter-hydrate). Samakan dengan SIGN_PUBLIC_ORIGIN di .env.
    */
-  allowedDevOrigins: ["10.202.100.127"],
+  allowedDevOrigins: ["10.202.100.127", "10.10.102.20"],
 };
 
 export default nextConfig;

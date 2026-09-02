@@ -1,9 +1,8 @@
-import { Activity } from "lucide-react";
-
 /** Kop surat instansi + judul dokumen + identitas nomor di kanan. */
 export function ReportHeader({
   instansi,
   title,
+  subtitle,
   rightLines,
 }: {
   instansi: {
@@ -16,6 +15,8 @@ export function ReportHeader({
     website: string | null;
   };
   title: string;
+  /** Teks kecil di bawah judul (mis. terjemahan/keterangan). Dirender miring. */
+  subtitle?: string;
   rightLines?: { label: string; value: string }[];
 }) {
   const kontak = [
@@ -29,9 +30,12 @@ export function ReportHeader({
     <header>
       <div className="flex items-start justify-between gap-4 border-b-[3px] border-double border-neutral-800 pb-3">
         <div className="flex items-center gap-3">
-          <div className="flex size-14 items-center justify-center rounded-full border-2 border-neutral-800 text-neutral-800">
-            <Activity className="size-8" strokeWidth={2} />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo/logoboltim.png"
+            alt="Lambang Kabupaten Bolaang Mongondow Timur"
+            className="h-16 w-auto shrink-0 object-contain"
+          />
           <div>
             <h1 className="text-lg font-bold uppercase leading-tight text-neutral-900">
               {instansi.nama}
@@ -59,6 +63,9 @@ export function ReportHeader({
       <h2 className="mt-3 text-center text-base font-bold uppercase tracking-wide text-neutral-900">
         {title}
       </h2>
+      {subtitle && (
+        <p className="text-center text-sm italic text-neutral-700">{subtitle}</p>
+      )}
     </header>
   );
 }

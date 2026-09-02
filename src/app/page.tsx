@@ -21,11 +21,11 @@ export default async function LoginPage({
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
       {/* Panel brand (desktop) */}
-      <section className="relative hidden overflow-hidden bg-linear-to-br from-[#47403d] via-[#1a1919] to-[#111111] p-12 text-white lg:flex lg:flex-col lg:justify-between">
-        {/* Ornamen halus */}
+      <section className="relative hidden overflow-hidden bg-linear-to-br from-[#0e3f66] via-[#0b3658] to-[#072338] p-12 text-white lg:flex lg:flex-col lg:justify-between">
+        {/* Ornamen halus — glow biru pelabuhan */}
         <div
           aria-hidden
-          className="pointer-events-none absolute -right-24 -top-24 size-96 rounded-full bg-[#e07b5b]/25 blur-3xl"
+          className="pointer-events-none absolute -right-24 -top-24 size-96 rounded-full bg-[#4e9ad9]/30 blur-3xl"
         />
         <div
           aria-hidden

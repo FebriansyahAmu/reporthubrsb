@@ -15,6 +15,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { InputWithIcon, Label } from "@/components/ui/Field";
+import { Select, type SelectGroup, type SelectOption } from "@/components/ui/Select";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Pagination } from "@/components/ui/Pagination";
@@ -35,6 +36,11 @@ import type { RuanganOption } from "@/server/modules/kunjungan/kunjungan.types";
 
 const KATEGORI: KategoriKunjungan[] = ["Rawat Inap", "Rawat Jalan Klinik", "IGD"];
 const PAGE_SIZE = 12;
+
+const KATEGORI_OPTIONS: SelectOption[] = [
+  { value: "Semua", label: "Semua kategori" },
+  ...KATEGORI.map((k) => ({ value: k, label: k })),
+];
 
 const BUCKET_META: Record<AgingBucket, { label: string; tone: "warning" | "danger" }> =
   Object.fromEntries(AGING_BUCKETS.map((b) => [b.key, { label: b.label, tone: b.tone }])) as Record<
@@ -97,6 +103,21 @@ export function BelumFinalView({ ruanganOptions }: { ruanganOptions: RuanganOpti
     return g;
   }, [ruanganOptions]);
 
+  // Opsi ruangan berkelompok untuk <Select>: grup berlabel kosong = "Semua
+  // ruangan" (tanpa header), lalu grup per kategori (RI / RJ / IGD).
+  const ruanganGroups = useMemo<SelectGroup[]>(() => {
+    const groups: SelectGroup[] = [
+      { label: "", options: [{ value: "", label: "Semua ruangan" }] },
+    ];
+    for (const k of KATEGORI) {
+      const opts = ruanganByKategori[k];
+      if (opts.length) {
+        groups.push({ label: k, options: opts.map((r) => ({ value: r.id, label: r.nama })) });
+      }
+    }
+    return groups;
+  }, [ruanganByKategori]);
+
   const bucketTabs: { key: BucketFilter; label: string }[] = [
     { key: "Semua", label: "Semua" },
     ...AGING_BUCKETS.map((b) => ({ key: b.key as BucketFilter, label: b.label })),
@@ -136,41 +157,22 @@ export function BelumFinalView({ ruanganOptions }: { ruanganOptions: RuanganOpti
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <Label htmlFor="kategori">Kategori</Label>
-            <select
+            <Select
               id="kategori"
               value={kategori}
-              onChange={(e) => setKategori(e.target.value as "Semua" | KategoriKunjungan)}
-              className="h-10 w-full rounded-[var(--radius-md)] border border-border bg-surface px-3 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-            >
-              <option value="Semua">Semua kategori</option>
-              {KATEGORI.map((k) => (
-                <option key={k} value={k}>
-                  {k}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setKategori(v as "Semua" | KategoriKunjungan)}
+              options={KATEGORI_OPTIONS}
+            />
           </div>
           <div>
             <Label htmlFor="ruangan">Ruangan</Label>
-            <select
+            <Select
               id="ruangan"
               value={ruanganId}
-              onChange={(e) => setRuanganId(e.target.value)}
-              className="h-10 w-full rounded-[var(--radius-md)] border border-border bg-surface px-3 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-            >
-              <option value="">Semua ruangan</option>
-              {KATEGORI.map((k) =>
-                ruanganByKategori[k].length ? (
-                  <optgroup key={k} label={k}>
-                    {ruanganByKategori[k].map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.nama}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null,
-              )}
-            </select>
+              onChange={setRuanganId}
+              options={ruanganGroups}
+              placeholder="Semua ruangan"
+            />
           </div>
           <div>
             <Label htmlFor="cari">Cari</Label>

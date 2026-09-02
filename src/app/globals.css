@@ -1,128 +1,65 @@
 @import "tailwindcss";
 
-/* Dark mode dipicu oleh atribut data-theme pada <html> (toggle manual di Topbar).
-   Semantik warna memakai CSS variable → komponen tidak perlu class dark:. */
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+/* Aplikasi hanya memakai tema TERANG. Dark mode dihapus (2026-09-02) — tidak ada
+   toggle, tidak ada blok gelap, tidak mengikuti prefers-color-scheme. */
 
 /* =========================================================================
-   DESIGN TOKENS — Warm Charcoal + Dry Peach.
-   Netral hangat (cokelat-arang) dengan brand peach/terracotta. Enam anchor
-   pemberi user: #e07b5b(Dry Peach) #77615a(Raisin) #47403d(Wild Truffle)
-   #2b2726(Bakora Grey) #1a1919(Thamar Black) #111111(Dreamless Sleep).
-   Palet ini condong GELAP → di tema gelap anchor dipakai langsung (surface/
-   fg/brand); di tema terang netral ivory/sand diturunkan & brand didalam-kan
-   ke terracotta agar teks tetap kontras. Accent teal = komplemen modern untuk
-   peach; status (hijau/amber/merah) tetap fungsional.
+   DESIGN TOKENS — Maritime Monochrome (bahasa "Cord").
+   Kanvas nyaris putih, navy tengah-malam (Midnight Harbor #0b3658) memikul
+   seluruh bobot teks, dan SATU aksen biru pelabuhan cerah (Signal Blue
+   #4e9ad9) untuk logo, tombol utama & state aktif. Palet mentah:
+   #0b3658(Midnight Harbor) #4e9ad9(Signal Blue) #486984(Slate Channel)
+   #688dac(Pale Steel) #dde7ee(Sea Fog) #e6f1fa(Ice Tint) #c8d8e4(Light Mist)
+   #ffffff(Canvas White) #42b3b1(Active Teal).
+   Catatan kontras: --brand didalam-kan sedikit ke #2b76b6 agar teks putih
+   tombol lolos WCAG AA; Signal Blue cerah dipakai sebagai --brand-ring
+   (glow fokus/aktif), logo, dan brand tema gelap. Status tetap fungsional.
    ========================================================================= */
 :root {
-  --bg: #f6f1ec; /* ivory hangat — page */
-  --surface: #fdfaf6; /* near-white hangat — kartu */
-  --surface-2: #efe7df; /* sand — isian/inset */
-  --border: #e7ded4;
-  --border-strong: #d6c9bc;
-  --fg: #1a1919; /* Thamar Black — teks utama (anchor) */
-  --fg-muted: #77615a; /* Raisin (anchor) */
-  --fg-subtle: #8f7d75;
+  --bg: #f2f7fb; /* kanvas ice nyaris putih — page */
+  --surface: #ffffff; /* Canvas White — kartu mengambang */
+  --surface-2: #e6f1fa; /* Ice Tint — isian/inset/hover */
+  --border: #dde7ee; /* Sea Fog — garis rambut utama */
+  --border-strong: #c8d8e4; /* Light Mist */
+  --fg: #0b3658; /* Midnight Harbor — teks utama */
+  --fg-muted: #486984; /* Slate Channel — teks sekunder */
+  --fg-subtle: #688dac; /* Pale Steel — meta/tersier */
 
-  --brand: #bf5836; /* terracotta — peach didalam-kan agar kontras di terang */
-  --brand-hover: #a5482b;
+  --brand: #2b76b6; /* biru pelabuhan (AA di teks putih) — aksi utama */
+  --brand-hover: #246aa6;
   --brand-fg: #ffffff;
-  --brand-soft: #f8e7df;
-  --brand-soft-fg: #a9482a;
-  --brand-ring: #e8b6a3;
+  --brand-soft: #e6f1fa; /* Ice Tint — latar state aktif/chip */
+  --brand-soft-fg: #1f5f96;
+  --brand-ring: #4e9ad9; /* Signal Blue cerah — ring fokus & aksen aktif */
 
-  --accent: #237a70; /* teal — komplemen peach, kategori/link (hemat) */
-  --accent-soft: #e2f1ef;
+  --accent: #178079; /* Active Teal didalam-kan agar terbaca sbg link/kategori */
+  --accent-soft: #dcf1f0;
 
-  --success: #37834a;
-  --success-soft: #e8f3e6;
+  --success: #2f8a4e;
+  --success-soft: #e3f3e8;
   --warning: #a56c14;
-  --warning-soft: #f7ecd6;
+  --warning-soft: #f6ecd6;
   --danger: #cf4436;
   --danger-soft: #fbe9e6;
 
   /* Chart palette — kategorikal CVD-safe (divalidasi). Warna mengikuti ENTITAS
-     (RJ=teal, IGD=terracotta, RI=gold), urutan tetap — bukan peringkat. */
+     (RJ=teal, IGD=terracotta, RI=gold), urutan tetap — bukan peringkat/brand.
+     Netral grid/axis/track diselaraskan ke keluarga navy dingin. */
   --chart-rj: #0b8f80; /* Rawat Jalan */
   --chart-igd: #bf5836; /* IGD */
   --chart-ri: #b07d10; /* Rawat Inap */
-  --chart-grid: rgba(26, 25, 25, 0.07);
-  --chart-axis: #8f7d75;
-  --chart-track: #efe7df;
+  --chart-grid: rgba(11, 54, 88, 0.08);
+  --chart-axis: #688dac;
+  --chart-track: #e6f1fa;
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px; /* kartu — sesuai bahasa Cord (20px) */
 
-  --shadow-xs: 0 1px 2px rgba(26, 25, 25, 0.06);
-  --shadow-sm: 0 1px 2px rgba(26, 25, 25, 0.07), 0 1px 3px rgba(26, 25, 25, 0.10);
-  --shadow-md: 0 2px 4px rgba(26, 25, 25, 0.07), 0 10px 28px rgba(26, 25, 25, 0.14);
-}
-
-/* Ikuti preferensi OS bila user belum memilih tema manual */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #111111; /* Dreamless Sleep — page (anchor) */
-    --surface: #1a1919; /* Thamar Black — kartu (anchor) */
-    --surface-2: #2b2726; /* Bakora Grey — elevasi (anchor) */
-    --border: #332e2c;
-    --border-strong: #47403d; /* Wild Truffle (anchor) */
-    --fg: #f4ede7; /* ivory hangat */
-    --fg-muted: #b3a49b;
-    --fg-subtle: #8a786f; /* Raisin dicerahkan */
-    --brand: #e07b5b; /* Dry Peach — brand (anchor) */
-    --brand-hover: #e88f72;
-    --brand-fg: #1a1010;
-    --brand-soft: #2f211b;
-    --brand-soft-fg: #f0a488;
-    --brand-ring: #8a4b36;
-    --accent: #5ec4b8;
-    --accent-soft: #123430;
-    --success: #6cc26a;
-    --success-soft: #16281a;
-    --warning: #e2a63e;
-    --warning-soft: #2c2109;
-    --danger: #f2685f;
-    --danger-soft: #331714;
-    --chart-rj: #1f9a8b;
-    --chart-igd: #d97350;
-    --chart-ri: #b98a24;
-    --chart-grid: rgba(244, 237, 231, 0.1);
-    --chart-axis: #8a786f;
-    --chart-track: #2b2726;
-  }
-}
-
-/* Pilihan tema manual */
-:root[data-theme="dark"] {
-  --bg: #111111;
-  --surface: #1a1919;
-  --surface-2: #2b2726;
-  --border: #332e2c;
-  --border-strong: #47403d;
-  --fg: #f4ede7;
-  --fg-muted: #b3a49b;
-  --fg-subtle: #8a786f;
-  --brand: #e07b5b;
-  --brand-hover: #e88f72;
-  --brand-fg: #1a1010;
-  --brand-soft: #2f211b;
-  --brand-soft-fg: #f0a488;
-  --brand-ring: #8a4b36;
-  --accent: #5ec4b8;
-  --accent-soft: #123430;
-  --success: #6cc26a;
-  --success-soft: #16281a;
-  --warning: #e2a63e;
-  --warning-soft: #2c2109;
-  --danger: #f2685f;
-  --danger-soft: #331714;
-  --chart-rj: #1f9a8b;
-  --chart-igd: #d97350;
-  --chart-ri: #b98a24;
-  --chart-grid: rgba(244, 237, 231, 0.1);
-  --chart-axis: #8a786f;
-  --chart-track: #2b2726;
+  /* Bayangan bernada navy (Midnight Harbor) — kartu mengambang, bukan bergaris. */
+  --shadow-xs: 0 1px 2px rgba(11, 54, 88, 0.06);
+  --shadow-sm: 0 1px 2px rgba(11, 54, 88, 0.06), 0 2px 8px rgba(11, 54, 88, 0.08);
+  --shadow-md: 0 4px 12px rgba(11, 54, 88, 0.06), 0 16px 48px rgba(11, 54, 88, 0.12);
 }
 
 /* =========================================================================
@@ -166,7 +103,7 @@
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
 
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-figtree);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -176,7 +113,7 @@
 }
 
 html {
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
 body {

@@ -41,6 +41,7 @@ export function ResumePulangDocument({
       <ReportHeader
         instansi={dto.instansi}
         title="Resume Pulang"
+        subtitle="(Discharge Planning)"
         rightLines={[
           { label: "No. RM", value: pas.norm ?? "—" },
           ...(p.nopen ? [{ label: "No. Pendaftaran", value: p.nopen }] : []),
