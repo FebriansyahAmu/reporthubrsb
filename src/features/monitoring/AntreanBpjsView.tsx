@@ -18,7 +18,9 @@ import {
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { Input, InputWithIcon, Label, Select } from "@/components/ui/Field";
+import { InputWithIcon, Label } from "@/components/ui/Field";
+import { DatePicker } from "@/components/ui/DatePicker";
+import { Select, type SelectOption } from "@/components/ui/Select";
 import { StatCard } from "@/components/ui/StatCard";
 import { TableSkeleton } from "@/components/ui/Skeleton";
 import { Pagination } from "@/components/ui/Pagination";
@@ -43,6 +45,13 @@ const STATUS_TONE: Record<AntreanStatus, "success" | "accent" | "danger"> = {
   BERLANGSUNG: "accent",
   TERLAMBAT: "danger",
 };
+
+const STATUS_OPTIONS: SelectOption[] = [
+  { value: "ALL", label: "Semua status" },
+  { value: "BERLANGSUNG", label: "Berlangsung" },
+  { value: "TERLAMBAT", label: "Terlambat" },
+  { value: "SELESAI", label: "Selesai" },
+];
 
 type AntreanFilterState = {
   tanggal: string;
@@ -102,7 +111,7 @@ export function AntreanBpjsView() {
 
   const meta = result?.meta ?? null;
   const summary = result?.summary ?? null;
-  const poliOptions = result?.poliOptions ?? [];
+  const poliOptions = useMemo(() => result?.poliOptions ?? [], [result]);
   const updatedAt = result?.updatedAt ?? null;
 
   // Terapkan koreksi waktu (override) ke data yang ditampilkan.
@@ -110,6 +119,15 @@ export function AntreanBpjsView() {
     () => (result?.data ?? []).map((a) => applyOverrides(a, overrides)),
     [result, overrides],
   );
+
+  // Opsi poli untuk <Select> ter-style: "Semua poli" + poli terpilih (bila di
+  // luar daftar) + daftar poli dari hasil.
+  const poliSelectOptions = useMemo<SelectOption[]>(() => {
+    const opts: SelectOption[] = [{ value: "ALL", label: "Semua poli" }];
+    if (poli !== "ALL" && !poliOptions.includes(poli)) opts.push({ value: poli, label: poli });
+    for (const p of poliOptions) opts.push({ value: p, label: p });
+    return opts;
+  }, [poli, poliOptions]);
 
   // Reset ke halaman 1 (dan tutup baris) saat filter selain page berubah — pola render-phase.
   const filterKey = `${tanggal}|${search}|${poli}|${status}`;
@@ -193,12 +211,12 @@ export function AntreanBpjsView() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div>
             <Label htmlFor="tanggal">Tanggal</Label>
-            <Input
+            <DatePicker
               id="tanggal"
-              type="date"
               value={tanggal}
               max={today}
-              onChange={(e) => setTanggal(e.target.value)}
+              clearable={false}
+              onChange={setTanggal}
             />
           </div>
           <div className="lg:col-span-2">
@@ -213,24 +231,16 @@ export function AntreanBpjsView() {
           </div>
           <div>
             <Label htmlFor="poli">Poli</Label>
-            <Select id="poli" value={poli} onChange={(e) => setPoli(e.target.value)}>
-              <option value="ALL">Semua poli</option>
-              {poli !== "ALL" && !poliOptions.includes(poli) && (
-                <option value={poli}>{poli}</option>
-              )}
-              {poliOptions.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </Select>
+            <Select id="poli" value={poli} onChange={setPoli} options={poliSelectOptions} />
           </div>
           <div>
             <Label htmlFor="status">Status</Label>
-            <Select id="status" value={status} onChange={(e) => setStatus(e.target.value as AntreanStatus | "ALL")}>
-              <option value="ALL">Semua status</option>
-              <option value="BERLANGSUNG">Berlangsung</option>
-              <option value="TERLAMBAT">Terlambat</option>
-              <option value="SELESAI">Selesai</option>
-            </Select>
+            <Select
+              id="status"
+              value={status}
+              onChange={(v) => setStatus(v as AntreanStatus | "ALL")}
+              options={STATUS_OPTIONS}
+            />
           </div>
         </div>
 

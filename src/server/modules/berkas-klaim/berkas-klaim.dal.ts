@@ -270,3 +270,102 @@ export async function queryDpjpByNopen(nopen: string): Promise<string | null> {
   const d = rows[0]?.DPJP?.trim();
   return d ? d : null;
 }
+
+/* ============================================================================
+   TAGIHAN — total & rincian biaya episode (READ-ONLY).
+   `pembayaran.tagihan.ID` = NOPEN (terbukti universal). Header memuat TOTAL +
+   rincian per-komponen biaya (gaya INA-CBG). Item detail dari
+   `pembayaran.rincian_tagihan` (polimorfik per JENIS): 1&3 = tindakan
+   (`layanan.tindakan_medis`→`master.tindakan`), 4 = farmasi
+   (`layanan.farmasi`→`inventory.barang`), 2 = konsultasi (`pendaftaran.kunjungan`).
+   TOTAL header = SUM(JUMLAH*TARIF-DISKON) seluruh rincian (terverifikasi).
+   ============================================================================ */
+
+/** Komponen biaya di header `pembayaran.tagihan` → label tampil. Urutan = tampilan. */
+export const TAGIHAN_KATEGORI: { col: string; label: string }[] = [
+  { col: "AKOMODASI", label: "Akomodasi / Kamar" },
+  { col: "AKOMODASI_INTENSIF", label: "Akomodasi Intensif" },
+  { col: "KONSULTASI", label: "Konsultasi" },
+  { col: "TENAGA_AHLI", label: "Tenaga Ahli" },
+  { col: "KEPERAWATAN", label: "Keperawatan" },
+  { col: "PROSEDUR_NON_BEDAH", label: "Prosedur Non-Bedah" },
+  { col: "PROSEDUR_BEDAH", label: "Prosedur Bedah" },
+  { col: "PENUNJANG", label: "Penunjang Diagnostik" },
+  { col: "RADIOLOGI", label: "Radiologi" },
+  { col: "LABORATORIUM", label: "Laboratorium" },
+  { col: "BANK_DARAH", label: "Pelayanan Darah" },
+  { col: "REHAB_MEDIK", label: "Rehabilitasi Medik" },
+  { col: "OBAT", label: "Obat" },
+  { col: "OBAT_KRONIS", label: "Obat Kronis" },
+  { col: "OBAT_KEMOTERAPI", label: "Obat Kemoterapi" },
+  { col: "ALKES", label: "Alkes" },
+  { col: "BMHP", label: "BMHP" },
+  { col: "SEWA_ALAT", label: "Sewa Alat" },
+];
+
+/** Header tagihan: ID (=NOPEN), tanggal, total, + kolom komponen biaya. */
+export type TagihanHeaderRow = {
+  ID: string;
+  TANGGAL: Date | string | null;
+  TOTAL: string | number;
+} & Record<string, string | number | null | Date>;
+
+/** Header `pembayaran.tagihan` untuk satu episode (ID = NOPEN). Null bila belum ada tagihan. */
+export async function queryTagihanHeader(nopen: string): Promise<TagihanHeaderRow | null> {
+  const cols = TAGIHAN_KATEGORI.map((k) => `t.${k.col}`).join(", ");
+  const sql = `
+    SELECT t.ID, t.TANGGAL, t.TOTAL, ${cols}
+    FROM ${SIMGOS_DB.PEMBAYARAN}.tagihan t
+    WHERE t.ID = ? AND t.STATUS = 1
+    LIMIT 1`;
+  const rows = await getSimgos().$queryRawUnsafe<TagihanHeaderRow[]>(sql, nopen);
+  return rows[0] ?? null;
+}
+
+/** Satu baris rincian item tagihan (nama sudah ter-resolve per JENIS). */
+export type RincianTagihanRow = {
+  JENIS: number | string;
+  NAMA: string | null;
+  QTY: string | number;
+  TARIF: string | number;
+  DISKON: string | number;
+  SUBTOTAL: string | number;
+  TGL: Date | string | null;
+};
+
+/**
+ * Rincian item `pembayaran.rincian_tagihan` untuk satu episode (TAGIHAN = NOPEN),
+ * READ-ONLY. Nama di-resolve via COALESCE tiga jalur JENIS; tanggal memakai
+ * tanggal layanan asal (bukan timestamp baris rincian).
+ */
+export async function queryRincianTagihan(nopen: string): Promise<RincianTagihanRow[]> {
+  const B = SIMGOS_DB.PEMBAYARAN;
+  const L = SIMGOS_DB.LAYANAN;
+  const M = SIMGOS_DB.MASTER;
+  const P = SIMGOS_DB.PENDAFTARAN;
+  const INV = SIMGOS_DB.INVENTORY;
+  const sql = `
+    SELECT rt.JENIS,
+           COALESCE(
+             mt.NAMA,
+             barang.NAMA,
+             CASE WHEN rt.JENIS = 2 THEN CONCAT('Konsultasi', COALESCE(CONCAT(' - ', rr.DESKRIPSI), '')) END,
+             CONCAT('(Jenis ', rt.JENIS, ')')
+           ) AS NAMA,
+           rt.JUMLAH AS QTY,
+           rt.TARIF,
+           rt.DISKON,
+           ROUND(rt.JUMLAH * rt.TARIF - rt.DISKON, 2) AS SUBTOTAL,
+           DATE(COALESCE(tm.TANGGAL, lf.TANGGAL, kj.MASUK)) AS TGL
+    FROM ${B}.rincian_tagihan rt
+    LEFT JOIN ${L}.tindakan_medis tm ON tm.ID = rt.REF_ID AND rt.JENIS IN (1, 3)
+    LEFT JOIN ${M}.tindakan mt       ON mt.ID = tm.TINDAKAN
+    LEFT JOIN ${L}.farmasi lf        ON lf.ID = rt.REF_ID AND rt.JENIS = 4
+    LEFT JOIN ${INV}.barang barang   ON barang.ID = lf.FARMASI
+    LEFT JOIN ${P}.kunjungan kj      ON kj.NOMOR = rt.REF_ID AND rt.JENIS = 2
+    LEFT JOIN ${M}.ruangan rr        ON rr.ID = kj.RUANGAN
+    WHERE rt.TAGIHAN = ? AND rt.STATUS = 1
+    ORDER BY rt.JENIS, TGL, NAMA
+    LIMIT 500`;
+  return getSimgos().$queryRawUnsafe<RincianTagihanRow[]>(sql, nopen);
+}

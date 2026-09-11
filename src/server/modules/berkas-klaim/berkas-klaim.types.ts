@@ -118,3 +118,37 @@ export type BerkasDetail = {
   turunan: TurunanLayananItem[];
   dokumen: DokumenBerkas[];
 };
+
+// ---------------------------------------------------------------------------
+// Tagihan — total & rincian biaya episode (READ-ONLY dari pembayaran.tagihan).
+// ---------------------------------------------------------------------------
+
+/** Satu komponen biaya (gaya INA-CBG) dari header tagihan. */
+export type TagihanKategori = { key: string; label: string; nilai: number };
+
+/** Satu baris rincian item tagihan. */
+export type TagihanItem = {
+  /** 1&3 tindakan, 2 konsultasi, 4 farmasi. */
+  jenis: number;
+  nama: string;
+  qty: number;
+  tarif: number;
+  diskon: number;
+  subtotal: number;
+  /** Tanggal layanan "YYYY-MM-DD" atau "". */
+  tanggal: string;
+};
+
+/** Ringkasan tagihan untuk header detail (tanpa item). */
+export type TagihanRingkas = {
+  /** false bila episode belum punya tagihan. */
+  ada: boolean;
+  total: number;
+  /** Tanggal tagihan "YYYY-MM-DD" atau "". */
+  tanggal: string;
+  /** Komponen biaya bernilai > 0, terurut menurun. */
+  kategori: TagihanKategori[];
+};
+
+/** Ringkasan + seluruh item (untuk modal rincian). */
+export type TagihanLengkap = TagihanRingkas & { items: TagihanItem[] };

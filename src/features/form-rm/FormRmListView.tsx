@@ -7,7 +7,9 @@ import { ArrowRight, Clock, DoorOpen, RefreshCw, Search, Siren } from "lucide-re
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { Input, InputWithIcon, Label } from "@/components/ui/Field";
+import { InputWithIcon, Label } from "@/components/ui/Field";
+import { DatePicker } from "@/components/ui/DatePicker";
+import { Select, type SelectOption } from "@/components/ui/Select";
 import { StatCard } from "@/components/ui/StatCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Pagination } from "@/components/ui/Pagination";
@@ -74,6 +76,15 @@ export function FormRmListView({
   const items = result?.data ?? [];
   const rangeInvalid = from > to;
 
+  // Opsi ruangan IGD (datar) untuk <Select>: "Semua ruangan IGD" + daftar ruangan.
+  const ruanganSelectOptions = useMemo<SelectOption[]>(
+    () => [
+      { value: "", label: "Semua ruangan IGD" },
+      ...ruanganOptions.map((r) => ({ value: r.id, label: r.nama })),
+    ],
+    [ruanganOptions],
+  );
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -109,11 +120,11 @@ export function FormRmListView({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <Label htmlFor="from">Dari tanggal</Label>
-            <Input id="from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
+            <DatePicker id="from" value={from} max={to} clearable={false} onChange={setFrom} />
           </div>
           <div>
             <Label htmlFor="to">Sampai tanggal</Label>
-            <Input id="to" type="date" value={to} max={today} min={from} onChange={(e) => setTo(e.target.value)} />
+            <DatePicker id="to" value={to} min={from} max={today} clearable={false} onChange={setTo} />
           </div>
           <div>
             <Label htmlFor="cari">Cari</Label>
@@ -128,19 +139,13 @@ export function FormRmListView({
           {ruanganOptions.length > 0 && (
             <div className="lg:col-span-3">
               <Label htmlFor="ruangan">Ruangan IGD</Label>
-              <select
+              <Select
                 id="ruangan"
                 value={ruanganId}
-                onChange={(e) => setRuanganId(e.target.value)}
-                className="h-10 w-full rounded-[var(--radius-md)] border border-border bg-surface px-3 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-              >
-                <option value="">Semua ruangan IGD</option>
-                {ruanganOptions.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.nama}
-                  </option>
-                ))}
-              </select>
+                onChange={setRuanganId}
+                options={ruanganSelectOptions}
+                placeholder="Semua ruangan IGD"
+              />
             </div>
           )}
         </div>

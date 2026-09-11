@@ -19,9 +19,11 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { TurunanCollapse } from "@/components/report/TurunanCollapse";
 import { BuktiPelayananCard } from "@/features/berkas-klaim/BuktiPelayananCard";
+import { TagihanRincian } from "@/features/berkas-klaim/TagihanRincian";
 import { cn } from "@/lib/cn";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatRupiah } from "@/lib/format";
 import { getBerkasDetail } from "@/server/modules/berkas-klaim/berkas-klaim.service";
+import { getTagihanRingkas } from "@/server/modules/berkas-klaim/berkas-klaim.tagihan.service";
 import type {
   DokumenBerkas,
   DokumenStatus,
@@ -83,7 +85,10 @@ export default async function BerkasDetailPage({
   params: Promise<{ nopen: string }>;
 }) {
   const { nopen } = await params;
-  const detail = await getBerkasDetail(nopen);
+  const [detail, tagihan] = await Promise.all([
+    getBerkasDetail(nopen),
+    getTagihanRingkas(nopen),
+  ]);
 
   if (!detail) {
     return (
@@ -139,6 +144,20 @@ export default async function BerkasDetailPage({
             <Metric label="Dokumen siap" value={ada} tone="text-success" />
             <Metric label="Perlu dilengkapi" value={perlu} tone="text-danger" />
           </div>
+        </div>
+
+        {/* Total tagihan + tombol rincian */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-md)] border border-border bg-surface-2/40 px-4 py-3">
+          <div>
+            <div className="text-xs text-fg-muted">Total Tagihan</div>
+            <div className="text-2xl font-bold text-fg tabular">
+              {tagihan.ada ? formatRupiah(tagihan.total) : "—"}
+            </div>
+            {!tagihan.ada && (
+              <div className="mt-0.5 text-xs text-fg-subtle">Belum ada tagihan untuk episode ini</div>
+            )}
+          </div>
+          {tagihan.ada && <TagihanRincian nopen={detail.nopen} total={tagihan.total} />}
         </div>
 
         {detail.turunan.length > 0 && (
