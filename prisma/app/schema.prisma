@@ -148,6 +148,27 @@ model FormRm {
   @@map("form_rm")
 }
 
+/// Penetapan pejabat per ruangan (Kepala Instalasi, Kepala Ruangan, Ketua Tim, dll).
+/// Ruangan dibaca dari SIMGOS (`master.ruangan`, READ-ONLY); penetapan ini kita
+/// simpan di sini. `ruanganId` = `master.ruangan.ID` (9 digit) untuk satu ruangan,
+/// atau "inst:1|2|3" (per JENIS_KUNJUNGAN) untuk Kepala Instalasi tingkat instalasi.
+/// Kepala Ruangan menjadi penandatangan Bukti Pelayanan.
+model RuanganPejabat {
+  id        String   @id @default(cuid())
+  /// master.ruangan.ID (ruangan) atau "inst:1|2|3" (instalasi).
+  ruanganId String   @unique @map("ruangan_id")
+  /// Snapshot nama & kategori ruangan (memudahkan tampil tanpa query SIMGOS ulang).
+  nama      String?
+  kategori  String?
+  /// { kepalaInstalasi?:{nama,nip}, kepalaRuangan?:{nama,nip}, ketuaTim?:{nama,nip} }
+  data      Json
+  updatedBy String?  @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("ruangan_pejabat")
+}
+
 /// Refresh token (rotasi). Yang disimpan HANYA hash token-nya, bukan token asli,
 /// sehingga bocornya DB tidak langsung memberi token yang bisa dipakai.
 model RefreshToken {

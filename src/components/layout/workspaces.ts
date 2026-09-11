@@ -1,6 +1,7 @@
 import {
   Activity,
   ClipboardList,
+  DoorOpen,
   FileSignature,
   FolderCheck,
   Hourglass,
@@ -177,6 +178,13 @@ export const WORKSPACES: Workspace[] = [
         icon: ShieldCheck,
         description: "Peran dan izin akses per modul",
         moduleKey: "master.peran",
+      },
+      {
+        href: "/master/ruangan",
+        label: "Mapping Ruangan",
+        icon: DoorOpen,
+        description: "Pejabat per ruangan (Kepala Ruangan, Ketua Tim, dll)",
+        moduleKey: "master.ruangan",
       },
     ],
   },

@@ -2,7 +2,12 @@ import "server-only";
 import { isSimgosConfigured } from "@/server/lib/env";
 import { qrSvgDataUriMap } from "@/server/lib/qr";
 import { queryTurunanByNopens } from "@/server/modules/pelayanan/pelayanan.dal";
-import { queryBuktiReportHeader, querySepByNopen } from "./berkas-klaim.dal";
+import { getKepalaRuangan } from "@/server/modules/master/ruangan/ruangan-pejabat.service";
+import {
+  queryBuktiReportHeader,
+  queryMainRuanganByNopen,
+  querySepByNopen,
+} from "./berkas-klaim.dal";
 import { getBuktiContext } from "./berkas-klaim.bukti.service";
 import type { BuktiTindakanRow } from "./berkas-klaim.types";
 
@@ -77,6 +82,9 @@ export type BuktiPelayananReport = {
   pesertaNama: string;
   /** Tanda tangan peserta/keluarga (PNG data-URL); "" bila belum ditandatangani. */
   pesertaTtd: string;
+  /** Kepala Ruangan (dari Master › Mapping Ruangan) — penandatangan blok bawah. */
+  kepalaRuanganNama: string;
+  kepalaRuanganNip: string;
   /** Tabel B — semua tindakan 1:1. */
   rows: BuktiReportRow[];
   /** true bila dari Bukti tersimpan (bukan prefill SIMGOS mentah). */
@@ -97,11 +105,13 @@ export async function getBuktiPelayananReport(
   const h = await queryBuktiReportHeader(nopen);
   if (!h) return null;
 
-  const [legs, ctx, sep] = await Promise.all([
+  const [legs, ctx, sep, ruanganId] = await Promise.all([
     queryTurunanByNopens([nopen]),
     getBuktiContext(nopen),
     querySepByNopen(nopen).catch(() => null),
+    queryMainRuanganByNopen(nopen).catch(() => null),
   ]);
+  const kepalaRuangan = ruanganId ? await getKepalaRuangan(ruanganId).catch(() => null) : null;
 
   // Leg klinis utama (RI > IGD > RJ) untuk ringkasan rawat.
   const mainLeg =
@@ -155,6 +165,8 @@ export async function getBuktiPelayananReport(
     pesertaNama:
       saved?.data.pesertaNama?.trim() || h.NAMA_PESERTA?.trim() || h.NAMA?.trim() || "",
     pesertaTtd: saved?.data.pesertaTtd?.trim() || "",
+    kepalaRuanganNama: kepalaRuangan?.nama?.trim() || "",
+    kepalaRuanganNip: kepalaRuangan?.nip?.trim() || "",
     rows,
     tersimpan: !!saved,
     dicetakPada: new Date().toISOString(),

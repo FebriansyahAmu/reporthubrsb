@@ -163,8 +163,12 @@ export function BuktiPelayananDocument({ data }: { data: BuktiPelayananReport })
               Kepala Ruangan
               <div className="bp-dots">………………………………………………….</div>
               <div className="bp-sigspace" />
-              <div>(…………………………………………………………………………….)</div>
-              <div className="bp-nip">NIP.</div>
+              <div>
+                {data.kepalaRuanganNama
+                  ? `( ${data.kepalaRuanganNama} )`
+                  : "(…………………………………………………………………………….)"}
+              </div>
+              <div className="bp-nip">NIP. {data.kepalaRuanganNip}</div>
             </td>
             <td className="bp-center">
               <div>Tanggal …………………………………….</div>
@@ -175,13 +179,6 @@ export function BuktiPelayananDocument({ data }: { data: BuktiPelayananReport })
           </tr>
         </tbody>
       </table>
-
-      <div className="bp-foot no-print">
-        Sumber: SIMGOS (read-only) · Bukti Pelayanan{" "}
-        {data.tersimpan ? "tersimpan di AuditTrail RS BOLTIM" : "prefill dari SIMRS (belum disimpan)"} ·{" "}
-        {data.rows.length} tindakan · Kolom &ldquo;TT &amp; Nama Peserta/Keluarga&rdquo; = tanda
-        tangan peserta · &ldquo;TT &amp; Nama Dokter/Petugas&rdquo; = QR nama (scan untuk membaca).
-      </div>
     </article>
   );
 }
@@ -259,8 +256,6 @@ const CSS = `
 .bp-sigspace { height: 16mm; }
 .bp-nip { margin-top: .5mm; padding-left: 8mm; text-align: left; }
 
-.bp-foot { margin-top: 6mm; font-weight: 400; font-size: 8pt; color: #555; }
-
 @media print {
   .bp {
     width: auto;
@@ -270,6 +265,5 @@ const CSS = `
   }
   .bp-tbl tr, .bp-sign tr { page-break-inside: avoid; }
   thead { display: table-header-group; }
-  .no-print { display: none !important; }
 }
 `;

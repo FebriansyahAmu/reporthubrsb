@@ -271,6 +271,23 @@ export async function queryDpjpByNopen(nopen: string): Promise<string | null> {
   return d ? d : null;
 }
 
+/**
+ * ID ruangan (`master.ruangan.ID`) leg klinis utama (RI>IGD>RJ) satu episode —
+ * dipakai untuk mencari Kepala Ruangan (penandatangan Bukti Pelayanan). READ-ONLY.
+ */
+export async function queryMainRuanganByNopen(nopen: string): Promise<string | null> {
+  const sql = `
+    SELECT k.RUANGAN AS RUANGAN
+    FROM ${SIMGOS_DB.PENDAFTARAN}.kunjungan k
+    JOIN ${SIMGOS_DB.MASTER}.ruangan r ON r.ID = k.RUANGAN
+    WHERE k.NOPEN = ? AND k.STATUS <> 0 AND r.JENIS_KUNJUNGAN IN (1, 2, 3)
+    ORDER BY (r.JENIS_KUNJUNGAN = 3) DESC, (r.JENIS_KUNJUNGAN = 2) DESC,
+             (r.JENIS_KUNJUNGAN = 1) DESC, k.MASUK ASC
+    LIMIT 1`;
+  const rows = await getSimgos().$queryRawUnsafe<{ RUANGAN: string | null }[]>(sql, nopen);
+  return rows[0]?.RUANGAN?.trim() || null;
+}
+
 /* ============================================================================
    TAGIHAN — total & rincian biaya episode (READ-ONLY).
    `pembayaran.tagihan.ID` = NOPEN (terbukti universal). Header memuat TOTAL +

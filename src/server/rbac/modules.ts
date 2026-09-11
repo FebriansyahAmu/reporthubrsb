@@ -10,6 +10,7 @@
  */
 import {
   Activity,
+  DoorOpen,
   FileSignature,
   FolderCheck,
   LayoutDashboard,
@@ -139,6 +140,17 @@ export const MODULES: readonly AppModule[] = [
     apiPrefixes: ["/api/master/peran"],
     actions: ["view", "create", "update", "delete"],
     order: 91,
+  },
+  {
+    key: "master.ruangan",
+    group: "Master",
+    label: "Mapping Ruangan",
+    description: "Pejabat per ruangan (Kepala Ruangan = penandatangan Bukti Pelayanan)",
+    icon: DoorOpen,
+    navHref: "/master/ruangan",
+    apiPrefixes: ["/api/master/ruangan"],
+    actions: ["view", "update"],
+    order: 92,
   },
 ] as const;
 

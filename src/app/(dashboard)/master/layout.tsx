@@ -10,20 +10,22 @@ export default async function MasterLayout({ children }: { children: React.React
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const [canPengguna, canPeran] = await Promise.all([
+  const [canPengguna, canPeran, canRuangan] = await Promise.all([
     hasModule(user, "master.pengguna"),
     hasModule(user, "master.peran"),
+    hasModule(user, "master.ruangan"),
   ]);
-  if (!canPengguna && !canPeran) redirect("/403");
+  if (!canPengguna && !canPeran && !canRuangan) redirect("/403");
 
   const tabs: MasterTab[] = [
     canPengguna && { href: "/master/pengguna", label: "Pengguna" },
     canPeran && { href: "/master/peran", label: "Peran & Hak Akses" },
+    canRuangan && { href: "/master/ruangan", label: "Mapping Ruangan" },
   ].filter(Boolean) as MasterTab[];
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Master" description="Kelola pengguna, peran, dan hak akses aplikasi." />
+      <PageHeader title="Master" description="Kelola pengguna, peran, hak akses, dan mapping ruangan." />
       <MasterTabs tabs={tabs} />
       {children}
     </div>
