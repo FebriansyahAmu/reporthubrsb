@@ -25,6 +25,7 @@ import type {
   EdukasiContext,
   EdukasiForm,
   FormRmHeader,
+  FormRmKelengkapan,
   FormRmListResult,
   FormRmPatient,
   FormRmSaved,
@@ -34,6 +35,62 @@ import type {
 } from "./form-rm.types";
 
 const PAGE_SIZE = 12;
+
+/** Tiga jenis form RM wajib yang dihitung untuk "lengkap". */
+const FORM_RM_JENIS = [RINGKASAN_JENIS, EDUKASI_JENIS, CONSENT_JENIS] as const;
+
+const EMPTY_KELENGKAPAN: FormRmKelengkapan = {
+  ringkasan: false,
+  edukasi: false,
+  consent: false,
+  terisi: 0,
+  total: FORM_RM_JENIS.length,
+  lengkap: false,
+};
+
+/**
+ * Peta NOPEN → kelengkapan form RM (reporthub), satu query batch untuk semua
+ * NOPEN. Pasien tanpa satu pun form → tidak muncul di query (dianggap 0/3).
+ */
+async function getKelengkapanMap(
+  nopens: string[],
+): Promise<Map<string, FormRmKelengkapan>> {
+  const map = new Map<string, FormRmKelengkapan>();
+  if (nopens.length === 0) return map;
+
+  const rows = await getAppDb().formRm.findMany({
+    where: { nopen: { in: nopens }, jenis: { in: [...FORM_RM_JENIS] } },
+    select: { nopen: true, jenis: true },
+  });
+
+  const byNopen = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const set = byNopen.get(r.nopen) ?? new Set<string>();
+    set.add(r.jenis);
+    byNopen.set(r.nopen, set);
+  }
+
+  for (const nopen of nopens) {
+    const set = byNopen.get(nopen);
+    if (!set) {
+      map.set(nopen, EMPTY_KELENGKAPAN);
+      continue;
+    }
+    const ringkasan = set.has(RINGKASAN_JENIS);
+    const edukasi = set.has(EDUKASI_JENIS);
+    const consent = set.has(CONSENT_JENIS);
+    const terisi = (ringkasan ? 1 : 0) + (edukasi ? 1 : 0) + (consent ? 1 : 0);
+    map.set(nopen, {
+      ringkasan,
+      edukasi,
+      consent,
+      terisi,
+      total: FORM_RM_JENIS.length,
+      lengkap: terisi === FORM_RM_JENIS.length,
+    });
+  }
+  return map;
+}
 
 export type FormRmListArgs = {
   from: string;
@@ -60,6 +117,7 @@ export async function getFormRmList(a: FormRmListArgs): Promise<FormRmListResult
       data: [],
       meta: { page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 1 },
       total: 0,
+      lengkapCount: 0,
       updatedAt: new Date().toISOString(),
     };
   }
@@ -70,7 +128,7 @@ export async function getFormRmList(a: FormRmListArgs): Promise<FormRmListResult
     ruanganId: a.ruanganId,
   });
 
-  const igd: FormRmPatient[] = rows
+  const igd: Omit<FormRmPatient, "kelengkapan">[] = rows
     .map(mapKunjunganPelayanan)
     .filter((it) => it.kategori === "IGD")
     .map((it) => ({
@@ -91,15 +149,25 @@ export async function getFormRmList(a: FormRmListArgs): Promise<FormRmListResult
     ? igd.filter((it) => `${it.nama} ${it.norm} ${it.ruang}`.toLowerCase().includes(q))
     : igd;
 
-  const total = searched.length;
+  // Kelengkapan form RM (reporthub) untuk seluruh hasil filter → penanda per kartu
+  // + ringkasan "lengkap" akurat lintas halaman. Satu query batch.
+  const kelengkapanMap = await getKelengkapanMap(searched.map((it) => it.nopen));
+  const enriched: FormRmPatient[] = searched.map((it) => ({
+    ...it,
+    kelengkapan: kelengkapanMap.get(it.nopen) ?? EMPTY_KELENGKAPAN,
+  }));
+  const lengkapCount = enriched.reduce((n, it) => n + (it.kelengkapan.lengkap ? 1 : 0), 0);
+
+  const total = enriched.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const page = Math.min(Math.max(1, a.page), totalPages);
   const start = (page - 1) * PAGE_SIZE;
 
   return {
-    data: searched.slice(start, start + PAGE_SIZE),
+    data: enriched.slice(start, start + PAGE_SIZE),
     meta: { page, pageSize: PAGE_SIZE, total, totalPages },
     total,
+    lengkapCount,
     updatedAt: new Date().toISOString(),
   };
 }

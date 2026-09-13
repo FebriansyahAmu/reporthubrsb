@@ -3,13 +3,14 @@ import { cn } from "@/lib/cn";
 import { Card } from "./Card";
 import { AnimatedNumber } from "./AnimatedNumber";
 
-type Tone = "brand" | "success" | "accent" | "danger" | "neutral";
+type Tone = "brand" | "success" | "accent" | "danger" | "warning" | "neutral";
 
 const toneStyles: Record<Tone, string> = {
   brand: "bg-brand-soft text-brand",
   success: "bg-success-soft text-success",
   accent: "bg-accent-soft text-accent",
   danger: "bg-danger-soft text-danger",
+  warning: "bg-warning-soft text-warning",
   neutral: "bg-surface-2 text-fg-muted",
 };
 

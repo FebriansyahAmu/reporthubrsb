@@ -5,6 +5,19 @@
 import type { PageMeta } from "@/lib/types";
 import type { KategoriKunjungan } from "@/server/modules/pelayanan/pelayanan.types";
 
+/** Kelengkapan 3 form RM wajib (RM.01 Ringkasan, RM.21 Edukasi, RM.03 Consent). */
+export type FormRmKelengkapan = {
+  ringkasan: boolean;
+  edukasi: boolean;
+  consent: boolean;
+  /** Jumlah form yang sudah terisi (0..3). */
+  terisi: number;
+  /** Total form wajib (3). */
+  total: number;
+  /** true bila ketiga form sudah terisi. */
+  lengkap: boolean;
+};
+
 /** Satu pasien di daftar Form RM (target admisi — biasanya kunjungan IGD). */
 export type FormRmPatient = {
   nopen: string;
@@ -17,12 +30,16 @@ export type FormRmPatient = {
   ruang: string;
   masuk: string;
   keluar: string | null;
+  /** Status kelengkapan form RM pasien ini (dari reporthub). */
+  kelengkapan: FormRmKelengkapan;
 };
 
 export type FormRmListResult = {
   data: FormRmPatient[];
   meta: PageMeta;
   total: number;
+  /** Jumlah pasien (dalam filter) yang form RM-nya sudah lengkap. */
+  lengkapCount: number;
   updatedAt: string;
 };
 

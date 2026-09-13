@@ -3,7 +3,18 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
-import { ArrowRight, Clock, DoorOpen, RefreshCw, Search, Siren } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  CheckCircle2,
+  ClipboardCheck,
+  ClipboardList,
+  Clock,
+  DoorOpen,
+  RefreshCw,
+  Search,
+  Siren,
+} from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -18,7 +29,11 @@ import { cn } from "@/lib/cn";
 import { useDebounce } from "@/lib/useDebounce";
 import { useAsyncData } from "@/lib/useAsyncData";
 import { addDays, formatDate, formatDateTime, formatJam, toLocalDateInput } from "@/lib/format";
-import type { FormRmListResult, FormRmPatient } from "@/server/modules/form-rm/form-rm.types";
+import type {
+  FormRmKelengkapan,
+  FormRmListResult,
+  FormRmPatient,
+} from "@/server/modules/form-rm/form-rm.types";
 import type { RuanganOption } from "@/server/modules/kunjungan/kunjungan.types";
 
 async function fetchList(args: {
@@ -75,6 +90,8 @@ export function FormRmListView({
   const updatedAt = result?.updatedAt ?? null;
   const items = result?.data ?? [];
   const rangeInvalid = from > to;
+  const lengkapCount = result?.lengkapCount ?? 0;
+  const belumLengkap = Math.max(0, (meta?.total ?? 0) - lengkapCount);
 
   // Opsi ruangan IGD (datar) untuk <Select>: "Semua ruangan IGD" + daftar ruangan.
   const ruanganSelectOptions = useMemo<SelectOption[]>(
@@ -112,6 +129,20 @@ export function FormRmListView({
           value={meta?.total ?? 0}
           icon={Siren}
           tone="accent"
+          loading={loading}
+        />
+        <StatCard
+          label="RM Lengkap"
+          value={lengkapCount}
+          icon={ClipboardCheck}
+          tone="success"
+          loading={loading}
+        />
+        <StatCard
+          label="Belum Lengkap"
+          value={belumLengkap}
+          icon={ClipboardList}
+          tone="warning"
           loading={loading}
         />
       </div>
@@ -234,14 +265,67 @@ function PatientCard({ item }: { item: FormRmPatient }) {
           </div>
         </div>
       </Link>
+
+      {/* Penanda kelengkapan form RM */}
+      <div className="mt-3 border-t border-border/60 pt-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-fg-muted">Kelengkapan RM</span>
+          <KelengkapanBadge k={item.kelengkapan} />
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <FormChip kode="RM.01" nama="Ringkasan" filled={item.kelengkapan.ringkasan} />
+          <FormChip kode="RM.21" nama="Edukasi" filled={item.kelengkapan.edukasi} />
+          <FormChip kode="RM.03" nama="Consent" filled={item.kelengkapan.consent} />
+        </div>
+      </div>
+
       <Link
         href={href}
         className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-brand bg-brand-soft px-3 py-2 text-sm font-medium text-brand-soft-fg transition-colors hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
       >
-        Isi Form RM
+        {item.kelengkapan.lengkap ? "Lihat Form RM" : "Isi Form RM"}
         <ArrowRight className="size-4" />
       </Link>
     </motion.div>
+  );
+}
+
+/** Ringkasan status kelengkapan RM (teks + warna + ikon — tak hanya warna). */
+function KelengkapanBadge({ k }: { k: FormRmKelengkapan }) {
+  if (k.lengkap) {
+    return (
+      <Badge tone="success">
+        <CheckCircle2 className="size-3.5" /> Lengkap
+      </Badge>
+    );
+  }
+  if (k.terisi === 0) return <Badge tone="danger">Belum diisi</Badge>;
+  return (
+    <Badge tone="warning">
+      {k.terisi}/{k.total} terisi
+    </Badge>
+  );
+}
+
+/** Chip satu form RM: terisi (hijau + centang) vs belum (garis putus, redup). */
+function FormChip({ kode, nama, filled }: { kode: string; nama: string; filled: boolean }) {
+  return (
+    <span
+      title={`${kode} · ${nama} — ${filled ? "terisi" : "belum diisi"}`}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+        filled
+          ? "border-success/30 bg-success-soft text-success"
+          : "border-dashed border-border bg-surface-2/60 text-fg-subtle",
+      )}
+    >
+      {filled ? (
+        <Check className="size-3" />
+      ) : (
+        <span className="size-1.5 rounded-full bg-fg-subtle/50" aria-hidden />
+      )}
+      {kode}
+    </span>
   );
 }
 
