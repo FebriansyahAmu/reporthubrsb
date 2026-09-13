@@ -162,7 +162,12 @@ export function BuktiPelayananDocument({ data }: { data: BuktiPelayananReport })
             <td className="bp-center">
               Kepala Ruangan
               <div className="bp-dots">………………………………………………….</div>
-              <div className="bp-sigspace" />
+              {data.kepalaRuanganTtd ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img className="bp-sig-img" src={data.kepalaRuanganTtd} alt="Tanda tangan Kepala Ruangan" />
+              ) : (
+                <div className="bp-sigspace" />
+              )}
               <div>
                 {data.kepalaRuanganNama
                   ? `( ${data.kepalaRuanganNama} )`
@@ -254,6 +259,8 @@ const CSS = `
 .bp-sign td { border: none; vertical-align: top; padding: 0 2mm; }
 .bp-dots { letter-spacing: .3px; }
 .bp-sigspace { height: 16mm; }
+/* TTD Kepala Ruangan tersimpan — ditempel di ruang tanda tangan (hitam transparan). */
+.bp-sig-img { display: block; height: 16mm; max-width: 62mm; margin: 0 auto; object-fit: contain; }
 .bp-nip { margin-top: .5mm; padding-left: 8mm; text-align: left; }
 
 @media print {

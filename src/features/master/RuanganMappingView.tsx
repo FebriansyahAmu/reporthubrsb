@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Building2, DoorOpen, Pencil, Stethoscope, UserRound, Users } from "lucide-react";
+import { Building2, DoorOpen, Pencil, Signature, Stethoscope, UserRound, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
@@ -15,12 +15,14 @@ import type {
   RuanganPejabatItem,
 } from "@/server/modules/master/ruangan/ruangan-pejabat.types";
 
-/** null bila kedua field kosong (untuk sinkronisasi state lokal pasca-simpan). */
-function norm(p: Pejabat | undefined): Pejabat | null {
+/** null bila nama & NIP kosong (sinkronisasi state lokal pasca-simpan). TTD dipertahankan. */
+function norm(p: Pejabat | undefined | null): Pejabat | null {
   if (!p) return null;
   const nama = (p.nama ?? "").trim();
   const nip = (p.nip ?? "").trim();
-  return nama || nip ? { nama, nip } : null;
+  if (!nama && !nip) return null;
+  const ttd = (p.ttd ?? "").trim();
+  return ttd ? { nama, nip, ttd } : { nama, nip };
 }
 
 export function RuanganMappingView({
@@ -55,6 +57,18 @@ export function RuanganMappingView({
     setEditing(null);
   }
 
+  /** Pasca "terapkan ke semua ruangan": set Kepala Ruangan di semua ruangan satu kategori. */
+  function applyToKategori(kategori: string, kepalaRuangan: Pejabat | null) {
+    const kr = norm(kepalaRuangan);
+    setInstalasi((prev) =>
+      prev.map((inst) =>
+        inst.kategori === kategori
+          ? { ...inst, ruangan: inst.ruangan.map((r) => ({ ...r, kepalaRuangan: kr })) }
+          : inst,
+      ),
+    );
+  }
+
   function editInstalasi(inst: InstalasiGroup) {
     setEditing({
       ruanganId: inst.instalasiId,
@@ -79,6 +93,7 @@ export function RuanganMappingView({
         kepalaRuangan: r.kepalaRuangan ?? undefined,
         ketuaTim: r.ketuaTim ?? undefined,
       },
+      applyAll: { kategori: inst.kategori, label: inst.label, count: inst.ruangan.length },
     });
   }
 
@@ -166,7 +181,12 @@ export function RuanganMappingView({
       </AnimatePresence>
 
       {editing && (
-        <PejabatModal target={editing} onClose={() => setEditing(null)} onSaved={applySaved} />
+        <PejabatModal
+          target={editing}
+          onClose={() => setEditing(null)}
+          onSaved={applySaved}
+          onAppliedAll={applyToKategori}
+        />
       )}
     </div>
   );
@@ -243,7 +263,10 @@ function RoleRow({
         </div>
         {p ? (
           <>
-            <p className="truncate text-sm font-medium text-fg">{p.nama}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="truncate text-sm font-medium text-fg">{p.nama}</p>
+              {p.ttd && <TtdBadge />}
+            </div>
             {p.nip && <p className="font-mono text-[11px] text-fg-subtle">NIP {p.nip}</p>}
           </>
         ) : (
@@ -257,10 +280,20 @@ function RoleRow({
 function PejabatValue({ p }: { p: Pejabat | null }) {
   if (!p) return <p className="text-sm text-fg-subtle">Belum ditetapkan</p>;
   return (
-    <div className="flex items-baseline gap-2">
-      <UserRound className="size-3.5 shrink-0 self-center text-fg-subtle" />
+    <div className="flex items-center gap-2">
+      <UserRound className="size-3.5 shrink-0 text-fg-subtle" />
       <span className="text-sm font-semibold text-fg">{p.nama}</span>
       {p.nip && <span className="font-mono text-[11px] text-fg-subtle">NIP {p.nip}</span>}
+      {p.ttd && <TtdBadge />}
     </div>
+  );
+}
+
+/** Penanda bahwa pejabat sudah punya tanda tangan tersimpan. */
+function TtdBadge() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand-soft px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-brand-soft-fg">
+      <Signature className="size-3" /> TTD
+    </span>
   );
 }

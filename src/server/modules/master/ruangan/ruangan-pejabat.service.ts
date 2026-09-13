@@ -5,18 +5,21 @@ import { queryPegawaiSearch } from "./ruangan-pejabat.dal";
 import type { SaveRuanganPejabatInput } from "./ruangan-pejabat.schema";
 import {
   INSTALASI,
+  type KategoriKunjungan,
   type Pejabat,
   type PejabatData,
   type PegawaiHit,
   type RuanganMappingResult,
 } from "./ruangan-pejabat.types";
 
-/** Normalisasi pejabat: null bila nama & NIP kosong. */
-function pej(p: Pejabat | undefined): Pejabat | null {
+/** Normalisasi pejabat: null bila nama & NIP kosong. TTD dipertahankan. */
+function pej(p: Pejabat | undefined | null): Pejabat | null {
   if (!p) return null;
   const nama = (p.nama ?? "").trim();
   const nip = (p.nip ?? "").trim();
-  return nama || nip ? { nama, nip } : null;
+  if (!nama && !nip) return null;
+  const ttd = (p.ttd ?? "").trim();
+  return ttd ? { nama, nip, ttd } : { nama, nip };
 }
 
 /** Peta ruanganId → data pejabat tersimpan (reporthub). */
@@ -82,6 +85,46 @@ export async function saveRuanganPejabat(
       updatedBy: userId,
     },
   });
+}
+
+/**
+ * Terapkan satu Kepala Ruangan (nama+NIP+TTD) ke SEMUA ruangan pada satu
+ * instalasi (kategori). Ketua Tim tiap ruangan DIPERTAHANKAN (merge). `pejabat`
+ * null → mengosongkan Kepala Ruangan di semua ruangan kategori tsb.
+ * Return daftar ruanganId yang terpengaruh.
+ */
+export async function applyKepalaRuanganToKategori(
+  kategori: KategoriKunjungan,
+  pejabat: Pejabat | null,
+  userId: string | null,
+): Promise<string[]> {
+  const rooms = (await getRuanganKunjunganList()).filter((r) => r.kategori === kategori);
+  if (rooms.length === 0) return [];
+
+  const saved = await getSavedMap();
+  const kr = pej(pejabat);
+  const db = getAppDb();
+
+  await Promise.all(
+    rooms.map((r) => {
+      const merged: PejabatData = { ...(saved.get(r.id) ?? {}) };
+      if (kr) merged.kepalaRuangan = kr;
+      else delete merged.kepalaRuangan;
+      return db.ruanganPejabat.upsert({
+        where: { ruanganId: r.id },
+        create: {
+          ruanganId: r.id,
+          nama: r.nama,
+          kategori,
+          data: merged as object,
+          updatedBy: userId,
+        },
+        update: { nama: r.nama, kategori, data: merged as object, updatedBy: userId },
+      });
+    }),
+  );
+
+  return rooms.map((r) => r.id);
 }
 
 /** Cari pegawai SIMGOS (min 2 huruf) untuk combobox pejabat. */

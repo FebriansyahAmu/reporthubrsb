@@ -6,8 +6,8 @@ import type { KategoriKunjungan } from "@/server/modules/pelayanan/pelayanan.typ
 
 export type { KategoriKunjungan };
 
-/** Satu pejabat: nama + NIP (NIP opsional). */
-export type Pejabat = { nama: string; nip: string };
+/** Satu pejabat: nama + NIP (NIP opsional) + TTD (PNG data-URL, opsional). */
+export type Pejabat = { nama: string; nip: string; ttd?: string };
 
 /** Set jabatan yang bisa diisi (disimpan sebagai JSON `data`). */
 export type PejabatData = {

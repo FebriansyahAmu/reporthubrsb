@@ -85,6 +85,8 @@ export type BuktiPelayananReport = {
   /** Kepala Ruangan (dari Master › Mapping Ruangan) — penandatangan blok bawah. */
   kepalaRuanganNama: string;
   kepalaRuanganNip: string;
+  /** TTD Kepala Ruangan (PNG data-URL); "" bila belum dibubuhkan. */
+  kepalaRuanganTtd: string;
   /** Tabel B — semua tindakan 1:1. */
   rows: BuktiReportRow[];
   /** true bila dari Bukti tersimpan (bukan prefill SIMGOS mentah). */
@@ -167,6 +169,7 @@ export async function getBuktiPelayananReport(
     pesertaTtd: saved?.data.pesertaTtd?.trim() || "",
     kepalaRuanganNama: kepalaRuangan?.nama?.trim() || "",
     kepalaRuanganNip: kepalaRuangan?.nip?.trim() || "",
+    kepalaRuanganTtd: kepalaRuangan?.ttd?.trim() || "",
     rows,
     tersimpan: !!saved,
     dicetakPada: new Date().toISOString(),
