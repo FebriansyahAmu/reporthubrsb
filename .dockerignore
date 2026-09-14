@@ -1,0 +1,37 @@
+# Dependensi & artefak build (di-generate ulang di dalam image)
+node_modules
+.next
+out
+build
+src/generated
+
+# Rahasia & env (disuntikkan saat runtime via env_file / -e, JANGAN masuk image)
+.env
+.env.*
+
+# VCS & meta
+.git
+.gitignore
+.gitattributes
+
+# Docker itu sendiri
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Editor / OS / log
+.vscode
+.idea
+.DS_Store
+*.log
+npm-debug.log*
+
+# Test & coverage
+coverage
+
+# Dokumentasi (tak diperlukan untuk build)
+docs
+*.md
+
+# Memori/claude & scratch
+.claude

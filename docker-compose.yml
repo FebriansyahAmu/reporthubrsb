@@ -1,0 +1,31 @@
+# =============================================================================
+# ReportHub RSB (AuditTrail RS BOLTIM). Pola sama seperti deploy lain:
+# bind ke 127.0.0.1 (di balik reverse proxy), env dari .env, restart & healthcheck.
+# Port host 3003 (3001=antrian, 3002=fhir sudah dipakai).
+# =============================================================================
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: reporthubrsb-app:1.0.0
+    container_name: reporthubrsb-app
+    restart: unless-stopped
+    # Semua kredensial/secret (DATABASE_URL_SIMGOS, SIMGOS_PASSWORD_KEY,
+    # DATABASE_URL_APP, AUTH_*, dll.) dibaca dari .env saat runtime.
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:3003:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
