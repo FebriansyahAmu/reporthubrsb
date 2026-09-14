@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertCircle, Copy, LogOut, UserCog, UserPlus, Wand2 } from "lucide-react";
+import { AlertCircle, Copy, KeyRound, LogOut, Server, UserCog, UserPlus, Wand2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Field";
@@ -10,6 +10,7 @@ import { DateTextInput } from "@/components/ui/DateTextInput";
 import { Switch } from "@/components/ui/Switch";
 import { cn } from "@/lib/cn";
 import { AGAMA_VALUES, generatePassword } from "@/features/master/master.constants";
+import { SimgosUserCombobox } from "@/features/master/SimgosUserCombobox";
 import {
   ApiError,
   createUser,
@@ -17,9 +18,14 @@ import {
   revokeUserSessions,
   updateUser,
   type RoleOption,
+  type SimgosPenggunaHit,
 } from "@/features/master/master.client";
 
+type AuthSource = "LOCAL" | "SIMGOS";
+
 type FormState = {
+  authSource: AuthSource;
+  simgosLogin: string;
   username: string;
   roleKey: string;
   password: string;
@@ -36,6 +42,8 @@ type FormState = {
 };
 
 const EMPTY: FormState = {
+  authSource: "LOCAL",
+  simgosLogin: "",
   username: "",
   roleKey: "",
   password: "",
@@ -50,6 +58,11 @@ const EMPTY: FormState = {
   agama: "",
   phone: "",
 };
+
+/** Ubah LOGIN SIMGOS → kandidat username aplikasi (huruf kecil, hanya [a-z0-9._-]). */
+function loginToUsername(login: string): string {
+  return login.trim().toLowerCase().replace(/[^a-z0-9._-]/g, "").slice(0, 30);
+}
 
 const todayYmd = () => new Date().toISOString().slice(0, 10);
 
@@ -83,6 +96,28 @@ export function UserFormModal({
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
+  /** Ganti sumber login: bangkitkan sandi saat LOCAL, kosongkan saat SIMGOS. */
+  function switchSource(src: AuthSource) {
+    setForm((f) => ({
+      ...f,
+      authSource: src,
+      password: src === "LOCAL" ? f.password || generatePassword() : "",
+      ...(src === "LOCAL" ? { simgosLogin: "" } : {}),
+    }));
+  }
+
+  /** Akun SIMGOS terpilih → isi LOGIN + username + prefill nama/NIP/NIK bila kosong. */
+  function onPickSimgos(hit: SimgosPenggunaHit) {
+    setForm((f) => ({
+      ...f,
+      simgosLogin: hit.login,
+      username: loginToUsername(hit.login),
+      name: f.name.trim() ? f.name : hit.nama,
+      nip: f.nip.trim() ? f.nip : hit.nip,
+      nik: f.nik.trim() ? f.nik : hit.nik,
+    }));
+  }
+
   // Edit: ambil detail (async). setState hanya di callback async → aman dari
   // aturan set-state-in-effect.
   useEffect(() => {
@@ -90,6 +125,8 @@ export function UserFormModal({
     fetchUserDetail(userId)
       .then((d) =>
         setForm({
+          authSource: d.authSource === "SIMGOS" ? "SIMGOS" : "LOCAL",
+          simgosLogin: d.simgosLogin,
           username: d.username,
           roleKey: d.roleKey,
           password: "",
@@ -111,11 +148,14 @@ export function UserFormModal({
   }, []);
 
   function clientValidate(): string | null {
+    if (mode === "create" && form.authSource === "SIMGOS" && !form.simgosLogin.trim())
+      return "Pilih akun SIMGOS yang ditautkan.";
     if (mode === "create" && !/^[a-z0-9._-]{3,30}$/.test(form.username.trim().toLowerCase()))
       return "Username 3–30 karakter (huruf kecil, angka, titik, garis bawah, strip).";
     if (!form.roleKey) return "Peran wajib dipilih.";
     if (form.name.trim().length < 2) return "Nama lengkap wajib diisi.";
-    if (mode === "create" && form.password.length < 8) return "Sandi minimal 8 karakter.";
+    if (mode === "create" && form.authSource === "LOCAL" && form.password.length < 8)
+      return "Sandi minimal 8 karakter.";
     if (form.nik.trim() && !/^\d{16}$/.test(form.nik.trim())) return "NIK harus 16 digit.";
     if (!tglLahirValid) return "Tanggal lahir tidak valid — gunakan format HH-BB-TTTT.";
     return null;
@@ -144,8 +184,16 @@ export function UserFormModal({
         phone: form.phone.trim(),
       };
       if (mode === "create") {
-        await createUser({ ...profile, username: form.username.trim().toLowerCase(), password: form.password });
-        onSaved(`Akun "${form.username.trim().toLowerCase()}" berhasil dibuat.`);
+        const uname = form.username.trim().toLowerCase();
+        await createUser({
+          ...profile,
+          authSource: form.authSource,
+          username: uname,
+          ...(form.authSource === "SIMGOS"
+            ? { simgosLogin: form.simgosLogin.trim() }
+            : { password: form.password }),
+        });
+        onSaved(`Akun "${uname}" berhasil dibuat.`);
       } else if (userId) {
         await updateUser(userId, profile);
         onSaved("Perubahan akun tersimpan.");
@@ -223,6 +271,65 @@ export function UserFormModal({
           {/* ---- Akun ---- */}
           <section className="space-y-3">
             <SubHead>Akun</SubHead>
+
+            {/* Sumber login: Akun Lokal (sandi) vs Akun SIMGOS (verifikasi ke SIMGOS) */}
+            {!isEdit ? (
+              <Fld label="Sumber login" required>
+                <div className="inline-flex rounded-[var(--radius-md)] border border-border bg-surface-2/50 p-1">
+                  {(["LOCAL", "SIMGOS"] as const).map((src) => (
+                    <button
+                      key={src}
+                      type="button"
+                      onClick={() => switchSource(src)}
+                      aria-pressed={form.authSource === src}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium transition-colors",
+                        form.authSource === src ? "bg-surface text-fg shadow-xs" : "text-fg-muted hover:text-fg",
+                      )}
+                    >
+                      {src === "LOCAL" ? <KeyRound className="size-3.5" /> : <Server className="size-3.5" />}
+                      {src === "LOCAL" ? "Akun Lokal" : "Akun SIMGOS"}
+                    </button>
+                  ))}
+                </div>
+                <Hint>
+                  {form.authSource === "LOCAL"
+                    ? "Sandi dibuat & dikelola di aplikasi ini."
+                    : "Pengguna login memakai akun SIMGOS; sandi diverifikasi ke SIMGOS, bukan disimpan di sini."}
+                </Hint>
+              </Fld>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-fg-muted">Sumber login:</span>
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset",
+                    form.authSource === "SIMGOS"
+                      ? "bg-accent-soft text-accent ring-accent/20"
+                      : "bg-surface-2 text-fg-muted ring-border",
+                  )}
+                >
+                  {form.authSource === "SIMGOS" ? <Server className="size-3" /> : <KeyRound className="size-3" />}
+                  {form.authSource === "SIMGOS" ? "Akun SIMGOS" : "Akun Lokal"}
+                </span>
+                {form.authSource === "SIMGOS" && form.simgosLogin && (
+                  <span className="font-mono text-[11px] text-fg-subtle">LOGIN {form.simgosLogin}</span>
+                )}
+              </div>
+            )}
+
+            {/* Pilih akun SIMGOS (saat tambah) */}
+            {!isEdit && form.authSource === "SIMGOS" && (
+              <Fld label="Akun SIMGOS" required>
+                <SimgosUserCombobox
+                  value={form.simgosLogin}
+                  onPick={onPickSimgos}
+                  onClear={() => set("simgosLogin", "")}
+                />
+                <Hint>Cari & pilih akun SIMGOS — nama, NIP, dan username terisi otomatis.</Hint>
+              </Fld>
+            )}
+
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Fld label="Username" required>
                 <Input
@@ -232,7 +339,11 @@ export function UserFormModal({
                   autoComplete="off"
                   onChange={(e) => set("username", e.target.value)}
                 />
-                {isEdit && <Hint>Username tidak dapat diubah.</Hint>}
+                {isEdit ? (
+                  <Hint>Username tidak dapat diubah.</Hint>
+                ) : form.authSource === "SIMGOS" ? (
+                  <Hint>Dipakai untuk masuk; otomatis dari LOGIN SIMGOS (boleh disesuaikan).</Hint>
+                ) : null}
               </Fld>
               <Fld label="Peran" required>
                 <Select
@@ -244,7 +355,7 @@ export function UserFormModal({
               </Fld>
             </div>
 
-            {!isEdit && (
+            {!isEdit && form.authSource === "LOCAL" && (
               <Fld label="Sandi awal" required>
                 <div className="flex gap-2">
                   <Input
@@ -276,12 +387,24 @@ export function UserFormModal({
               </Fld>
             )}
 
+            {form.authSource === "SIMGOS" && (
+              <div className="flex items-start gap-2 rounded-[var(--radius-md)] border border-border bg-surface-2/40 px-3 py-2 text-xs text-fg-muted">
+                <Server className="mt-0.5 size-3.5 shrink-0 text-fg-subtle" />
+                <span>
+                  Sandi diverifikasi langsung ke SIMGOS saat login — tidak disimpan di aplikasi ini.
+                  Nonaktifkan akun di sini untuk mencabut akses tanpa mengubah SIMGOS.
+                </span>
+              </div>
+            )}
+
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
-              <ToggleRow
-                label="Wajib ganti sandi saat login"
-                checked={form.mustChangePassword}
-                onChange={(v) => set("mustChangePassword", v)}
-              />
+              {form.authSource === "LOCAL" && (
+                <ToggleRow
+                  label="Wajib ganti sandi saat login"
+                  checked={form.mustChangePassword}
+                  onChange={(v) => set("mustChangePassword", v)}
+                />
+              )}
               <ToggleRow
                 label="Akun aktif"
                 checked={form.isActive}
@@ -361,6 +484,7 @@ export function UserFormModal({
 /** Label ramah untuk kunci field (dipakai saat menampilkan galat validasi server). */
 const FIELD_LABEL: Record<string, string> = {
   username: "Username",
+  simgosLogin: "Akun SIMGOS",
   roleKey: "Peran",
   password: "Sandi",
   name: "Nama lengkap",

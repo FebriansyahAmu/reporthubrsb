@@ -53,10 +53,16 @@ model RolePermission {
 /// Peran memakai FK `roleId` (menggantikan enum lama). Kolom profil diisi lewat
 /// modul Master › Pengguna. NIK & tanggal lahir = PII sensitif.
 model User {
-  id           String @id @default(cuid())
-  username     String @unique
+  id           String  @id @default(cuid())
+  username     String  @unique
   email        String? @unique
-  passwordHash String  @map("password_hash")
+  /// Hash bcrypt sandi LOKAL. NULL untuk pengguna sumber SIMGOS (kredensial di SIMGOS).
+  passwordHash String? @map("password_hash")
+
+  /// Sumber autentikasi: "LOCAL" (verifikasi hash lokal) | "SIMGOS" (verifikasi ke aplikasi.pengguna).
+  authSource String @default("LOCAL") @map("auth_source")
+  /// LOGIN persis di `aplikasi.pengguna` (server SIMGOS) untuk pengguna authSource=SIMGOS.
+  simgosLogin String? @map("simgos_login")
 
   roleId String @map("role_id")
   role   Role   @relation(fields: [roleId], references: [id])

@@ -76,16 +76,32 @@ export const listUsersQuerySchema = z.object({
 });
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 
+/** LOGIN akun SIMGOS (aplikasi.pengguna) — hanya untuk authSource "SIMGOS". */
+const simgosLoginField = z.string().trim().max(50).optional().default("");
+
 export const createUserSchema = z
   .object({
+    /** Sumber login: "LOCAL" (sandi lokal) | "SIMGOS" (verifikasi ke aplikasi.pengguna). */
+    authSource: z.enum(["LOCAL", "SIMGOS"]).default("LOCAL"),
     username: usernameField,
+    simgosLogin: simgosLoginField,
     roleKey: z.string().trim().min(1, "Peran wajib dipilih.").max(40),
-    password: passwordField,
+    // Wajib (≥8) hanya untuk LOCAL — divalidasi di superRefine.
+    password: z.string().max(100).optional().default(""),
     mustChangePassword: z.boolean().default(true),
     isActive: z.boolean().default(true),
     ...profileShape,
   })
-  .strict();
+  .strict()
+  .superRefine((val, ctx) => {
+    if (val.authSource === "LOCAL") {
+      if (!val.password || val.password.length < 8) {
+        ctx.addIssue({ path: ["password"], code: "custom", message: "Sandi minimal 8 karakter." });
+      }
+    } else if (!val.simgosLogin.trim()) {
+      ctx.addIssue({ path: ["simgosLogin"], code: "custom", message: "Akun SIMGOS wajib dipilih." });
+    }
+  });
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 
 export const updateUserSchema = z

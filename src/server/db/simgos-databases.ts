@@ -28,6 +28,8 @@ export const SIMGOS_DB = {
   REGONLINE: "regonline",
   /** Bridging BPJS/VClaim: `kunjungan` (noSEP per noKartu+tglSEP), `peserta` (noKartu↔nik). */
   BPJS: "bpjs",
+  /** Aplikasi/akun SIMGOS: `pengguna` (LOGIN + PASSWORD bcrypt) — untuk login via akun SIMGOS. */
+  APLIKASI: "aplikasi",
 } as const;
 
 export type SimgosDb = (typeof SIMGOS_DB)[keyof typeof SIMGOS_DB];

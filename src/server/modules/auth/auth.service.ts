@@ -8,7 +8,23 @@ import {
   verifyRefreshToken,
 } from "@/server/auth/tokens";
 import { AppError, ForbiddenError, UnauthorizedError } from "@/server/lib/errors";
+import { querySimgosPenggunaByLogin } from "./simgos-pengguna.dal";
+import { verifySimgosPasswordHash } from "./simgos-password";
 import * as dal from "./auth.dal";
+
+/**
+ * Verifikasi kredensial ke akun SIMGOS (`aplikasi.pengguna`, READ-ONLY). LOGIN
+ * bisa >1 baris → cocok bila password cocok di salah satu baris aktif (skema
+ * hashing SIMGOS: HMAC-SHA256+bcrypt dengan private_key, atau MD5 legacy).
+ */
+async function verifySimgosLogin(login: string, password: string): Promise<boolean> {
+  if (!login) return false;
+  const rows = await querySimgosPenggunaByLogin(login);
+  for (const r of rows) {
+    if (r.PASSWORD && (await verifySimgosPasswordHash(r.PASSWORD, password))) return true;
+  }
+  return false;
+}
 
 export type AuthUser = { id: string; username: string; name: string; role: string };
 export type IssuedTokens = { access: string; refresh: string; user: AuthUser };
@@ -42,7 +58,14 @@ async function issueTokens(
   };
 }
 
-/** Login dengan username + kata sandi. Pesan error sengaja generik (anti user-enum). */
+/**
+ * Login dengan username + kata sandi. Dua sumber:
+ * - authSource "SIMGOS": verifikasi ke `aplikasi.pengguna` (bcrypt, READ-ONLY).
+ * - authSource "LOCAL" : verifikasi hash bcrypt lokal.
+ * Pengguna WAJIB sudah terdaftar + diberi peran di aplikasi (baris `users`) —
+ * akun SIMGOS tanpa penetapan peran tidak bisa masuk. Pesan error sengaja
+ * generik (anti user-enumeration).
+ */
 export async function login(
   username: string,
   password: string,
@@ -50,9 +73,16 @@ export async function login(
 ): Promise<IssuedTokens> {
   const user = await dal.findUserByUsername(username.toLowerCase());
   if (!user) throw new UnauthorizedError("Username atau kata sandi salah");
-  const valid = await verifyPassword(password, user.passwordHash);
+
+  const valid =
+    user.authSource === "SIMGOS"
+      ? await verifySimgosLogin(user.simgosLogin ?? user.username, password)
+      : user.passwordHash
+        ? await verifyPassword(password, user.passwordHash)
+        : false;
   if (!valid) throw new UnauthorizedError("Username atau kata sandi salah");
   if (!user.isActive) throw new ForbiddenError("Akun dinonaktifkan");
+
   await dal.touchLastLogin(user.id);
   return issueTokens(user, meta);
 }
@@ -97,6 +127,13 @@ export async function changePassword(
 ): Promise<IssuedTokens> {
   const user = await dal.findUserById(userId);
   if (!user || !user.isActive) throw new UnauthorizedError("Sesi tidak valid");
+  if (user.authSource === "SIMGOS" || !user.passwordHash) {
+    throw new AppError(
+      "Akun SIMGOS — ganti kata sandi dilakukan di aplikasi SIMGOS.",
+      "SIMGOS_ACCOUNT",
+      400,
+    );
+  }
 
   const ok = await verifyPassword(currentPassword, user.passwordHash);
   if (!ok) throw new AppError("Kata sandi saat ini salah", "INVALID_PASSWORD", 400);

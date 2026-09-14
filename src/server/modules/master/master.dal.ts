@@ -67,7 +67,9 @@ export function findUserByNik(nik: string) {
 
 export function createUser(input: UserWriteData & {
   username: string;
-  passwordHash: string;
+  authSource: string;
+  simgosLogin: string | null;
+  passwordHash: string | null;
   createdBy: string | null;
 }) {
   const { roleId, createdBy, ...rest } = input;

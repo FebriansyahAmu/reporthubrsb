@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { CheckCircle2, KeyRound, Pencil, Search, ShieldAlert, UserPlus, UsersRound } from "lucide-react";
+import { CheckCircle2, KeyRound, Pencil, Search, Server, ShieldAlert, UserPlus, UsersRound } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -158,7 +158,14 @@ export function PenggunaView({
                         {initials(u.namaLengkap)}
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate font-medium text-fg">{u.namaLengkap}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="truncate font-medium text-fg">{u.namaLengkap}</p>
+                          {u.authSource === "SIMGOS" && (
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-accent ring-1 ring-inset ring-accent/20">
+                              <Server className="size-2.5" /> SIMGOS
+                            </span>
+                          )}
+                        </div>
                         <p className="truncate font-mono text-xs text-fg-subtle">@{u.username}</p>
                       </div>
                     </div>
@@ -185,7 +192,7 @@ export function PenggunaView({
                   </TD>
                   <TD align="right">
                     <div className="flex items-center justify-end gap-1">
-                      {perms.update && (
+                      {perms.update && u.authSource !== "SIMGOS" && (
                         <IconBtn label="Reset sandi" onClick={() => setResetTarget(u)}>
                           <KeyRound className="size-4" />
                         </IconBtn>

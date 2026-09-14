@@ -92,11 +92,18 @@ export async function createUser(input: CreateUserInput, actor: Actor): Promise<
     throw new BusinessRuleError("NIK sudah terdaftar.");
   }
   const role = await resolveRole(input.roleKey);
-  const passwordHash = await hashPassword(input.password);
+
+  // Sumber SIMGOS: tanpa sandi lokal (verifikasi ke aplikasi.pengguna saat login).
+  const isSimgos = input.authSource === "SIMGOS";
+  const passwordHash = isSimgos ? null : await hashPassword(input.password);
+  const simgosLogin = isSimgos ? input.simgosLogin.trim() || null : null;
+  const mustChange = isSimgos ? false : input.mustChangePassword;
 
   const created = await dal.createUser({
-    ...toWriteData(input, role.id, input.mustChangePassword),
+    ...toWriteData(input, role.id, mustChange),
     username: input.username,
+    authSource: input.authSource,
+    simgosLogin,
     passwordHash,
     createdBy: actor.id,
   });
@@ -106,7 +113,7 @@ export async function createUser(input: CreateUserInput, actor: Actor): Promise<
     actorName: actor.name,
     action: "USER_CREATE",
     targetId: created.id,
-    metadata: { username: created.username, roleKey: role.key },
+    metadata: { username: created.username, roleKey: role.key, authSource: input.authSource },
     ip: actor.ip ?? null,
   });
   return toUserDetail(created);
@@ -164,6 +171,11 @@ export async function resetPassword(
 ): Promise<void> {
   const target = await dal.findUserById(id);
   if (!target) throw new NotFoundError("Pengguna tidak ditemukan.");
+  if (target.authSource === "SIMGOS") {
+    throw new BusinessRuleError(
+      "Akun SIMGOS: kata sandi dikelola di aplikasi SIMGOS, tidak dapat direset di sini.",
+    );
+  }
   const passwordHash = await hashPassword(input.password);
   await dal.setUserPassword(id, passwordHash, input.mustChangePassword);
   await revokeAllUserTokens(id);

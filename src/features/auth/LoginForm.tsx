@@ -111,6 +111,10 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
       >
         {loading ? "Memproses…" : "Masuk"}
       </Button>
+
+      <p className="text-center text-xs text-fg-subtle">
+        Bisa memakai akun aplikasi atau akun SIMGOS Anda (jika sudah diberi akses oleh admin).
+      </p>
     </form>
   );
 }

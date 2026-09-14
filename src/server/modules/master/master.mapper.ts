@@ -14,6 +14,8 @@ type UserRow = {
   id: string;
   username: string;
   email: string | null;
+  authSource: string;
+  simgosLogin: string | null;
   name: string;
   gelarDepan: string | null;
   gelarBelakang: string | null;
@@ -38,6 +40,7 @@ export type UserListItem = {
   roleName: string;
   phone: string | null;
   nikMasked: string | null;
+  authSource: string;
   isActive: boolean;
   mustChangePassword: boolean;
   lastLoginAt: string | null;
@@ -47,6 +50,8 @@ export type UserDetail = {
   id: string;
   username: string;
   email: string | null;
+  authSource: string;
+  simgosLogin: string;
   roleKey: string;
   roleName: string;
   nik: string;
@@ -73,6 +78,7 @@ export function toUserListItem(u: UserRow): UserListItem {
     roleName: u.role.name,
     phone: u.phone,
     nikMasked: maskNik(u.nik),
+    authSource: u.authSource,
     isActive: u.isActive,
     mustChangePassword: u.mustChangePassword,
     lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
@@ -85,6 +91,8 @@ export function toUserDetail(u: UserRow): UserDetail {
     id: u.id,
     username: u.username,
     email: u.email,
+    authSource: u.authSource,
+    simgosLogin: u.simgosLogin ?? "",
     roleKey: u.role.key,
     roleName: u.role.name,
     nik: u.nik ?? "",

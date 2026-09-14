@@ -2,8 +2,9 @@
 
 import type { PageMeta } from "@/lib/types";
 import type { UserDetail, UserListItem, RoleItem } from "@/server/modules/master/master.mapper";
+import type { SimgosPenggunaHit } from "@/server/modules/auth/simgos-pengguna.dal";
 
-export type { UserDetail, UserListItem, RoleItem };
+export type { UserDetail, UserListItem, RoleItem, SimgosPenggunaHit };
 
 export type RoleOption = { key: string; name: string };
 export type MasterPerms = { create: boolean; update: boolean; delete: boolean };
@@ -88,6 +89,16 @@ export async function resetUserPassword(id: string, body: unknown): Promise<void
 
 export async function revokeUserSessions(id: string): Promise<void> {
   await send(`/api/master/pengguna/${id}/revoke-sessions`, "POST", {});
+}
+
+/** Cari akun SIMGOS (aplikasi.pengguna) untuk menautkan pengguna sumber SIMGOS. */
+export async function searchSimgosUsers(q: string): Promise<SimgosPenggunaHit[]> {
+  if (q.trim().length < 2) return [];
+  const json = await send<SimgosPenggunaHit[]>(
+    `/api/master/pengguna/simgos?q=${encodeURIComponent(q.trim())}`,
+    "GET",
+  );
+  return json.data;
 }
 
 /* --------------------------------------------------------------------- peran */
