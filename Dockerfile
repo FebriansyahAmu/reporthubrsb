@@ -17,9 +17,13 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma.config.ts prisma.app.config.ts ./
 COPY prisma ./prisma
-# `npm ci` menjalankan postinstall → generate client SIMGOS & APP ke src/generated.
-# (generate tidak butuh koneksi/URL DB — datasource hanya ditambah bila env ada.)
-RUN npm ci
+# Pakai `npm install` (bukan `npm ci`): package-lock.json digenerate di Windows,
+# sehingga dependensi opsional khusus-Linux (mis. @emnapi utk native binding
+# Tailwind v4/lightningcss) tak tercatat → `npm ci` menolak. `npm install`
+# menyelesaikan dependensi Linux yang benar. Menjalankan postinstall → generate
+# client Prisma SIMGOS & APP ke src/generated (tanpa butuh koneksi DB).
+# (Untuk kembali ke `npm ci`: regenerasi lockfile saat online lalu commit.)
+RUN npm install --no-audit --no-fund
 
 # --- builder: build Next.js jadi output standalone ----------------------------
 FROM node:${NODE_VERSION} AS builder
