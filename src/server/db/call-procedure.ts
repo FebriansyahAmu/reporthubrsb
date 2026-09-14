@@ -37,6 +37,9 @@ function getSpPool(): SpPool {
     database: env.SIMGOS_DEFAULT_DB || u.pathname.replace(/^\//, "") || undefined,
     connectionLimit: 3,
     connectTimeout: 8000,
+    acquireTimeout: 10_000, // gagal cepat bila 3 koneksi SP sedang terpakai
+    idleTimeout: 60, // detik: lepas koneksi SP nganggur
+    socketTimeout: 30_000, // ms: lepas koneksi bila SP tak berbalas
     bigIntAsNumber: true,
     typeCast: typeCast as never,
   });

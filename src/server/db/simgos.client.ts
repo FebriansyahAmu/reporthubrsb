@@ -30,17 +30,34 @@ function createClient(): PrismaClient {
     // Tanpa anchor: semua query wajib ter-kualifikasi. SIMGOS_DEFAULT_DB opsional.
     database: env.SIMGOS_DEFAULT_DB || u.pathname.replace(/^\//, "") || undefined,
     connectTimeout: 8000,
+    // --- Batas koneksi KERAS agar SIMGOS tak pernah kehabisan slot ---------
+    // (mencegah ER_CON_COUNT_ERROR / "Too many connections" yang membekukan DB).
+    connectionLimit: 5, // maksimum koneksi SIMGOS dari proses ini (read-only)
+    acquireTimeout: 10_000, // gagal cepat bila pool penuh, jangan antre selamanya
+    idleTimeout: 60, // detik: tutup koneksi nganggur → slot dikembalikan ke server
+    // Bila query tak berbalas 30s, socket ditutup → koneksi dilepas dari pool &
+    // server membatalkan query saat mengirim hasil. Universal (MariaDB/MySQL).
+    socketTimeout: 30_000,
+    // SIMGOS = MySQL 8. Batasi SELECT di SISI SERVER: query >20s dibunuh sendiri
+    // oleh MySQL (var max_execution_time, ms, khusus SELECT — read-only aman)
+    // sehingga tak ada satu pun query yang bisa menahan koneksi selamanya.
+    initSql: "SET SESSION max_execution_time = 20000",
   });
   return new PrismaClient({ adapter, log: ["warn", "error"] });
 }
 
-/** Ambil singleton client SIMGOS. Lempar bila kredensial belum di-set. */
+/**
+ * Ambil singleton client SIMGOS. Lempar bila kredensial belum di-set.
+ *
+ * PENTING: client (beserta connection pool-nya) di-cache di `globalThis` untuk
+ * SEMUA environment. Dulu hanya di-cache saat non-production, sehingga di
+ * PRODUCTION setiap panggilan membuat PrismaClient + pool BARU yang tak pernah
+ * ditutup → koneksi ke SIMGOS menumpuk sampai server menolak (error 1040).
+ */
 export function getSimgos(): PrismaClient {
   const existing = globalForSimgos.simgosClient;
   if (existing) return existing;
   const client = createClient();
-  if (process.env.NODE_ENV !== "production") {
-    globalForSimgos.simgosClient = client;
-  }
+  globalForSimgos.simgosClient = client;
   return client;
 }

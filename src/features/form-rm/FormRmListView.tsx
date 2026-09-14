@@ -240,6 +240,7 @@ function PatientCard({ item }: { item: FormRmPatient }) {
     >
       <Link
         href={href}
+        prefetch={false}
         className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
       >
         <div className="flex items-start justify-between gap-2">
@@ -281,6 +282,7 @@ function PatientCard({ item }: { item: FormRmPatient }) {
 
       <Link
         href={href}
+        prefetch={false}
         className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-brand bg-brand-soft px-3 py-2 text-sm font-medium text-brand-soft-fg transition-colors hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
       >
         {item.kelengkapan.lengkap ? "Lihat Form RM" : "Isi Form RM"}

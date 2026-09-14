@@ -22,14 +22,23 @@ function createClient(): PrismaClient {
     password: decodeURIComponent(u.password),
     database: u.pathname.replace(/^\//, "") || "reporthub",
     connectTimeout: 8000,
+    // Batas koneksi (hygiene) — DB reporthub terpisah dari SIMGOS.
+    connectionLimit: 5,
+    acquireTimeout: 10_000,
+    idleTimeout: 60,
   });
   return new PrismaClient({ adapter, log: ["warn", "error"] });
 }
 
+/**
+ * Singleton client reporthub — di-cache di `globalThis` untuk SEMUA environment.
+ * (Dulu hanya di non-production; di production tiap panggilan membuat pool baru
+ * yang tak pernah ditutup → kebocoran koneksi. Lihat catatan di simgos.client.ts.)
+ */
 export function getAppDb(): PrismaClient {
   const existing = globalForApp.appClient;
   if (existing) return existing;
   const client = createClient();
-  if (process.env.NODE_ENV !== "production") globalForApp.appClient = client;
+  globalForApp.appClient = client;
   return client;
 }
