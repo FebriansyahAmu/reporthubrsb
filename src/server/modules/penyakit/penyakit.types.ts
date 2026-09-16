@@ -18,6 +18,21 @@ export type JenisLayanan = 1 | 2 | 3;
 /** Metrik pemeringkatan: jumlah kasus (kunjungan) atau pasien unik. */
 export type UrutMetric = "kasus" | "pasien";
 
+/**
+ * Opsi filter ruangan untuk dropdown. `id` = ID `master.ruangan` (grup 7-digit
+ * ATAU ruang leaf 9-digit); DAL memfilter `pk.RUANGAN LIKE '<id>%'` sehingga
+ * memilih grup = seluruh bangsal, memilih leaf = satu ruang. `groupId`/`groupNama`
+ * dipakai klien untuk mengelompokkan opsi per bangsal sesuai jenis layanan.
+ */
+export type PenyakitRuanganOption = {
+  id: string;
+  nama: string;
+  jenis: JenisLayanan;
+  level: "grup" | "ruang";
+  groupId: string;
+  groupNama: string;
+};
+
 /** Satu baris peringkat penyakit (agregat per kode ICD-10 pada periode & filter). */
 export type PenyakitItem = {
   rank: number;
@@ -60,6 +75,10 @@ export type PenyakitResult = {
   caraBayar: CaraBayar;
   /** true = hanya diagnosa utama (md.UTAMA=1). */
   utama: boolean;
+  /** ID ruangan/bangsal terpilih (prefiks), atau null bila semua ruangan. */
+  ruangan: string | null;
+  /** Nama ruangan/bangsal terpilih (untuk tampilan/Excel), atau null. */
+  ruanganNama: string | null;
   updatedAt: string; // ISO
 };
 
@@ -72,4 +91,6 @@ export type PenyakitFilter = {
   utama: boolean;
   metric: UrutMetric;
   limit: number;
+  /** Prefiks ID ruangan (grup/leaf). undefined = semua ruangan. */
+  ruangan?: string;
 };

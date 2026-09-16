@@ -35,6 +35,7 @@ export async function buildPenyakitExcel(
     `Periode: ${result.periode.from} s/d ${result.periode.to}`,
     `Jenis layanan: ${JENIS_LABEL[result.jenis] ?? "-"}`,
     `Cara bayar: ${BAYAR_LABEL[result.caraBayar]}`,
+    `Ruangan: ${result.ruanganNama ?? "Semua ruangan"}`,
     `Cakupan: ${result.utama ? "Diagnosa utama" : "Semua diagnosa"}`,
     `Urut: ${metricLabel}`,
   ].join("   ·   ");

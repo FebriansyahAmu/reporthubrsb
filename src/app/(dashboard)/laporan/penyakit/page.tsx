@@ -3,11 +3,13 @@ import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
 import { PenyakitView } from "@/features/laporan-penyakit/PenyakitView";
+import { getPenyakitRuanganOptions } from "@/server/modules/penyakit/penyakit.service";
 
 export const metadata = { title: "10 Penyakit Terbanyak · Pusat Laporan · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
-export default function PenyakitPage() {
+export default async function PenyakitPage() {
+  const ruanganOptions = await getPenyakitRuanganOptions().catch(() => []);
   return (
     <FadeIn className="space-y-6">
       <Link
@@ -21,7 +23,7 @@ export default function PenyakitPage() {
         title="10 Penyakit Terbanyak"
         description="Peringkat diagnosa ICD-10 terbanyak pada suatu periode. Pilih jenis layanan (rawat jalan/gawat darurat/rawat inap) & cara bayar, urutkan menurut jumlah kasus atau pasien."
       />
-      <PenyakitView />
+      <PenyakitView ruanganOptions={ruanganOptions} />
     </FadeIn>
   );
 }

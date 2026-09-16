@@ -24,6 +24,15 @@ export const penyakitQuerySchema = z
       .default("1")
       .transform((v) => v === "1" || v === "true"),
     metric: z.enum(["kasus", "pasien"]).default("kasus"),
+    /**
+     * Prefiks ID ruangan (grup 7-digit / ruang 9-digit dari master.ruangan).
+     * Hanya angka → di-bind sebagai `LIKE '<ruangan>%'` di DAL (aman injeksi).
+     * "" / kosong dianggap "semua ruangan".
+     */
+    ruangan: z.preprocess(
+      (v) => (v === "" || v == null ? undefined : v),
+      z.string().regex(/^\d{5,9}$/, "ruangan harus ID angka 5–9 digit").optional(),
+    ),
   })
   .refine((v) => v.from <= v.to, {
     message: "Tanggal awal tidak boleh melebihi tanggal akhir",

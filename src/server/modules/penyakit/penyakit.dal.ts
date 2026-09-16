@@ -50,16 +50,28 @@ function coreWhere(f: PenyakitFilter): string {
   const dateCol = isRI ? "lpp.TANGGAL" : "pp.TANGGAL";
   const bayar = f.caraBayar > 0 ? `AND pj.JENIS = ${f.caraBayar}` : "";
   const utama = f.utama ? "AND md.UTAMA = 1" : "";
+  // Filter ruangan: prefiks ID (grup 7-digit → seluruh bangsal, atau ruang
+  // 9-digit → satu ruang). Nilai di-BIND (`?`) — lihat params(). `pk.RUANGAN`
+  // selalu ID leaf 9-digit, jadi LIKE '<prefiks>%' menangkap tepat sub-ruangnya.
+  const ruangan = f.ruangan ? "AND pk.RUANGAN LIKE ?" : "";
   return `
     WHERE r.JENIS_KUNJUNGAN = ${f.jenis}
       AND md.KODE IS NOT NULL AND md.KODE <> ''
       ${bayar}
       ${utama}
+      ${ruangan}
       AND ${dateCol} BETWEEN ? AND ?`;
 }
 
+/**
+ * Parameter ter-bind, URUT sesuai kemunculan `?` di coreWhere: ruangan (bila
+ * ada) mendahului rentang tanggal.
+ */
 function params(f: PenyakitFilter): unknown[] {
-  return [`${f.from} 00:00:00`, `${f.to} 23:59:59`];
+  const p: unknown[] = [];
+  if (f.ruangan) p.push(`${f.ruangan}%`);
+  p.push(`${f.from} 00:00:00`, `${f.to} 23:59:59`);
+  return p;
 }
 
 export type TopPenyakitRow = {
@@ -116,4 +128,52 @@ export async function queryPenyakitGrandTotal(f: PenyakitFilter): Promise<Penyak
     ${coreWhere(f)}`;
   const rows = await getSimgos().$queryRawUnsafe<PenyakitGrandRow[]>(sql, ...params(f));
   return rows[0] ?? { jenisDiag: 0, totalKasus: 0, totalPasien: 0 };
+}
+
+export type RuanganOptRow = {
+  id: string;
+  nama: string;
+  jenis: number;
+  level: "grup" | "ruang";
+  groupId: string;
+  groupNama: string | null;
+};
+
+/**
+ * Opsi filter ruangan untuk dropdown laporan (READ-ONLY). Mengembalikan DUA level:
+ *  - grup/bangsal (ID 7-digit, JENIS=4) yang punya ≥1 ruang leaf, dan
+ *  - ruang leaf (ID 9-digit, JENIS=5).
+ * Keduanya hanya untuk kategori kunjungan RJ/GD/RI (JENIS_KUNJUNGAN 1/2/3) & aktif.
+ * `groupId` = ID grup (untuk leaf: 7-digit prefiks), `groupNama` = deskripsi grup —
+ * dipakai klien mengelompokkan opsi per bangsal. Nama tabel/kolom fixed → aman.
+ */
+export async function queryRuanganOptions(): Promise<RuanganOptRow[]> {
+  const sql = `
+    SELECT c.ID AS id,
+           c.DESKRIPSI AS nama,
+           c.JENIS_KUNJUNGAN AS jenis,
+           IF(CHAR_LENGTH(c.ID) = 7, 'grup', 'ruang') AS level,
+           IF(CHAR_LENGTH(c.ID) = 7, c.ID, LEFT(c.ID, 7)) AS groupId,
+           COALESCE(g.DESKRIPSI, c.DESKRIPSI) AS groupNama
+    FROM ${MASTER}.ruangan c
+    LEFT JOIN ${MASTER}.ruangan g
+           ON CHAR_LENGTH(c.ID) = 9 AND g.ID = LEFT(c.ID, 7)
+    WHERE c.STATUS = 1
+      AND c.JENIS_KUNJUNGAN IN (1, 2, 3)
+      AND (
+        (CHAR_LENGTH(c.ID) = 7 AND c.JENIS = 4
+           AND EXISTS (SELECT 1 FROM ${MASTER}.ruangan x
+                        WHERE x.JENIS = 5 AND CHAR_LENGTH(x.ID) = 9
+                          AND x.ID LIKE CONCAT(c.ID, '%')))
+        OR (CHAR_LENGTH(c.ID) = 9 AND c.JENIS = 5)
+      )
+    ORDER BY c.JENIS_KUNJUNGAN, groupId, CHAR_LENGTH(c.ID), c.DESKRIPSI`;
+  return getSimgos().$queryRawUnsafe<RuanganOptRow[]>(sql);
+}
+
+/** Deskripsi ruangan/bangsal untuk satu ID (label filter di Excel). Null bila tak ada. */
+export async function queryRuanganNama(id: string): Promise<string | null> {
+  const sql = `SELECT DESKRIPSI FROM ${MASTER}.ruangan WHERE ID = ? LIMIT 1`;
+  const rows = await getSimgos().$queryRawUnsafe<{ DESKRIPSI: string | null }[]>(sql, id);
+  return rows[0]?.DESKRIPSI?.trim() || null;
 }

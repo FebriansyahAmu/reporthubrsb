@@ -23,6 +23,7 @@ import {
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { DatePicker } from "@/components/ui/DatePicker";
+import { Select, type SelectGroup, type SelectOption } from "@/components/ui/Select";
 import { Label } from "@/components/ui/Field";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/feedback/States";
@@ -35,6 +36,7 @@ import type {
   JenisLayanan,
   PenyakitItem,
   PenyakitResult,
+  PenyakitRuanganOption,
   UrutMetric,
 } from "@/server/modules/penyakit/penyakit.types";
 
@@ -97,6 +99,7 @@ async function fetchPenyakit(args: {
   caraBayar: CaraBayar;
   utama: boolean;
   metric: UrutMetric;
+  ruangan: string;
 }): Promise<PenyakitResult> {
   const p = new URLSearchParams({
     from: args.from,
@@ -106,15 +109,52 @@ async function fetchPenyakit(args: {
     utama: args.utama ? "1" : "0",
     metric: args.metric,
   });
+  if (args.ruangan) p.set("ruangan", args.ruangan);
   const res = await fetch(`/api/laporan/penyakit?${p.toString()}`);
   if (!res.ok) throw new Error("Gagal memuat data");
   const json = (await res.json()) as { data: PenyakitResult };
   return json.data;
 }
 
+/**
+ * Susun opsi <Select> ruangan bergrup per bangsal untuk jenis layanan terpilih.
+ * Grup pertama = "Semua ruangan" (tanpa header). Tiap bangsal → header + opsi
+ * "Semua <bangsal>" (prefiks 7-digit) diikuti ruang-ruangnya (ID 9-digit).
+ */
+function buildRuanganGroups(
+  options: PenyakitRuanganOption[],
+  jenis: JenisLayanan,
+): SelectGroup[] {
+  const forJenis = options.filter((o) => o.jenis === jenis);
+  const groups: SelectGroup[] = [
+    { label: "", options: [{ value: "", label: "Semua ruangan" }] },
+  ];
+  const byGroup = new Map<string, PenyakitRuanganOption[]>();
+  for (const o of forJenis) {
+    const arr = byGroup.get(o.groupId) ?? [];
+    arr.push(o);
+    byGroup.set(o.groupId, arr);
+  }
+  for (const arr of byGroup.values()) {
+    const grp = arr.find((x) => x.level === "grup");
+    const nama = grp?.nama ?? arr[0].groupNama;
+    const opts: SelectOption[] = [];
+    if (grp) opts.push({ value: grp.id, label: `Semua ${nama}` });
+    for (const lf of arr.filter((x) => x.level === "ruang")) {
+      opts.push({ value: lf.id, label: lf.nama });
+    }
+    groups.push({ label: nama, options: opts });
+  }
+  return groups;
+}
+
 /* -------------------------------------------------------------------- view */
 
-export function PenyakitView() {
+export function PenyakitView({
+  ruanganOptions = [],
+}: {
+  ruanganOptions?: PenyakitRuanganOption[];
+}) {
   const initial = useMemo(() => presetRange("bulan-ini"), []);
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
@@ -123,21 +163,35 @@ export function PenyakitView() {
   const [caraBayar, setCaraBayar] = useState<CaraBayar>(0);
   const [utama, setUtama] = useState(true);
   const [metric, setMetric] = useState<UrutMetric>("kasus");
+  const [ruangan, setRuangan] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
   const rangeInvalid = !!from && !!to && from > to;
 
+  // Opsi ruangan bergrup untuk jenis terpilih (grup bangsal + ruang leaf).
+  const ruanganGroups = useMemo(
+    () => buildRuanganGroups(ruanganOptions, jenis),
+    [ruanganOptions, jenis],
+  );
+  const hasRuanganFilter = ruanganOptions.length > 0;
+
+  /** Ganti jenis layanan: reset ruangan (opsi berbeda antar-jenis). */
+  function changeJenis(v: JenisLayanan) {
+    setJenis(v);
+    setRuangan("");
+  }
+
   const { result, loading, error, reload } = useAsyncData<PenyakitResult>(
-    () => fetchPenyakit({ from, to, jenis, caraBayar, utama, metric }),
-    [from, to, jenis, caraBayar, utama, metric],
+    () => fetchPenyakit({ from, to, jenis, caraBayar, utama, metric, ruangan }),
+    [from, to, jenis, caraBayar, utama, metric, ruangan],
   );
 
   const items = result?.data ?? [];
   const summary = result?.summary ?? null;
   const updatedAt = result?.updatedAt ?? null;
   const hasFilter =
-    jenis !== 3 || caraBayar !== 0 || !utama || preset !== "bulan-ini";
+    jenis !== 3 || caraBayar !== 0 || !utama || preset !== "bulan-ini" || ruangan !== "";
 
   function applyPreset(key: PresetKey) {
     const r = presetRange(key);
@@ -159,6 +213,7 @@ export function PenyakitView() {
     setCaraBayar(0);
     setUtama(true);
     setMetric("kasus");
+    setRuangan("");
   }
 
   async function doExport() {
@@ -173,6 +228,7 @@ export function PenyakitView() {
         utama: utama ? "1" : "0",
         metric,
       });
+      if (ruangan) p.set("ruangan", ruangan);
       await downloadFromEndpoint(`/api/laporan/penyakit/export?${p.toString()}`, "10-Penyakit-Terbanyak.xlsx");
     } catch (e) {
       setExportError(e instanceof Error ? e.message : "Gagal mengekspor data.");
@@ -256,14 +312,27 @@ export function PenyakitView() {
           <p className="mt-2 text-xs text-danger">Tanggal awal melebihi tanggal akhir.</p>
         )}
 
-        {/* Jenis layanan */}
-        <div className="mt-4">
-          <Label>Jenis layanan</Label>
-          <Segmented
-            options={JENIS.map((jn) => ({ key: String(jn.key), label: jn.label }))}
-            value={String(jenis)}
-            onChange={(v) => setJenis(Number(v) as JenisLayanan)}
-          />
+        {/* Jenis layanan + ruangan */}
+        <div className="mt-4 flex flex-wrap items-end gap-x-6 gap-y-3">
+          <div>
+            <Label>Jenis layanan</Label>
+            <Segmented
+              options={JENIS.map((jn) => ({ key: String(jn.key), label: jn.label }))}
+              value={String(jenis)}
+              onChange={(v) => changeJenis(Number(v) as JenisLayanan)}
+            />
+          </div>
+          {hasRuanganFilter && (
+            <div className="min-w-[15rem] grow sm:max-w-xs">
+              <Label>Ruangan</Label>
+              <Select
+                value={ruangan}
+                onChange={setRuangan}
+                options={ruanganGroups}
+                placeholder="Semua ruangan"
+              />
+            </div>
+          )}
         </div>
 
         {/* Cara bayar + diagnosa utama + reset */}
@@ -336,6 +405,7 @@ export function PenyakitView() {
           <div>
             <h3 className="text-sm font-semibold text-fg">
               Peringkat 10 besar · {jenisLabel(jenis)}
+              {result?.ruanganNama ? ` · ${result.ruanganNama}` : ""}
             </h3>
             <p className="text-[11px] text-fg-subtle">
               {formatDate(from)} – {formatDate(to)}
