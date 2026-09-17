@@ -20,11 +20,14 @@ import { Badge } from "@/components/ui/Badge";
 import { TurunanCollapse } from "@/components/report/TurunanCollapse";
 import { BuktiPelayananCard } from "@/features/berkas-klaim/BuktiPelayananCard";
 import { CpptCard } from "@/features/berkas-klaim/CpptCard";
-import { TagihanRincian } from "@/features/berkas-klaim/TagihanRincian";
+import { TagihanPanel } from "@/features/berkas-klaim/TagihanPanel";
 import { cn } from "@/lib/cn";
-import { formatDateTime, formatRupiah } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 import { getBerkasDetail } from "@/server/modules/berkas-klaim/berkas-klaim.service";
-import { getTagihanRingkas } from "@/server/modules/berkas-klaim/berkas-klaim.tagihan.service";
+import {
+  getTagihanIgdRingkas,
+  getTagihanRingkas,
+} from "@/server/modules/berkas-klaim/berkas-klaim.tagihan.service";
 import type {
   DokumenBerkas,
   DokumenStatus,
@@ -86,9 +89,10 @@ export default async function BerkasDetailPage({
   params: Promise<{ nopen: string }>;
 }) {
   const { nopen } = await params;
-  const [detail, tagihan] = await Promise.all([
+  const [detail, tagihan, tagihanIgd] = await Promise.all([
     getBerkasDetail(nopen),
     getTagihanRingkas(nopen),
+    getTagihanIgdRingkas(nopen).catch(() => null),
   ]);
 
   if (!detail) {
@@ -147,19 +151,12 @@ export default async function BerkasDetailPage({
           </div>
         </div>
 
-        {/* Total tagihan + tombol rincian */}
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-md)] border border-border bg-surface-2/40 px-4 py-3">
-          <div>
-            <div className="text-xs text-fg-muted">Total Tagihan</div>
-            <div className="text-2xl font-bold text-fg tabular">
-              {tagihan.ada ? formatRupiah(tagihan.total) : "—"}
-            </div>
-            {!tagihan.ada && (
-              <div className="mt-0.5 text-xs text-fg-subtle">Belum ada tagihan untuk episode ini</div>
-            )}
-          </div>
-          {tagihan.ada && <TagihanRincian nopen={detail.nopen} total={tagihan.total} />}
-        </div>
+        {/* Total tagihan + opsi gabung IGD + tombol rincian */}
+        <TagihanPanel
+          nopen={detail.nopen}
+          tagihan={tagihan}
+          igdTotal={tagihanIgd?.total ?? null}
+        />
 
         {detail.turunan.length > 0 && (
           <div className="mt-4">

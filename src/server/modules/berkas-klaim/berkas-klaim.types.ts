@@ -142,6 +142,8 @@ export type TagihanItem = {
   subtotal: number;
   /** Tanggal layanan "YYYY-MM-DD" atau "". */
   tanggal: string;
+  /** Asal tagihan pada tampilan gabungan (RI/IGD); undefined = tunggal. */
+  sumber?: "RI" | "IGD";
 };
 
 /** Ringkasan tagihan untuk header detail (tanpa item). */

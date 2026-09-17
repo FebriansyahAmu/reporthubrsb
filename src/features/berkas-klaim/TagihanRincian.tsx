@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Loader2, Receipt } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { ErrorState } from "@/components/feedback/States";
+import { cn } from "@/lib/cn";
 import { formatDate, formatNumber, formatRupiah } from "@/lib/format";
 import type { TagihanLengkap } from "@/server/modules/berkas-klaim/berkas-klaim.types";
 
@@ -19,7 +20,16 @@ const JENIS_LABEL: Record<number, string> = {
  * Tombol "Lihat Rincian" + modal yang memuat rincian tagihan (per-komponen &
  * per-item) secara lazy dari `/api/berkas-klaim/tagihan/[nopen]`.
  */
-export function TagihanRincian({ nopen, total }: { nopen: string; total: number }) {
+export function TagihanRincian({
+  nopen,
+  total,
+  igd = false,
+}: {
+  nopen: string;
+  total: number;
+  /** true → tarik rincian GABUNGAN (RI + IGD asal) via `?igd=1`. */
+  igd?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<TagihanLengkap | null>(null);
   const [loading, setLoading] = useState(false);
@@ -29,7 +39,7 @@ export function TagihanRincian({ nopen, total }: { nopen: string; total: number 
     setLoading(true);
     setError(false);
     try {
-      const res = await fetch(`/api/berkas-klaim/tagihan/${nopen}`);
+      const res = await fetch(`/api/berkas-klaim/tagihan/${nopen}${igd ? "?igd=1" : ""}`);
       if (!res.ok) throw new Error("gagal");
       const json = (await res.json()) as { data: TagihanLengkap };
       setData(json.data);
@@ -61,7 +71,7 @@ export function TagihanRincian({ nopen, total }: { nopen: string; total: number 
         onClose={() => setOpen(false)}
         size="xl"
         title="Rincian Tagihan"
-        description={`NOPEN ${nopen} · Total ${formatRupiah(total)}`}
+        description={`NOPEN ${nopen} · Total ${formatRupiah(total)}${igd ? " · Gabungan RI + IGD" : ""}`}
         icon={
           <div className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-brand-soft text-brand-soft-fg">
             <Receipt className="size-4.5" />
@@ -145,6 +155,18 @@ function RincianBody({ data }: { data: TagihanLengkap }) {
                     <span className="ml-2 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-fg-subtle">
                       {JENIS_LABEL[it.jenis] ?? "Lain"}
                     </span>
+                    {it.sumber && (
+                      <span
+                        className={cn(
+                          "ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                          it.sumber === "IGD"
+                            ? "bg-warning-soft text-warning"
+                            : "bg-brand-soft text-brand-soft-fg",
+                        )}
+                      >
+                        {it.sumber}
+                      </span>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right text-fg-muted tabular">
                     {formatNumber(it.qty)}

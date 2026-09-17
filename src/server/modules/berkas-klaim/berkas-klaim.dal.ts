@@ -194,6 +194,27 @@ export async function queryCpptIgdSourceByNopen(nopen: string): Promise<CpptSour
   return kunjungan && igdNopen ? { nopen: igdNopen, kunjungan } : null;
 }
 
+/**
+ * NOPEN episode **IGD asal** untuk satu episode Rawat Inap (NOPEN RI) — READ-ONLY.
+ * Sama seperti `queryCpptIgdSourceByNopen` TAPI tanpa syarat CPPT (dipakai untuk
+ * tagihan: IGD & RI adalah pendaftaran/NOPEN berbeda, ditautkan via SPRI
+ * `perencanaan_rawat_inap` → leg IGD → NOPEN-nya). `null` bila episode tak lewat
+ * IGD / tak ada SPRI.
+ */
+export async function queryIgdNopenByRiNopen(nopen: string): Promise<string | null> {
+  const sql = `
+    SELECT k.NOPEN AS NOPEN
+    FROM ${SIMGOS_DB.MEDICALRECORD}.perencanaan_rawat_inap s
+    JOIN ${SIMGOS_DB.PENDAFTARAN}.kunjungan k ON k.NOMOR = s.KUNJUNGAN
+    WHERE s.PENDAFTARAN_RI_NOMOR = ? AND s.STATUS = 1
+      AND s.KUNJUNGAN IS NOT NULL AND s.KUNJUNGAN <> ''
+    ORDER BY s.DIBUAT_TANGGAL DESC
+    LIMIT 1`;
+  const rows = await getSimgos().$queryRawUnsafe<{ NOPEN: string | null }[]>(sql, nopen);
+  const igd = rows[0]?.NOPEN != null ? String(rows[0].NOPEN).trim() : "";
+  return igd || null;
+}
+
 /** Header cetak Bukti Pelayanan: identitas pasien + diagnosa + peserta BPJS. */
 export type BuktiReportHeaderRow = {
   NORM: number | string;
