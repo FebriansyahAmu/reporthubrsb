@@ -3,7 +3,11 @@ import { isSimgosConfigured } from "@/server/lib/env";
 import { hitungUmur } from "@/lib/format";
 import { queryKunjunganRange, queryTurunanByNopens } from "@/server/modules/pelayanan/pelayanan.dal";
 import { mapKunjunganPelayanan, mapTurunan } from "@/server/modules/pelayanan/pelayanan.mapper";
-import { queryBerkasDetail, querySepByNopen } from "./berkas-klaim.dal";
+import {
+  queryBerkasDetail,
+  queryCpptIgdSourceByNopen,
+  querySepByNopen,
+} from "./berkas-klaim.dal";
 import { buktiExists } from "./berkas-klaim.bukti.service";
 import type { BerkasKlaimQuery } from "./berkas-klaim.schema";
 import type {
@@ -142,6 +146,13 @@ export async function getBerkasDetail(nopen: string): Promise<BerkasDetail | nul
   const buktiAda = await buktiExists(nopen).catch(() => false);
   // Nomor SEP dari bpjs.kunjungan (noKartu + tglSEP), READ-ONLY. Null bila umum/belum terbit.
   const sepNo = await querySepByNopen(nopen).catch(() => null);
+  // CPPT IGD asal (opsi "gabung" saat cetak CPPT) — hanya relevan bila RI & ada CPPT.
+  const cpptIgdAvailable =
+    hasRI && cpptN > 0
+      ? await queryCpptIgdSourceByNopen(nopen)
+          .then((s) => s != null)
+          .catch(() => false)
+      : false;
 
   const dokumen: DokumenBerkas[] = [
     {
@@ -221,5 +232,6 @@ export async function getBerkasDetail(nopen: string): Promise<BerkasDetail | nul
     final,
     turunan,
     dokumen,
+    cpptIgdAvailable,
   };
 }

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { REPORTS } from "@/server/modules/report/report.registry";
-import { getSimgosReportPdf } from "@/server/modules/report/report-engine";
+import { REPORTS, buildReportPayloads } from "@/server/modules/report/report.registry";
+import { getSimgosReportPdfMerged } from "@/server/modules/report/report-engine";
 import { getCurrentUser } from "@/server/auth/session";
 import { can } from "@/server/rbac/permissions";
 
@@ -37,13 +37,15 @@ export async function GET(
 
   // ?dl=1 → paksa unduh (attachment); default = inline agar preview di viewer.
   const disposition = req.nextUrl.searchParams.get("dl") === "1" ? "attachment" : "inline";
+  // ?igd=1 → khusus CPPT: gabungkan CPPT leg IGD asal (RI) ke dalam satu PDF.
+  const includeIgd = req.nextUrl.searchParams.get("igd") === "1";
 
   try {
-    const payload = await def.build(nopen);
-    if (!payload) {
+    const payloads = await buildReportPayloads(report, nopen, { includeIgd });
+    if (!payloads || payloads.length === 0) {
       return new Response("Dokumen tidak tersedia untuk NOPEN ini.", { status: 404 });
     }
-    const pdf = await getSimgosReportPdf(payload);
+    const pdf = await getSimgosReportPdfMerged(payloads);
     return new Response(pdf, {
       status: 200,
       headers: {

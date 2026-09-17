@@ -1,4 +1,5 @@
 import "server-only";
+import { PDFDocument } from "pdf-lib";
 import { getSimgosReportBase } from "@/server/lib/env";
 import type { ReportPayload } from "./report.registry";
 
@@ -56,4 +57,37 @@ export async function getSimgosReportPdf(payload: ReportPayload): Promise<ArrayB
     throw new Error(`Ambil PDF gagal (HTTP ${getRes.status}, type ${ct || "?"})`);
   }
   return getRes.arrayBuffer();
+}
+
+/**
+ * Gabung beberapa PDF menjadi satu (urutan sesuai argumen), memakai `pdf-lib`
+ * (pure-JS, tanpa dependensi native — cocok untuk image Node Alpine standalone).
+ * `ignoreEncryption` agar PDF Jasper yang ber-flag enkripsi ringan tetap terbaca.
+ */
+async function mergePdfs(parts: ArrayBuffer[]): Promise<ArrayBuffer> {
+  const out = await PDFDocument.create();
+  for (const part of parts) {
+    const src = await PDFDocument.load(part, { ignoreEncryption: true });
+    const pages = await out.copyPages(src, src.getPageIndices());
+    for (const p of pages) out.addPage(p);
+  }
+  const bytes = await out.save(); // Uint8Array
+  // Salin ke ArrayBuffer segar → BodyInit yang valid & tipe konsisten.
+  const buf = new Uint8Array(bytes.byteLength);
+  buf.set(bytes);
+  return buf.buffer;
+}
+
+/**
+ * Ambil satu-atau-lebih report SIMGOS lalu gabung jadi satu PDF (READ-ONLY).
+ * Satu payload → langsung PDF-nya (tanpa overhead merge). >1 payload → ditarik
+ * paralel (tiap panggilan sesi tamu sendiri) lalu digabung sesuai urutan.
+ */
+export async function getSimgosReportPdfMerged(
+  payloads: ReportPayload[],
+): Promise<ArrayBuffer> {
+  if (payloads.length === 0) throw new Error("Tidak ada report untuk dicetak.");
+  if (payloads.length === 1) return getSimgosReportPdf(payloads[0]);
+  const parts = await Promise.all(payloads.map((p) => getSimgosReportPdf(p)));
+  return mergePdfs(parts);
 }

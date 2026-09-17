@@ -17,12 +17,17 @@ const LABEL: Record<string, string> = {
  */
 export default async function ReportViewerPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ report: string; nopen: string }>;
+  searchParams: Promise<{ igd?: string }>;
 }) {
   const { report, nopen } = await params;
-  const src = `/api/print/simgos/${report}/${nopen}`;
-  const label = LABEL[report] ?? "Dokumen";
+  const { igd } = await searchParams;
+  const withIgd = report === "cppt" && igd === "1";
+  const src = `/api/print/simgos/${report}/${nopen}${withIgd ? "?igd=1" : ""}`;
+  const dlHref = `/api/print/simgos/${report}/${nopen}?dl=1${withIgd ? "&igd=1" : ""}`;
+  const label = (LABEL[report] ?? "Dokumen") + (withIgd ? " + IGD" : "");
 
   return (
     <div className="flex h-dvh flex-col bg-[#3f4245]">
@@ -31,7 +36,7 @@ export default async function ReportViewerPage({
           {label} <span className="font-mono text-fg-muted">· {nopen}</span>
         </span>
         <a
-          href={`${src}?dl=1`}
+          href={dlHref}
           className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-border bg-surface px-3 py-1.5 text-sm font-medium text-fg transition-colors hover:bg-surface-2"
         >
           <Download className="size-4" />

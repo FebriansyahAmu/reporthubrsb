@@ -117,6 +117,11 @@ export type BerkasDetail = {
   /** Semua leg layanan pada episode ini. */
   turunan: TurunanLayananItem[];
   dokumen: DokumenBerkas[];
+  /**
+   * true bila episode RI ini punya CPPT leg IGD asal (via SPRI) yang bisa
+   * digabung saat mencetak CPPT (menampilkan opsi "Sertakan CPPT IGD").
+   */
+  cpptIgdAvailable: boolean;
 };
 
 // ---------------------------------------------------------------------------

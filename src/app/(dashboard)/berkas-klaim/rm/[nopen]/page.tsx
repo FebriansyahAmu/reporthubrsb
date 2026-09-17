@@ -19,6 +19,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { TurunanCollapse } from "@/components/report/TurunanCollapse";
 import { BuktiPelayananCard } from "@/features/berkas-klaim/BuktiPelayananCard";
+import { CpptCard } from "@/features/berkas-klaim/CpptCard";
 import { TagihanRincian } from "@/features/berkas-klaim/TagihanRincian";
 import { cn } from "@/lib/cn";
 import { formatDateTime, formatRupiah } from "@/lib/format";
@@ -187,6 +188,8 @@ export default async function BerkasDetailPage({
                   tanggalDefault: detail.masuk.slice(0, 10),
                 }}
               />
+            ) : doc.key === "cppt" && doc.printHref && detail.cpptIgdAvailable ? (
+              <CpptCard key={doc.key} nopen={detail.nopen} keterangan={doc.keterangan} />
             ) : (
               <DokumenCard key={doc.key} doc={doc} />
             ),

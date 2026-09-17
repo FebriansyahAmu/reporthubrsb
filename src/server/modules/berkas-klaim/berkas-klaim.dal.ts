@@ -159,6 +159,41 @@ export async function querySpriKunjunganByNopen(nopen: string): Promise<string |
   return k ? k : null;
 }
 
+/** Sumber CPPT satu leg: NOPEN + KUNJUNGAN (parameter cetak Catatan Medik). */
+export type CpptSource = { nopen: string; kunjungan: string };
+
+/**
+ * Sumber CPPT **IGD asal** untuk satu episode Rawat Inap (NOPEN RI) — READ-ONLY.
+ *
+ * IGD & RI adalah pendaftaran/NOPEN BERBEDA; tautannya via SPRI
+ * (`medicalrecord.perencanaan_rawat_inap`): `PENDAFTARAN_RI_NOMOR` = NOPEN RI,
+ * `KUNJUNGAN` = leg IGD asal. Kita ambil leg IGD itu + NOPEN-nya (dari
+ * `pendaftaran.kunjungan`) HANYA bila leg tsb benar-benar punya CPPT (agar ada
+ * gunanya digabung). Mengembalikan `null` bila tak ada SPRI / IGD tanpa CPPT.
+ */
+export async function queryCpptIgdSourceByNopen(nopen: string): Promise<CpptSource | null> {
+  const sql = `
+    SELECT s.KUNJUNGAN AS KUNJUNGAN, k.NOPEN AS NOPEN
+    FROM ${SIMGOS_DB.MEDICALRECORD}.perencanaan_rawat_inap s
+    JOIN ${SIMGOS_DB.PENDAFTARAN}.kunjungan k ON k.NOMOR = s.KUNJUNGAN
+    WHERE s.PENDAFTARAN_RI_NOMOR = ? AND s.STATUS = 1
+      AND s.KUNJUNGAN IS NOT NULL AND s.KUNJUNGAN <> ''
+      AND EXISTS (
+        SELECT 1 FROM ${SIMGOS_DB.MEDICALRECORD}.cppt c
+        WHERE c.KUNJUNGAN = s.KUNJUNGAN AND c.STATUS = 1)
+    ORDER BY s.DIBUAT_TANGGAL DESC
+    LIMIT 1`;
+
+  const rows = await getSimgos().$queryRawUnsafe<{ NOPEN: string | null; KUNJUNGAN: string | null }[]>(
+    sql,
+    nopen,
+  );
+  const r = rows[0];
+  const kunjungan = r?.KUNJUNGAN?.trim();
+  const igdNopen = r?.NOPEN != null ? String(r.NOPEN).trim() : "";
+  return kunjungan && igdNopen ? { nopen: igdNopen, kunjungan } : null;
+}
+
 /** Header cetak Bukti Pelayanan: identitas pasien + diagnosa + peserta BPJS. */
 export type BuktiReportHeaderRow = {
   NORM: number | string;

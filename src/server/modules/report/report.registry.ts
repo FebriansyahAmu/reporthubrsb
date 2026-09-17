@@ -1,5 +1,6 @@
 import "server-only";
 import {
+  queryCpptIgdSourceByNopen,
   queryCpptKunjunganByNopen,
   querySepByNopen,
   querySpriKunjunganByNopen,
@@ -22,6 +23,21 @@ export type ReportPayload = Record<string, unknown>;
 export type ReportDef = {
   build: (nopen: string) => Promise<ReportPayload | null>;
 };
+
+/** Payload cetak "Catatan Medik" (CPPT) untuk satu leg (NOPEN + KUNJUNGAN). */
+function cpptPayload(nopen: string, kunjungan: string): ReportPayload {
+  return {
+    NAME: "mr.7111011-CetakCatatanMedik",
+    PARAMETER: { PNOPEN: nopen, PKUNJUNGAN: kunjungan, PID: 0 },
+    PRINT_NAME: "CetakMR",
+    TYPE: "Pdf",
+    EXT: "pdf",
+    REQUEST_FOR_PRINT: false,
+    ALLOW_DOWNLOAD: false,
+    CONNECTION_NUMBER: 0,
+    COPIES: 1,
+  };
+}
 
 export const REPORTS: Record<string, ReportDef> = {
   "resume-medis": {
@@ -61,18 +77,7 @@ export const REPORTS: Record<string, ReportDef> = {
   cppt: {
     build: async (nopen) => {
       const kunjungan = await queryCpptKunjunganByNopen(nopen);
-      if (!kunjungan) return null;
-      return {
-        NAME: "mr.7111011-CetakCatatanMedik",
-        PARAMETER: { PNOPEN: nopen, PKUNJUNGAN: kunjungan, PID: 0 },
-        PRINT_NAME: "CetakMR",
-        TYPE: "Pdf",
-        EXT: "pdf",
-        REQUEST_FOR_PRINT: false,
-        ALLOW_DOWNLOAD: false,
-        CONNECTION_NUMBER: 0,
-        COPIES: 1,
-      };
+      return kunjungan ? cpptPayload(nopen, kunjungan) : null;
     },
   },
   spri: {
@@ -99,4 +104,39 @@ export const REPORTS: Record<string, ReportDef> = {
 
 export function isKnownReport(slug: string): boolean {
   return Object.prototype.hasOwnProperty.call(REPORTS, slug);
+}
+
+export type BuildPayloadsOpts = {
+  /** CPPT: sertakan pula CPPT leg IGD asal (digabung jadi satu PDF). */
+  includeIgd?: boolean;
+};
+
+/**
+ * Bangun DAFTAR payload report untuk satu NOPEN (urutan = urutan cetak/gabung).
+ * Umumnya 1 payload. Khusus **CPPT + includeIgd**: bila episode RI punya leg IGD
+ * asal (via SPRI) ber-CPPT, IGD ditaruh DULU (kronologis) lalu leg utama (RI) —
+ * keduanya digabung menjadi satu file oleh report engine. Mengembalikan `null`
+ * bila dokumen tak tersedia untuk NOPEN ini.
+ */
+export async function buildReportPayloads(
+  report: string,
+  nopen: string,
+  opts: BuildPayloadsOpts = {},
+): Promise<ReportPayload[] | null> {
+  const def = REPORTS[report];
+  if (!def) return null;
+
+  if (report === "cppt" && opts.includeIgd) {
+    const [igd, main] = await Promise.all([
+      queryCpptIgdSourceByNopen(nopen),
+      queryCpptKunjunganByNopen(nopen),
+    ]);
+    const list: ReportPayload[] = [];
+    if (igd) list.push(cpptPayload(igd.nopen, igd.kunjungan)); // IGD dulu (kronologis)
+    if (main) list.push(cpptPayload(nopen, main)); // lalu leg utama (RI)
+    return list.length ? list : null;
+  }
+
+  const payload = await def.build(nopen);
+  return payload ? [payload] : null;
 }
