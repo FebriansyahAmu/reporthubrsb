@@ -1,4 +1,5 @@
 import {
+  Activity,
   ArrowDownLeft,
   ArrowUpRight,
   BedDouble,
@@ -102,6 +103,14 @@ export const LAPORAN_CATALOG: ReportGroup[] = [
         icon: TrendingUp,
         status: "tersedia",
         href: "/laporan/penyakit",
+      },
+      {
+        title: "RL 4.1 — Morbiditas Rawat Inap",
+        description:
+          "Data morbiditas & mortalitas pasien rawat inap per ICD-10 dengan 25 kelompok umur, jenis kelamin & kematian (format SIRS Kemenkes). Ekspor Excel.",
+        icon: Activity,
+        status: "tersedia",
+        href: "/laporan/rl41",
       },
       {
         title: "Sensus Harian Rawat Inap",
