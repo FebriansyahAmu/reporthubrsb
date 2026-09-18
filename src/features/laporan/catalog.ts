@@ -11,6 +11,7 @@ import {
   NotebookText,
   Pill,
   ShieldCheck,
+  Stethoscope,
   TrendingUp,
   Trophy,
   UserRound,
@@ -111,6 +112,14 @@ export const LAPORAN_CATALOG: ReportGroup[] = [
         icon: Activity,
         status: "tersedia",
         href: "/laporan/rl41",
+      },
+      {
+        title: "RL 5.1 — Morbiditas Rawat Jalan",
+        description:
+          "Data morbiditas pasien rawat jalan & gawat darurat per ICD-10 — kunjungan, kasus baru, jenis kelamin & 25 kelompok umur kasus baru (format SIRS Kemenkes). Ekspor Excel.",
+        icon: Stethoscope,
+        status: "tersedia",
+        href: "/laporan/rl51",
       },
       {
         title: "Sensus Harian Rawat Inap",
