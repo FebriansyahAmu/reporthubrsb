@@ -175,6 +175,177 @@ model RuanganPejabat {
   @@map("ruangan_pejabat")
 }
 
+// ============================================================================
+// MODUL INVENTARISASI BARANG — data aset RSUD (READ-WRITE). Tabel `inv_*`.
+// DDL manual: scripts/db/inventaris.sql + migrate-inventaris.mjs. Model di sini
+// HARUS sinkron dengan DDL tersebut. Lihat docs/inventarisasi-barang/BLUEPRINT.md.
+// ============================================================================
+
+/// Satuan barang (Unit, Buah, Set, …).
+model InvSatuan {
+  id        String   @id @default(cuid())
+  nama      String   @unique
+  urutan    Int      @default(0)
+  aktif     Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  barang InvBarang[]
+
+  @@map("inv_satuan")
+}
+
+/// Kondisi barang (Baik/Rusak Ringan/Rusak Berat). `tone` = warna badge (success/warning/danger).
+model InvKondisi {
+  id        String   @id @default(cuid())
+  nama      String
+  kode      String   @unique
+  tone      String   @default("neutral")
+  urutan    Int      @default(0)
+  aktif     Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  barang            InvBarang[]
+  pemeliharaanHasil InvPemeliharaan[]
+
+  @@map("inv_kondisi")
+}
+
+/// Sumber anggaran perolehan (DAU/DAK/Hibah/APBD/…).
+model InvSumberAnggaran {
+  id        String   @id @default(cuid())
+  nama      String
+  singkatan String   @unique
+  urutan    Int      @default(0)
+  aktif     Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  barang InvBarang[]
+
+  @@map("inv_sumber_anggaran")
+}
+
+/// Kategori/kelompok barang (Alat Kesehatan, Mebel, …).
+model InvKategori {
+  id        String   @id @default(cuid())
+  nama      String   @unique
+  kode      String?
+  urutan    Int      @default(0)
+  aktif     Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  barang InvBarang[]
+
+  @@map("inv_kategori")
+}
+
+/// Ruangan/lokasi aset + penanggung jawab. `kodePrefix` dipakai auto-generate
+/// kode barang (mis. ICU → ICU-001) & sebagai kop KIR.
+model InvRuangan {
+  id         String   @id @default(cuid())
+  kodePrefix String   @unique @map("kode_prefix")
+  nama       String
+  pjNama     String?  @map("pj_nama")
+  pjNip      String?  @map("pj_nip")
+  urutan     Int      @default(0)
+  aktif      Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  barang    InvBarang[]
+  mutasiKe   InvMutasi[] @relation("MutasiKe")
+  mutasiDari InvMutasi[] @relation("MutasiDari")
+
+  @@map("inv_ruangan")
+}
+
+/// Unit aset (1 baris = 1 unit fisik). `kodeBarang` unik = tag permanen.
+model InvBarang {
+  id               String    @id @default(cuid())
+  kodeBarang       String    @unique @map("kode_barang")
+  register         Int?
+  nama             String
+  merk             String?
+  nomorSeri        String?   @map("nomor_seri")
+  kategoriId       String?   @map("kategori_id")
+  sumberAnggaranId String?   @map("sumber_anggaran_id")
+  satuanId         String?   @map("satuan_id")
+  kondisiId        String?   @map("kondisi_id")
+  ruanganId        String    @map("ruangan_id")
+  tahunPerolehan   Int?      @map("tahun_perolehan") @db.SmallInt
+  tglPerolehan     DateTime? @map("tgl_perolehan") @db.Date
+  harga            BigInt?
+  statusAset       String    @default("AKTIF") @map("status_aset")
+  fotoUrl          String?   @map("foto_url")
+  keterangan       String?   @db.Text
+  createdBy        String?   @map("created_by")
+  updatedBy        String?   @map("updated_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  kategori       InvKategori?       @relation(fields: [kategoriId], references: [id], onDelete: SetNull)
+  sumberAnggaran InvSumberAnggaran? @relation(fields: [sumberAnggaranId], references: [id], onDelete: SetNull)
+  satuan         InvSatuan?         @relation(fields: [satuanId], references: [id], onDelete: SetNull)
+  kondisi        InvKondisi?        @relation(fields: [kondisiId], references: [id], onDelete: SetNull)
+  ruangan        InvRuangan         @relation(fields: [ruanganId], references: [id], onDelete: Restrict)
+  pemeliharaan   InvPemeliharaan[]
+  mutasi         InvMutasi[]
+
+  @@index([ruanganId])
+  @@index([kondisiId])
+  @@index([kategoriId])
+  @@index([statusAset])
+  @@index([tahunPerolehan])
+  @@map("inv_barang")
+}
+
+/// Log pemeliharaan/pengecekan per unit.
+model InvPemeliharaan {
+  id                   String    @id @default(cuid())
+  barangId             String    @map("barang_id")
+  tanggal              DateTime  @db.Date
+  jenis                String    @default("RUTIN")
+  hasil                String?
+  kondisiSesudahId     String?   @map("kondisi_sesudah_id")
+  petugas              String?
+  biaya                BigInt?
+  catatan              String?   @db.Text
+  jatuhTempoBerikutnya DateTime? @map("jatuh_tempo_berikutnya") @db.Date
+  createdBy            String?   @map("created_by")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  barang         InvBarang   @relation(fields: [barangId], references: [id], onDelete: Cascade)
+  kondisiSesudah InvKondisi? @relation(fields: [kondisiSesudahId], references: [id], onDelete: SetNull)
+
+  @@index([barangId])
+  @@index([tanggal])
+  @@map("inv_pemeliharaan")
+}
+
+/// Riwayat mutasi (perpindahan lokasi) aset antar ruangan.
+model InvMutasi {
+  id            String   @id @default(cuid())
+  barangId      String   @map("barang_id")
+  dariRuanganId String?  @map("dari_ruangan_id")
+  keRuanganId   String   @map("ke_ruangan_id")
+  tanggal       DateTime @db.Date
+  alasan        String?
+  oleh          String?
+  createdBy     String?  @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  barang      InvBarang   @relation(fields: [barangId], references: [id], onDelete: Cascade)
+  dariRuangan InvRuangan? @relation("MutasiDari", fields: [dariRuanganId], references: [id], onDelete: SetNull)
+  keRuangan   InvRuangan  @relation("MutasiKe", fields: [keRuanganId], references: [id], onDelete: Restrict)
+
+  @@index([barangId])
+  @@map("inv_mutasi")
+}
+
 /// Refresh token (rotasi). Yang disimpan HANYA hash token-nya, bukan token asli,
 /// sehingga bocornya DB tidak langsung memberi token yang bisa dipakai.
 model RefreshToken {

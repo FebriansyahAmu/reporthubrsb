@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Figtree, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { ToastProvider } from "@/components/ui/Toast";
 
 // Figtree — keluarga tunggal (bahasa "Cord"): 400 body → 800 display.
 // Judul terasa "distempel" berkat bobot berat; tracking negatif di ukuran besar.
@@ -33,7 +34,9 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${figtree.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <ToastProvider>{children}</ToastProvider>
+      </body>
     </html>
   );
 }
