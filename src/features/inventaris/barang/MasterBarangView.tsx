@@ -3,11 +3,14 @@
 import { useMemo, useState } from "react";
 import {
   Boxes,
+  ChevronDown,
   Eye,
   FileSpreadsheet,
+  FileText,
   Pencil,
   Plus,
   Search,
+  Table2,
   Trash2,
   Upload,
   Wallet,
@@ -19,6 +22,7 @@ import { InputWithIcon, Label } from "@/components/ui/Field";
 import { Select, type SelectOption } from "@/components/ui/Select";
 import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/Table";
 import { Modal } from "@/components/ui/Modal";
+import { PopoverPanel } from "@/components/ui/Popover";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Pagination } from "@/components/ui/Pagination";
 import { EmptyState, ErrorState } from "@/components/feedback/States";
@@ -40,6 +44,7 @@ import {
 import { BarangFormModal } from "./BarangFormModal";
 import { BarangDetailModal } from "./BarangDetailModal";
 import { ImportBarangModal } from "./ImportBarangModal";
+import { BarangSheet } from "./BarangSheet";
 
 type Tone = "neutral" | "brand" | "success" | "warning" | "danger" | "accent";
 const PAGE_SIZE = 20;
@@ -62,10 +67,13 @@ export function MasterBarangView({ perms }: { perms: BarangPerms }) {
   // Modals
   const [detailItem, setDetailItem] = useState<BarangItem | null>(null);
   const [formState, setFormState] = useState<{ mode: "create" | "edit"; item?: BarangItem } | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [deleteItem, setDeleteItem] = useState<BarangItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [addAnchor, setAddAnchor] = useState<HTMLButtonElement | null>(null);
+  const [addMenu, setAddMenu] = useState(false);
 
   // Referensi (untuk filter & form)
   const refsState = useAsyncData<FormRefs>(() => fetchRefs(), []);
@@ -177,9 +185,36 @@ export function MasterBarangView({ perms }: { perms: BarangPerms }) {
                 </Button>
               )}
               {perms.create && (
-                <Button size="md" icon={<Plus className="size-4" />} onClick={() => setFormState({ mode: "create" })} disabled={noRuangan}>
-                  Tambah Barang
-                </Button>
+                <>
+                  <Button
+                    ref={setAddAnchor}
+                    size="md"
+                    icon={<Plus className="size-4" />}
+                    onClick={() => setAddMenu((o) => !o)}
+                    disabled={noRuangan}
+                    aria-haspopup="menu"
+                    aria-expanded={addMenu}
+                  >
+                    Tambah Barang
+                    <ChevronDown className={cn("size-4 transition-transform", addMenu && "rotate-180")} />
+                  </Button>
+                  <PopoverPanel anchor={addAnchor} open={addMenu} onClose={() => setAddMenu(false)} align="end" matchWidth={false}>
+                    <div className="w-64">
+                      <AddOption
+                        icon={FileText}
+                        title="Isi Formulir"
+                        desc="Satu barang, lengkap & terpandu"
+                        onClick={() => { setAddMenu(false); setFormState({ mode: "create" }); }}
+                      />
+                      <AddOption
+                        icon={Table2}
+                        title="Input Lembar (Excel)"
+                        desc="Banyak barang sekaligus, tempel dari Excel"
+                        onClick={() => { setAddMenu(false); setSheetOpen(true); }}
+                      />
+                    </div>
+                  </PopoverPanel>
+                </>
               )}
             </div>
           </div>
@@ -310,6 +345,11 @@ export function MasterBarangView({ perms }: { perms: BarangPerms }) {
       {/* Import */}
       <ImportBarangModal open={importOpen} onClose={() => setImportOpen(false)} onDone={reload} />
 
+      {/* Input Lembar (Excel) */}
+      {sheetOpen && refs && (
+        <BarangSheet open refs={refs} onClose={() => setSheetOpen(false)} onSaved={reload} />
+      )}
+
       {/* Konfirmasi hapus */}
       <Modal
         open={!!deleteItem}
@@ -358,6 +398,35 @@ function StatTile({
         <p className="text-[11px] text-fg-subtle">{hint}</p>
       </div>
     </Card>
+  );
+}
+
+function AddOption({
+  icon: Icon,
+  title,
+  desc,
+  onClick,
+}: {
+  icon: typeof FileText;
+  title: string;
+  desc: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className="flex w-full items-start gap-3 rounded-[var(--radius-md)] px-2.5 py-2 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:bg-surface-2"
+    >
+      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-brand-soft text-brand">
+        <Icon className="size-4" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-fg">{title}</span>
+        <span className="block text-xs text-fg-muted">{desc}</span>
+      </span>
+    </button>
   );
 }
 

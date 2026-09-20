@@ -5,6 +5,7 @@ import type { SessionUser } from "@/server/auth/session";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@/server/lib/errors";
 import {
   STATUS_ASET,
+  barangCreateSchema,
   isStatusAset,
   type BarangCreateInput,
   type BarangQuery,
@@ -598,4 +599,116 @@ export async function commitImport(rows: ImportRowInput[], user: SessionUser): P
     }
   }
   return { masuk, dilewati: resolved.length - masuk };
+}
+
+/* ------------------------------------------------------- bulk (lembar/Excel) */
+
+export type BulkRowResult = {
+  index: number;
+  status: "ok" | "error";
+  id?: string;
+  kodeBarang?: string;
+  nama?: string;
+  message?: string;
+};
+
+/** Scalar create data dari input tervalidasi (tanpa kode/audit). */
+function createScalar(input: BarangCreateInput) {
+  return {
+    register: input.register ?? null,
+    nama: input.nama,
+    merk: input.merk ?? null,
+    nomorSeri: input.nomorSeri ?? null,
+    kategoriId: input.kategoriId ?? null,
+    sumberAnggaranId: input.sumberAnggaranId ?? null,
+    satuanId: input.satuanId ?? null,
+    kondisiId: input.kondisiId ?? null,
+    ruanganId: input.ruanganId,
+    tahunPerolehan: input.tahunPerolehan ?? null,
+    tglPerolehan: toDate(input.tglPerolehan),
+    harga: toBig(input.harga),
+    statusAset: input.statusAset,
+    keterangan: input.keterangan ?? null,
+  };
+}
+
+/**
+ * Simpan banyak barang sekaligus (mode Lembar/Excel). Tiap baris divalidasi &
+ * disimpan independen; mengembalikan hasil per-baris (ok/error) agar UI bisa
+ * menandai baris yang berhasil dan mempertahankan yang gagal.
+ */
+export async function bulkCreateBarang(
+  rawRows: unknown[],
+  user: SessionUser,
+): Promise<{ results: BulkRowResult[]; masuk: number }> {
+  const db = getAppDb();
+  const parsed = rawRows.map((r) => barangCreateSchema.safeParse(r));
+
+  // Prefix ruangan (untuk auto-kode) hanya untuk baris valid.
+  const ruanganIds = new Set<string>();
+  for (const p of parsed) if (p.success) ruanganIds.add(p.data.ruanganId);
+  const ruangans = await db.invRuangan.findMany({
+    where: { id: { in: [...ruanganIds] } },
+    select: { id: true, kodePrefix: true },
+  });
+  const prefixOf = new Map(ruangans.map((r) => [r.id, r.kodePrefix]));
+
+  // Seed nomor urut per-prefix (untuk baris berkode otomatis).
+  const prefixes = new Set<string>();
+  for (const p of parsed) {
+    if (p.success && !p.data.kodeBarang) {
+      const pre = prefixOf.get(p.data.ruanganId);
+      if (pre) prefixes.add(pre);
+    }
+  }
+  const seqOf = new Map<string, number>();
+  for (const pre of prefixes) seqOf.set(pre, await nextSeq(pre));
+
+  const results: BulkRowResult[] = [];
+  for (let i = 0; i < parsed.length; i++) {
+    const p = parsed[i];
+    if (!p.success) {
+      const first = p.error.issues[0];
+      results.push({ index: i, status: "error", message: first ? first.message : "Data tidak valid" });
+      continue;
+    }
+    const input = p.data;
+    const prefix = prefixOf.get(input.ruanganId);
+    if (!prefix) {
+      results.push({ index: i, status: "error", nama: input.nama, message: "Ruangan tidak ditemukan." });
+      continue;
+    }
+    const data = { ...createScalar(input), createdBy: user.name, updatedBy: user.name };
+    const manual = input.kodeBarang?.trim().toUpperCase();
+
+    let done = false;
+    for (let attempt = 0; attempt < 3 && !done; attempt++) {
+      let kode = manual;
+      if (!kode) {
+        const seq = seqOf.get(prefix)!;
+        kode = `${prefix}-${pad3(seq)}`;
+        seqOf.set(prefix, seq + 1);
+      }
+      try {
+        const created = await db.invBarang.create({ data: { ...data, kodeBarang: kode } });
+        results.push({ index: i, status: "ok", id: created.id, kodeBarang: created.kodeBarang, nama: created.nama });
+        done = true;
+      } catch (e) {
+        if (isUnique(e)) {
+          if (manual) {
+            results.push({ index: i, status: "error", nama: input.nama, message: `Kode "${manual}" sudah dipakai.` });
+            done = true;
+          } else {
+            // Tabrakan kode otomatis (langka) → re-seed & coba lagi.
+            seqOf.set(prefix, await nextSeq(prefix));
+          }
+        } else {
+          throw e;
+        }
+      }
+    }
+    if (!done) results.push({ index: i, status: "error", nama: input.nama, message: "Gagal membuat kode unik." });
+  }
+
+  return { results, masuk: results.filter((r) => r.status === "ok").length };
 }

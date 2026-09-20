@@ -14,11 +14,12 @@ function useIsClient() {
   );
 }
 
-const SIZE: Record<"sm" | "md" | "lg" | "xl", string> = {
+const SIZE: Record<"sm" | "md" | "lg" | "xl" | "full", string> = {
   sm: "max-w-md",
   md: "max-w-lg",
   lg: "max-w-3xl",
   xl: "max-w-5xl",
+  full: "max-w-[min(96rem,96vw)]",
 };
 
 export function Modal({
@@ -41,7 +42,7 @@ export function Modal({
   footer?: React.ReactNode;
   /** Bila false: TIDAK bisa ditutup via Escape / klik backdrop / tombol X. */
   dismissible?: boolean;
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "sm" | "md" | "lg" | "xl" | "full";
 }) {
   const isClient = useIsClient();
 

@@ -90,6 +90,15 @@ export type ImportPreview = {
 };
 export type ImportCommitResult = { mode: "commit"; masuk: number; dilewati: number };
 
+export type BulkRowResult = {
+  index: number;
+  status: "ok" | "error";
+  id?: string;
+  kodeBarang?: string;
+  nama?: string;
+  message?: string;
+};
+
 /* --------------------------------------------------------------- fetch util */
 
 const BASE = "/api/inventaris/barang";
@@ -154,3 +163,7 @@ async function importCall(file: File, mode: "preview" | "commit"): Promise<Impor
 }
 export const importPreview = (file: File) => importCall(file, "preview") as Promise<ImportPreview>;
 export const importCommit = (file: File) => importCall(file, "commit") as Promise<ImportCommitResult>;
+
+export async function bulkCreateBarang(rows: BarangPayload[]): Promise<{ results: BulkRowResult[]; masuk: number }> {
+  return (await jsonCall<{ results: BulkRowResult[]; masuk: number }>(`${BASE}/bulk`, "POST", { rows })).data;
+}
