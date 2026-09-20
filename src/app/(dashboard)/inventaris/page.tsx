@@ -49,7 +49,7 @@ const FEATURES: Feature[] = [
     icon: ClipboardList,
     title: "KIR (Kartu Inventaris Ruangan)",
     description: "Daftar aset per ruangan siap cetak resmi bertanda tangan penanggung jawab.",
-    status: "segera",
+    status: "tersedia",
   },
   {
     moduleKey: "inventaris.pemeliharaan",

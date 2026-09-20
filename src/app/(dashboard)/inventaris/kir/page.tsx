@@ -1,15 +1,17 @@
 import Link from "next/link";
-import { ArrowLeft, ClipboardList } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
-import { ComingSoon } from "@/features/inventaris/ComingSoon";
-import { requireModule } from "@/server/rbac/guard";
+import { KirView } from "@/features/inventaris/kir/KirView";
+import { hasModule, requireModule } from "@/server/rbac/guard";
 
 export const metadata = { title: "KIR · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default async function KirPage() {
-  await requireModule("inventaris.kir");
+  const user = await requireModule("inventaris.kir");
+  const canPrint = await hasModule(user, "inventaris.kir", "print");
+
   return (
     <FadeIn className="space-y-6">
       <Link
@@ -21,13 +23,9 @@ export default async function KirPage() {
       </Link>
       <PageHeader
         title="KIR — Kartu Inventaris Ruangan"
-        description="Daftar aset per ruangan, siap cetak resmi."
+        description="Daftar aset per ruangan, siap cetak resmi bertanda tangan penanggung jawab."
       />
-      <ComingSoon
-        icon={ClipboardList}
-        title="KIR — Sesi berikutnya"
-        description="Pilih ruangan untuk melihat seluruh asetnya, lalu cetak Kartu Inventaris Ruangan resmi bertanda tangan penanggung jawab. Menunggu modul Master Barang."
-      />
+      <KirView canPrint={canPrint} />
     </FadeIn>
   );
 }
