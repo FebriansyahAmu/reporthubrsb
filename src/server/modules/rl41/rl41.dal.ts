@@ -1,7 +1,8 @@
 import "server-only";
 import { getSimgos } from "@/server/db/simgos.client";
 import { SIMGOS_DB } from "@/server/db/simgos-databases";
-import type { Rl41Filter } from "./rl41.types";
+import { menularWhereFragment } from "@/server/lib/icd-menular";
+import type { MenularMode, Rl41Filter } from "./rl41.types";
 
 const PEND = SIMGOS_DB.PENDAFTARAN;
 const MASTER = SIMGOS_DB.MASTER;
@@ -56,12 +57,14 @@ export type Rl41MatrixRow = Record<string, string | number | bigint | null>;
  * multi-leg — sejalan penghitungan `COUNT(DISTINCT NOPEN)` di modul penyakit.
  * Join kosmetik SP (referensi label, penjamin, instansi cross-join) dibuang.
  */
-function buildMatrixSql(): string {
+function buildMatrixSql(menular: MenularMode): string {
   const age: string[] = [];
   for (let n = 1; n <= 25; n++) {
     age.push(`SUM(c.jk = 1 AND c.klp = ${n}) AS k${n}l`);
     age.push(`SUM(c.jk = 2 AND c.klp = ${n}) AS k${n}p`);
   }
+  // Filter kelompok penyakit (menular/non) — kondisi berbasis prefiks ICD tetap.
+  const menularWhere = menularWhereFragment(menular, "md.KODE");
   return `
     SELECT c.kode AS kode,
            ${MASTER}.getDeskripsiICD(c.kode) AS nama,
@@ -87,7 +90,7 @@ function buildMatrixSql(): string {
         JOIN ${LAY}.pasien_pulang lpp
           ON lpp.KUNJUNGAN = pk.NOMOR AND lpp.\`STATUS\` <> 0
         LEFT JOIN ${MASTER}.pasien ps ON pp.NORM = ps.NORM
-      WHERE md.KODE IS NOT NULL AND md.KODE <> ''
+      WHERE md.KODE IS NOT NULL AND md.KODE <> ''${menularWhere}
         AND lpp.TANGGAL BETWEEN ? AND ?
       GROUP BY md.NOPEN, md.KODE
     ) c
@@ -97,7 +100,7 @@ function buildMatrixSql(): string {
 
 /** Matriks RL 4.1 per kode ICD-10 pada periode. Placeholder `?` = from, to. */
 export async function queryRl41Matrix(f: Rl41Filter): Promise<Rl41MatrixRow[]> {
-  const sql = buildMatrixSql();
+  const sql = buildMatrixSql(f.menular);
   return getSimgos().$queryRawUnsafe<Rl41MatrixRow[]>(
     sql,
     `${f.from} 00:00:00`,

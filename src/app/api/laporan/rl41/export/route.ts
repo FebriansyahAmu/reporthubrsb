@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { rl41QuerySchema } from "@/server/modules/rl41/rl41.schema";
 import { getRl41 } from "@/server/modules/rl41/rl41.service";
 import { buildRl41Excel } from "@/server/modules/rl41/rl41.excel";
+import { buildRl41Pdf } from "@/server/modules/rl41/rl41.pdf";
 import { authorize } from "@/server/rbac/guard";
 import { fail } from "@/server/lib/http";
 
@@ -14,23 +15,38 @@ function stamp(now: Date): string {
 }
 
 /**
- * GET /api/laporan/rl41/export?from&to
- * Export RL 4.1 → file .xlsx (matriks 25 kelompok umur × L/P + kematian).
- * Read-only SIMGOS.
+ * GET /api/laporan/rl41/export?from&to[&menular&format]
+ * Export RL 4.1: `format=pdf` → PDF ringkas (rapi), selain itu → .xlsx (matriks
+ * 25 kelompok umur × L/P + kematian). Read-only SIMGOS.
  */
 export async function GET(req: NextRequest) {
   try {
     const user = await authorize("laporan", "view");
     const input = rl41QuerySchema.parse(Object.fromEntries(req.nextUrl.searchParams));
+    const isPdf = req.nextUrl.searchParams.get("format") === "pdf";
     const result = await getRl41(input);
     const generatedAt = new Date();
+    const base = `RL-4.1_${input.from}_sd_${input.to}_${stamp(generatedAt)}`;
+
+    if (isPdf) {
+      const buf = await buildRl41Pdf(result, { generatedAt, by: user.name });
+      return new Response(new Uint8Array(buf), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${base}.pdf"`,
+          "Content-Length": String(buf.length),
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
     const buf = await buildRl41Excel(result, { generatedAt, by: user.name });
-    const filename = `RL-4.1_${input.from}_sd_${input.to}_${stamp(generatedAt)}.xlsx`;
     return new Response(new Uint8Array(buf), {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Disposition": `attachment; filename="${base}.xlsx"`,
         "Content-Length": String(buf.length),
         "Cache-Control": "no-store",
       },

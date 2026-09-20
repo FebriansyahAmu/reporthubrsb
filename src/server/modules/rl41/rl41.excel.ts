@@ -1,6 +1,7 @@
 import "server-only";
 import ExcelJS from "exceljs";
 import { stampWita } from "@/server/lib/excel";
+import { MENULAR_DEFINISI, MENULAR_MODE_LABEL } from "@/server/lib/icd-menular";
 import { RL41_AGE_GROUPS } from "./rl41.constants";
 import type { Rl41Result } from "./rl41.types";
 
@@ -83,9 +84,9 @@ export async function buildRl41Excel(result: Rl41Result, meta: Rl41ExcelMeta): P
 
   // Baris meta
   const metaLines = [
-    `Periode: ${result.periode.from} s/d ${result.periode.to}   ·   Bulan: ${result.bulan} ${result.tahun}`,
+    `Periode: ${result.periode.from} s/d ${result.periode.to}   ·   Bulan: ${result.bulan} ${result.tahun}   ·   Kelompok penyakit: ${MENULAR_MODE_LABEL[result.menular]}`,
     `Total kasus: ${idNum.format(result.summary.totalKasus)}   ·   Jenis diagnosa (ICD-10): ${idNum.format(result.summary.jenisDiag)}   ·   Laki-laki: ${idNum.format(result.summary.totalLk)}   ·   Perempuan: ${idNum.format(result.summary.totalPr)}   ·   Meninggal: ${idNum.format(result.summary.totalMati)}`,
-    `Dibuat: ${stampWita(meta.generatedAt)}${meta.by ? ` oleh ${meta.by}` : ""}   ·   Sumber: SIMGOS (read-only) · di-port dari SP LaporanRL41Revisi`,
+    `Dibuat: ${stampWita(meta.generatedAt)}${meta.by ? ` oleh ${meta.by}` : ""}   ·   Sumber: SIMGOS (read-only) · di-port dari SP LaporanRL41Revisi${result.menular !== "all" ? `   ·   ${MENULAR_DEFINISI}` : ""}`,
   ];
   metaLines.forEach((line, i) => {
     mergeAcross(r);

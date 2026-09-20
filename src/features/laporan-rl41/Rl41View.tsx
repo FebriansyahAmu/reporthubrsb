@@ -6,6 +6,7 @@ import {
   AlertCircle,
   Clock,
   FileSpreadsheet,
+  FileText,
   HeartPulse,
   Layers,
   RefreshCw,
@@ -22,6 +23,7 @@ import { cn } from "@/lib/cn";
 import { useAsyncData } from "@/lib/useAsyncData";
 import { downloadFromEndpoint } from "@/lib/download";
 import { formatDate, formatJam, formatNumber } from "@/lib/format";
+import { MENULAR_MODE_LABEL, type MenularMode } from "@/server/lib/icd-menular";
 import type { Rl41Result } from "@/server/modules/rl41/rl41.types";
 
 /* ------------------------------------------------------------------ helpers */
@@ -54,8 +56,14 @@ const PRESETS: { key: PresetKey; label: string }[] = [
   { key: "tahun-ini", label: "Tahun ini" },
 ];
 
-async function fetchRl41(from: string, to: string): Promise<Rl41Result> {
-  const p = new URLSearchParams({ from, to });
+const MENULAR_OPTS: { key: MenularMode; label: string }[] = [
+  { key: "all", label: MENULAR_MODE_LABEL.all },
+  { key: "menular", label: MENULAR_MODE_LABEL.menular },
+  { key: "non", label: MENULAR_MODE_LABEL.non },
+];
+
+async function fetchRl41(from: string, to: string, menular: MenularMode): Promise<Rl41Result> {
+  const p = new URLSearchParams({ from, to, menular });
   const res = await fetch(`/api/laporan/rl41?${p.toString()}`);
   if (!res.ok) throw new Error("Gagal memuat data");
   return ((await res.json()) as { data: Rl41Result }).data;
@@ -68,20 +76,21 @@ export function Rl41View() {
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
   const [preset, setPreset] = useState<PresetKey | "">("bulan-ini");
-  const [exporting, setExporting] = useState(false);
+  const [menular, setMenular] = useState<MenularMode>("all");
+  const [exporting, setExporting] = useState<"" | "xlsx" | "pdf">("");
   const [exportError, setExportError] = useState<string | null>(null);
 
   const rangeInvalid = !!from && !!to && from > to;
 
   const { result, loading, error, reload } = useAsyncData<Rl41Result>(
-    () => fetchRl41(from, to),
-    [from, to],
+    () => fetchRl41(from, to, menular),
+    [from, to, menular],
   );
 
   const rows = result?.data ?? [];
   const summary = result?.summary ?? null;
   const updatedAt = result?.updatedAt ?? null;
-  const hasFilter = preset !== "bulan-ini";
+  const hasFilter = preset !== "bulan-ini" || menular !== "all";
 
   function applyPreset(key: PresetKey) {
     const rng = presetRange(key);
@@ -90,16 +99,25 @@ export function Rl41View() {
     setPreset(key);
   }
 
-  async function doExport() {
-    setExporting(true);
+  function resetFilter() {
+    applyPreset("bulan-ini");
+    setMenular("all");
+  }
+
+  async function doExport(format: "xlsx" | "pdf") {
+    setExporting(format);
     setExportError(null);
     try {
-      const p = new URLSearchParams({ from, to });
-      await downloadFromEndpoint(`/api/laporan/rl41/export?${p.toString()}`, "RL-4.1.xlsx");
+      const p = new URLSearchParams({ from, to, menular });
+      if (format === "pdf") p.set("format", "pdf");
+      await downloadFromEndpoint(
+        `/api/laporan/rl41/export?${p.toString()}`,
+        `RL-4.1.${format}`,
+      );
     } catch (e) {
       setExportError(e instanceof Error ? e.message : "Gagal mengekspor data.");
     } finally {
-      setExporting(false);
+      setExporting("");
     }
   }
 
@@ -127,11 +145,22 @@ export function Rl41View() {
             Refresh
           </Button>
           <Button
+            variant="secondary"
+            size="sm"
+            icon={<FileText className="size-4" />}
+            loading={exporting === "pdf"}
+            disabled={!canExport || exporting !== ""}
+            onClick={() => doExport("pdf")}
+            title={canExport ? "Unduh PDF ringkas RL 4.1" : "Tidak ada data untuk diekspor"}
+          >
+            Export PDF
+          </Button>
+          <Button
             size="sm"
             icon={<FileSpreadsheet className="size-4" />}
-            loading={exporting}
-            disabled={!canExport}
-            onClick={doExport}
+            loading={exporting === "xlsx"}
+            disabled={!canExport || exporting !== ""}
+            onClick={() => doExport("xlsx")}
             title={canExport ? "Unduh matriks RL 4.1 (Excel)" : "Tidak ada data untuk diekspor"}
           >
             Export Excel
@@ -182,7 +211,7 @@ export function Rl41View() {
           {hasFilter && (
             <button
               type="button"
-              onClick={() => applyPreset("bulan-ini")}
+              onClick={resetFilter}
               className="ml-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
             >
               <RotateCcw className="size-3.5" />
@@ -190,6 +219,19 @@ export function Rl41View() {
             </button>
           )}
         </div>
+
+        {/* Filter kelompok penyakit (menular) */}
+        <div className="mt-4">
+          <Label>Kelompok penyakit</Label>
+          <div className="flex flex-wrap items-center gap-2">
+            {MENULAR_OPTS.map((o) => (
+              <Chip key={o.key} active={menular === o.key} onClick={() => setMenular(o.key)}>
+                {o.label}
+              </Chip>
+            ))}
+          </div>
+        </div>
+
         {rangeInvalid && (
           <p className="mt-2 text-xs text-danger">Tanggal awal melebihi tanggal akhir.</p>
         )}

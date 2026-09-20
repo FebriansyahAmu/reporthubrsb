@@ -18,9 +18,10 @@ function bulanDari(from: string): string {
  * 25 batas resmi (SP asli memakai getKelompokUmur 9-kelompok yang salah).
  */
 export async function getRl51(input: Rl51Query): Promise<Rl51Result> {
-  const filter: Rl51Filter = { from: input.from, to: input.to };
+  const filter: Rl51Filter = { from: input.from, to: input.to, menular: input.menular };
   const base = {
-    periode: filter,
+    periode: { from: filter.from, to: filter.to },
+    menular: filter.menular,
     bulan: bulanDari(input.from),
     tahun: Number(input.to.slice(0, 4)),
     updatedAt: new Date().toISOString(),

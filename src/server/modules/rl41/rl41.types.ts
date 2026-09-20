@@ -13,6 +13,10 @@
  * (`layanan.pasien_pulang.TANGGAL`). Kematian = cara keluar (`CARA`) 6/7.
  */
 
+import type { MenularMode } from "@/server/lib/icd-menular";
+
+export type { MenularMode };
+
 /** Sel satu kelompok umur: cacah laki-laki & perempuan. */
 export type Rl41AgeCell = { lk: number; pr: number };
 
@@ -65,6 +69,8 @@ export type Rl41Result = {
   data: Rl41Row[];
   summary: Rl41Summary;
   periode: { from: string; to: string };
+  /** Filter kelompok penyakit yang diterapkan. */
+  menular: MenularMode;
   /** Nama bulan (dari tanggal awal) untuk header laporan. */
   bulan: string;
   /** Tahun (dari tanggal akhir) untuk header laporan. */
@@ -74,4 +80,4 @@ export type Rl41Result = {
 };
 
 /** Filter tervalidasi yang dipakai DAL. */
-export type Rl41Filter = { from: string; to: string };
+export type Rl41Filter = { from: string; to: string; menular: MenularMode };

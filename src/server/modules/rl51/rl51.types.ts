@@ -15,6 +15,10 @@
  * tanggal kunjungan (`pendaftaran.TANGGAL`) dalam periode.
  */
 
+import type { MenularMode } from "@/server/lib/icd-menular";
+
+export type { MenularMode };
+
 /** Sel satu kelompok umur: cacah laki-laki & perempuan (kasus baru). */
 export type Rl51AgeCell = { lk: number; pr: number };
 
@@ -67,6 +71,8 @@ export type Rl51Result = {
   data: Rl51Row[];
   summary: Rl51Summary;
   periode: { from: string; to: string };
+  /** Filter kelompok penyakit yang diterapkan. */
+  menular: MenularMode;
   bulan: string;
   tahun: number;
   instansi: Rl51Instansi | null;
@@ -74,4 +80,4 @@ export type Rl51Result = {
 };
 
 /** Filter tervalidasi yang dipakai DAL. */
-export type Rl51Filter = { from: string; to: string };
+export type Rl51Filter = { from: string; to: string; menular: MenularMode };

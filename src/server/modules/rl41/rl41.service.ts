@@ -20,9 +20,10 @@ function bulanDari(from: string): string {
  * paralel; agregasi kolom umur sudah dilakukan di SQL, di sini hanya dipetakan.
  */
 export async function getRl41(input: Rl41Query): Promise<Rl41Result> {
-  const filter: Rl41Filter = { from: input.from, to: input.to };
+  const filter: Rl41Filter = { from: input.from, to: input.to, menular: input.menular };
   const base = {
-    periode: filter,
+    periode: { from: filter.from, to: filter.to },
+    menular: filter.menular,
     bulan: bulanDari(input.from),
     tahun: Number(input.to.slice(0, 4)),
     updatedAt: new Date().toISOString(),
