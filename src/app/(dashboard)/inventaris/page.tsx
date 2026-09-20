@@ -40,8 +40,8 @@ const FEATURES: Feature[] = [
     href: "/inventaris/barang",
     icon: PackageSearch,
     title: "Master Barang",
-    description: "Data seluruh unit aset — kode otomatis, kondisi, lokasi, harga, foto & QR. Import & ekspor.",
-    status: "segera",
+    description: "Data seluruh unit aset — kode otomatis, kondisi, lokasi, harga & QR. Import & ekspor.",
+    status: "tersedia",
   },
   {
     moduleKey: "inventaris.kir",
