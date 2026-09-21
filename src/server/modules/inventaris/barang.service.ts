@@ -29,6 +29,7 @@ export type BarangListItem = {
   harga: number | null;
   statusAset: StatusAset;
   keterangan: string | null;
+  item: { id: string; nama: string } | null;
   kategori: BarangRefMini | null;
   sumberAnggaran: (BarangRefMini & { singkatan?: string | null }) | null;
   satuan: BarangRefMini | null;
@@ -46,9 +47,12 @@ export type FormRefs = {
   sumberAnggaran: { id: string; nama: string; singkatan: string }[];
   kategori: { id: string; nama: string }[];
   ruangan: { id: string; kodePrefix: string; nama: string; pjNama: string | null; pjNip: string | null }[];
+  /** Katalog jenis barang (untuk autocomplete "Nama Barang" agar konsisten). */
+  item: { id: string; nama: string }[];
 };
 
 const barangInclude = {
+  item: { select: { id: true, nama: true } },
   kategori: { select: { id: true, nama: true } },
   sumberAnggaran: { select: { id: true, nama: true, singkatan: true } },
   satuan: { select: { id: true, nama: true } },
@@ -78,6 +82,7 @@ function serialize(b: BarangWithRefs): BarangListItem {
     harga: b.harga == null ? null : Number(b.harga),
     statusAset: (isStatusAset(b.statusAset) ? b.statusAset : "AKTIF") as StatusAset,
     keterangan: b.keterangan ?? null,
+    item: b.item ? { id: b.item.id, nama: b.item.nama } : null,
     kategori: b.kategori ? { id: b.kategori.id, nama: b.kategori.nama } : null,
     sumberAnggaran: b.sumberAnggaran
       ? { id: b.sumberAnggaran.id, nama: b.sumberAnggaran.nama, singkatan: b.sumberAnggaran.singkatan }
@@ -197,14 +202,59 @@ export async function getBarang(id: string): Promise<BarangListItem> {
 
 export async function getFormRefs(): Promise<FormRefs> {
   const db = getAppDb();
-  const [satuan, kondisi, sumber, kategori, ruangan] = await Promise.all([
+  const [satuan, kondisi, sumber, kategori, ruangan, item] = await Promise.all([
     db.invSatuan.findMany({ where: { aktif: true }, orderBy: [{ urutan: "asc" }, { nama: "asc" }], select: { id: true, nama: true } }),
     db.invKondisi.findMany({ where: { aktif: true }, orderBy: [{ urutan: "asc" }, { nama: "asc" }], select: { id: true, nama: true, kode: true, tone: true } }),
     db.invSumberAnggaran.findMany({ where: { aktif: true }, orderBy: [{ urutan: "asc" }, { nama: "asc" }], select: { id: true, nama: true, singkatan: true } }),
     db.invKategori.findMany({ where: { aktif: true }, orderBy: [{ urutan: "asc" }, { nama: "asc" }], select: { id: true, nama: true } }),
     db.invRuangan.findMany({ where: { aktif: true }, orderBy: [{ urutan: "asc" }, { kodePrefix: "asc" }], select: { id: true, kodePrefix: true, nama: true, pjNama: true, pjNip: true } }),
+    db.invItem.findMany({ where: { aktif: true }, orderBy: [{ nama: "asc" }], select: { id: true, nama: true } }),
   ]);
-  return { satuan, kondisi, sumberAnggaran: sumber, kategori, ruangan };
+  return { satuan, kondisi, sumberAnggaran: sumber, kategori, ruangan, item };
+}
+
+/* ------------------------------------------------------- katalog item helper */
+
+/** Normalisasi nama → kunci katalog (rapatkan spasi + huruf besar). */
+export function normItemKey(nama: string): string {
+  return nama.trim().replace(/\s+/g, " ").toUpperCase();
+}
+
+/**
+ * Cari-atau-buat item katalog berdasar nama (ternormalkan). Mengembalikan
+ * {id, nama baku}. `cache` opsional agar batch import tak query berulang.
+ */
+async function resolveItem(
+  nama: string,
+  opts: { satuanId?: string | null; kategoriId?: string | null; user: SessionUser },
+  cache?: Map<string, { id: string; nama: string }>,
+): Promise<{ id: string; nama: string } | null> {
+  const clean = nama.trim().replace(/\s+/g, " ");
+  if (!clean) return null;
+  const namaKey = clean.toUpperCase();
+  if (cache?.has(namaKey)) return cache.get(namaKey)!;
+  const db = getAppDb();
+  let item = await db.invItem.findUnique({ where: { namaKey }, select: { id: true, nama: true } });
+  if (!item) {
+    try {
+      item = await db.invItem.create({
+        data: {
+          nama: clean,
+          namaKey,
+          satuanId: opts.satuanId ?? null,
+          kategoriId: opts.kategoriId ?? null,
+          createdBy: opts.user.name,
+          updatedBy: opts.user.name,
+        },
+        select: { id: true, nama: true },
+      });
+    } catch (e) {
+      if (isUnique(e)) item = await db.invItem.findUnique({ where: { namaKey }, select: { id: true, nama: true } });
+      else throw e;
+    }
+  }
+  if (item && cache) cache.set(namaKey, item);
+  return item;
 }
 
 /* ------------------------------------------------------- auto kode <PREFIX>-N */
@@ -253,10 +303,14 @@ export async function createBarang(input: BarangCreateInput, user: SessionUser):
   const ruangan = await db.invRuangan.findUnique({ where: { id: input.ruanganId }, select: { kodePrefix: true } });
   if (!ruangan) throw new ValidationError({ ruanganId: ["Ruangan tidak ditemukan."] });
 
+  // Katalog: cari-atau-buat item dari nama → nama baku konsisten + link agregasi.
+  const item = await resolveItem(input.nama, { satuanId: input.satuanId, kategoriId: input.kategoriId, user });
+
   const manualKode = input.kodeBarang?.trim().toUpperCase();
   const data = {
     register: input.register ?? null,
-    nama: input.nama,
+    nama: item?.nama ?? input.nama,
+    itemId: item?.id ?? null,
     merk: input.merk ?? null,
     nomorSeri: input.nomorSeri ?? null,
     kategoriId: input.kategoriId ?? null,
@@ -300,12 +354,14 @@ export async function createBarang(input: BarangCreateInput, user: SessionUser):
 
 export async function updateBarang(id: string, input: BarangUpdateInput, user: SessionUser): Promise<BarangListItem> {
   const db = getAppDb();
+  const item = await resolveItem(input.nama, { satuanId: input.satuanId, kategoriId: input.kategoriId, user });
   try {
     const updated = await db.invBarang.update({
       where: { id },
       data: {
         register: input.register ?? null,
-        nama: input.nama,
+        nama: item?.nama ?? input.nama,
+        itemId: item?.id ?? null,
         merk: input.merk ?? null,
         nomorSeri: input.nomorSeri ?? null,
         kategoriId: input.kategoriId ?? null,
@@ -353,6 +409,10 @@ export type ImportRowInput = {
   satuan?: string;
   kondisi?: string;
   ruangan?: string;
+  /** Prefix untuk ruangan BARU yang di-auto-create (opsional). */
+  kodeRuangan?: string;
+  /** Jumlah unit (mekar jadi N unit). Default 1. */
+  jumlah?: string;
   tahunPerolehan?: string;
   tglPerolehan?: string;
   harga?: string;
@@ -365,23 +425,30 @@ export type ImportRowResult = {
   kodeBarang: string | null;
   nama: string;
   ruangan: string | null;
+  /** Jumlah unit yang akan/telah dibuat dari baris ini. */
+  unit: number;
   status: "valid" | "duplikat" | "error";
   catatan: string[];
 };
 
 export type ImportPreview = {
   items: ImportRowResult[];
-  ringkasan: { total: number; valid: number; duplikat: number; error: number };
+  ringkasan: {
+    baris: number;
+    unit: number;
+    valid: number;
+    duplikat: number;
+    error: number;
+    ruanganBaru: { nama: string; prefix: string }[];
+    itemBaru: number;
+  };
 };
 
-type ResolvedRow = {
-  result: ImportRowResult;
-  /** Payload siap-insert bila valid (kode diselesaikan saat commit). */
-  data?: {
-    kodeManual: string | null;
-    prefix: string;
-    payload: Omit<Prisma.InvBarangCreateManyInput, "kodeBarang" | "createdBy" | "updatedBy">;
-  };
+export type ImportCommitSummary = {
+  masuk: number;
+  dilewati: number;
+  ruanganBaru: number;
+  itemBaru: number;
 };
 
 const norm = (s: string | undefined | null) => (s ?? "").trim();
@@ -458,54 +525,122 @@ function matchStatus(s: string | undefined): { status: StatusAset; ok: boolean }
   return { status: "AKTIF", ok: false };
 }
 
-/** Validasi & cocokkan seluruh baris import (tanpa menulis DB). */
-export async function resolveImport(rows: ImportRowInput[]): Promise<ResolvedRow[]> {
+/** Buat prefix ruangan dari nama (inisial/awalan), unik terhadap yang ada. */
+function genPrefix(nama: string, taken: Set<string>): string {
+  const words = nama.trim().split(/\s+/).filter(Boolean);
+  let base = words.length >= 2 ? words.map((w) => w[0]).join("") : (words[0] ?? "RNG").slice(0, 4);
+  base = base.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) || "RNG";
+  let cand = base;
+  let n = 1;
+  while (taken.has(cand)) {
+    n++;
+    cand = `${base}${n}`.slice(0, 10);
+  }
+  return cand;
+}
+
+type RoomPlan = { pkey: string; prefix: string; nama: string; id?: string; isNew: boolean };
+
+/**
+ * Inti import: validasi + rencana (dry-run) ATAU tulis (commit). Menangani
+ * auto-katalog (item dari Nama), auto-buat ruangan bila belum ada, dan mekar
+ * kolom Jumlah menjadi N unit.
+ */
+async function processImport(
+  rows: ImportRowInput[],
+  user: SessionUser | null,
+  commit: boolean,
+): Promise<{ items: ImportRowResult[]; ringkasan: ImportPreview["ringkasan"]; masuk: number }> {
   const db = getAppDb();
   const maps = await loadRefMaps();
-  const out: ResolvedRow[] = [];
-  const kodeSeen = new Set<string>();
-  // Kode existing di DB (untuk cek duplikat sekali jalan).
-  const existing = await db.invBarang.findMany({ select: { kodeBarang: true } });
-  const kodeDb = new Set(existing.map((e) => e.kodeBarang.toUpperCase()));
 
-  rows.forEach((raw, i) => {
+  const kodeDb = new Set((await db.invBarang.findMany({ select: { kodeBarang: true } })).map((e) => e.kodeBarang.toUpperCase()));
+  const kodeSeen = new Set<string>();
+
+  const takenPrefixes = new Set<string>();
+  for (const [, v] of maps.ruanganMap) takenPrefixes.add(v.prefix.toUpperCase());
+  const newRooms = new Map<string, RoomPlan>(); // key = nama ruangan (lower)
+
+  const itemKeys = new Set((await db.invItem.findMany({ select: { namaKey: true } })).map((it) => it.namaKey));
+  const newItemKeys = new Set<string>();
+  const itemCache = new Map<string, { id: string; nama: string }>();
+
+  const seqOf = new Map<string, number>();
+  async function seqFor(prefix: string): Promise<number> {
+    if (!seqOf.has(prefix)) seqOf.set(prefix, await nextSeq(prefix));
+    return seqOf.get(prefix)!;
+  }
+
+  function resolveRoom(ruanganRaw: string, kodeRuanganRaw: string): RoomPlan | null {
+    const existing = (kodeRuanganRaw && maps.ruanganMap.get(key(kodeRuanganRaw))) || maps.ruanganMap.get(key(ruanganRaw));
+    if (existing) return { pkey: key(ruanganRaw), prefix: existing.prefix, nama: ruanganRaw, id: existing.id, isNew: false };
+    const pkey = key(ruanganRaw);
+    const pend = newRooms.get(pkey);
+    if (pend) return pend;
+    const prefix = kodeRuanganRaw
+      ? kodeRuanganRaw.toUpperCase().replace(/[^A-Z0-9.\-]/g, "").slice(0, 15) || genPrefix(ruanganRaw, takenPrefixes)
+      : genPrefix(ruanganRaw, takenPrefixes);
+    takenPrefixes.add(prefix.toUpperCase());
+    const plan: RoomPlan = { pkey, prefix, nama: ruanganRaw, isNew: true };
+    newRooms.set(pkey, plan);
+    return plan;
+  }
+
+  async function ensureRoomId(plan: RoomPlan): Promise<string> {
+    if (plan.id) return plan.id;
+    try {
+      const created = await db.invRuangan.create({ data: { kodePrefix: plan.prefix, nama: plan.nama }, select: { id: true } });
+      plan.id = created.id;
+    } catch (e) {
+      if (isUnique(e)) {
+        const found = await db.invRuangan.findUnique({ where: { kodePrefix: plan.prefix }, select: { id: true } });
+        if (found) plan.id = found.id;
+        else throw e;
+      } else throw e;
+    }
+    maps.ruanganMap.set(key(plan.nama), { id: plan.id!, prefix: plan.prefix });
+    maps.ruanganMap.set(key(plan.prefix), { id: plan.id!, prefix: plan.prefix });
+    return plan.id!;
+  }
+
+  const items: ImportRowResult[] = [];
+  let totalUnit = 0;
+  let masuk = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const raw = rows[i];
     const baris = i + 2; // +1 header, +1 index→1-based
     const catatan: string[] = [];
     const nama = norm(raw.nama);
     const kodeManual = norm(raw.kodeBarang).toUpperCase() || null;
 
-    if (!nama) {
-      out.push({
-        result: { baris, kodeBarang: kodeManual, nama: "—", ruangan: norm(raw.ruangan) || null, status: "error", catatan: ["Nama barang kosong."] },
-      });
-      return;
-    }
+    const err = (msg: string, ruangan: string | null = norm(raw.ruangan) || null) =>
+      items.push({ baris, kodeBarang: kodeManual, nama: nama || "—", ruangan, unit: 0, status: "error", catatan: [msg] });
 
-    // Ruangan wajib.
+    if (!nama) { err("Nama barang kosong."); continue; }
     const ruanganRaw = norm(raw.ruangan);
-    const ruangan = ruanganRaw ? maps.ruanganMap.get(key(ruanganRaw)) : undefined;
-    if (!ruangan) {
-      out.push({
-        result: { baris, kodeBarang: kodeManual, nama, ruangan: ruanganRaw || null, status: "error", catatan: [ruanganRaw ? `Ruangan "${ruanganRaw}" tidak dikenal.` : "Ruangan wajib diisi."] },
-      });
-      return;
-    }
+    if (!ruanganRaw) { err("Ruangan wajib diisi."); continue; }
+    const room = resolveRoom(ruanganRaw, norm(raw.kodeRuangan));
+    if (!room) { err("Ruangan tidak dapat dipetakan."); continue; }
 
-    // Kode manual → cek duplikat (DB + dalam batch).
+    // Kode manual → cek duplikat & format.
     if (kodeManual) {
-      if (!/^[A-Za-z0-9.\-/]+$/.test(kodeManual)) {
-        out.push({ result: { baris, kodeBarang: kodeManual, nama, ruangan: ruangan.prefix, status: "error", catatan: ["Format kode tidak valid."] } });
-        return;
-      }
+      if (!/^[A-Za-z0-9.\-/]+$/.test(kodeManual)) { err("Format kode tidak valid.", room.prefix); continue; }
       if (kodeDb.has(kodeManual) || kodeSeen.has(kodeManual)) {
-        out.push({ result: { baris, kodeBarang: kodeManual, nama, ruangan: ruangan.prefix, status: "duplikat", catatan: ["Kode sudah ada — baris dilewati."] } });
-        return;
+        items.push({ baris, kodeBarang: kodeManual, nama, ruangan: room.prefix, unit: 0, status: "duplikat", catatan: ["Kode sudah ada — baris dilewati."] });
+        continue;
       }
       kodeSeen.add(kodeManual);
     }
 
+    // Jumlah (mekar unit).
+    let qty = parseIntSafe(raw.jumlah) ?? 1;
+    if (qty < 1) qty = 1;
+    if (qty > 500) qty = 500;
+    if (kodeManual && qty > 1) { qty = 1; catatan.push("Kode manual → 1 unit."); }
+
     // Referensi opsional.
-    const kategoriId = raw.kategori && norm(raw.kategori) ? maps.kategoriMap.get(key(raw.kategori)) ?? null : null;
+    const kategoriId = norm(raw.kategori) ? maps.kategoriMap.get(key(raw.kategori!)) ?? null : null;
     if (norm(raw.kategori) && !kategoriId) catatan.push(`Kategori "${norm(raw.kategori)}" tidak dikenal — dikosongkan.`);
     const satuanId = norm(raw.satuan) ? maps.satuanMap.get(key(raw.satuan!)) ?? null : null;
     if (norm(raw.satuan) && !satuanId) catatan.push(`Satuan "${norm(raw.satuan)}" tidak dikenal — dikosongkan.`);
@@ -523,82 +658,91 @@ export async function resolveImport(rows: ImportRowInput[]): Promise<ResolvedRow
     const st = matchStatus(raw.status);
     if (!st.ok) catatan.push(`Status "${norm(raw.status)}" tidak dikenal — dipakai Aktif.`);
 
-    if (kodeManual) catatan.unshift("Kode dari file dipakai.");
-    else catatan.unshift(`Kode otomatis (${ruangan.prefix}-…).`);
+    // Katalog item (rencana).
+    const namaClean = nama.replace(/\s+/g, " ");
+    const itemKey = namaClean.toUpperCase();
+    const isNewItem = !itemKeys.has(itemKey) && !newItemKeys.has(itemKey);
+    if (isNewItem) newItemKeys.add(itemKey);
 
-    out.push({
-      result: { baris, kodeBarang: kodeManual, nama, ruangan: ruangan.prefix, status: "valid", catatan },
-      data: {
-        kodeManual,
-        prefix: ruangan.prefix,
-        payload: {
-          register: parseIntSafe(raw.register),
-          nama,
-          merk: norm(raw.merk) || null,
-          nomorSeri: norm(raw.nomorSeri) || null,
-          kategoriId,
-          sumberAnggaranId,
-          satuanId,
-          kondisiId,
-          ruanganId: ruangan.id,
-          tahunPerolehan: tahun,
-          tglPerolehan: tgl.date,
-          harga: harga == null ? null : BigInt(harga),
-          statusAset: st.status,
-          keterangan: norm(raw.keterangan) || null,
-        },
-      },
-    });
-  });
+    catatan.unshift(kodeManual ? "Kode dari file dipakai." : `Kode otomatis (${room.prefix}-…).`);
+    if (room.isNew) catatan.push(`Ruangan baru: ${ruanganRaw} → prefix ${room.prefix}.`);
+    if (isNewItem) catatan.push(`Item katalog baru: ${namaClean}.`);
+    if (qty > 1) catatan.push(`${qty} unit dibuat.`);
 
-  return out;
+    if (commit && user) {
+      const ruanganId = await ensureRoomId(room);
+      const item = await resolveItem(namaClean, { satuanId, kategoriId, user }, itemCache);
+      const base = {
+        nama: item?.nama ?? namaClean,
+        itemId: item?.id ?? null,
+        register: parseIntSafe(raw.register),
+        merk: norm(raw.merk) || null,
+        nomorSeri: norm(raw.nomorSeri) || null,
+        kategoriId,
+        sumberAnggaranId,
+        satuanId,
+        kondisiId,
+        ruanganId,
+        tahunPerolehan: tahun,
+        tglPerolehan: tgl.date,
+        harga: harga == null ? null : BigInt(harga),
+        statusAset: st.status,
+        keterangan: norm(raw.keterangan) || null,
+        createdBy: user.name,
+        updatedBy: user.name,
+      };
+      for (let u = 0; u < qty; u++) {
+        let kode = kodeManual;
+        if (!kode) {
+          const seq = await seqFor(room.prefix);
+          kode = `${room.prefix}-${pad3(seq)}`;
+          seqOf.set(room.prefix, seq + 1);
+        }
+        try {
+          await db.invBarang.create({ data: { ...base, kodeBarang: kode } });
+          masuk++;
+        } catch (e) {
+          if (isUnique(e)) {
+            if (kodeManual) break;
+            seqOf.set(room.prefix, await nextSeq(room.prefix)); // re-seed & ulangi unit ini
+            u--;
+            continue;
+          }
+          throw e;
+        }
+      }
+    }
+
+    totalUnit += qty;
+    items.push({ baris, kodeBarang: kodeManual, nama: namaClean, ruangan: room.prefix, unit: qty, status: "valid", catatan });
+  }
+
+  const ringkasan: ImportPreview["ringkasan"] = {
+    baris: rows.length,
+    unit: totalUnit,
+    valid: items.filter((i) => i.status === "valid").length,
+    duplikat: items.filter((i) => i.status === "duplikat").length,
+    error: items.filter((i) => i.status === "error").length,
+    ruanganBaru: [...newRooms.values()].map((r) => ({ nama: r.nama, prefix: r.prefix })),
+    itemBaru: newItemKeys.size,
+  };
+  return { items, ringkasan, masuk };
 }
 
 export async function previewImport(rows: ImportRowInput[]): Promise<ImportPreview> {
-  const resolved = await resolveImport(rows);
-  const items = resolved.map((r) => r.result);
-  return {
-    items,
-    ringkasan: {
-      total: items.length,
-      valid: items.filter((i) => i.status === "valid").length,
-      duplikat: items.filter((i) => i.status === "duplikat").length,
-      error: items.filter((i) => i.status === "error").length,
-    },
-  };
+  const { items, ringkasan } = await processImport(rows, null, false);
+  return { items, ringkasan };
 }
 
-export async function commitImport(rows: ImportRowInput[], user: SessionUser): Promise<{ masuk: number; dilewati: number }> {
-  const db = getAppDb();
-  const resolved = await resolveImport(rows);
-  const valid = resolved.filter((r) => r.data);
-  if (valid.length === 0) throw new BusinessRuleError("Tidak ada baris valid untuk diimpor.");
-
-  // Seed nomor urut per-prefix dari DB agar auto-kode berurutan tanpa query per-baris.
-  const prefixes = new Set(valid.map((r) => r.data!.prefix));
-  const seqOf = new Map<string, number>();
-  for (const p of prefixes) seqOf.set(p, await nextSeq(p));
-
-  let masuk = 0;
-  for (const r of valid) {
-    const d = r.data!;
-    let kode = d.kodeManual;
-    if (!kode) {
-      const seq = seqOf.get(d.prefix)!;
-      kode = `${d.prefix}-${pad3(seq)}`;
-      seqOf.set(d.prefix, seq + 1);
-    }
-    try {
-      await db.invBarang.create({
-        data: { ...d.payload, kodeBarang: kode, createdBy: user.name, updatedBy: user.name },
-      });
-      masuk++;
-    } catch (e) {
-      if (isUnique(e)) continue; // tabrakan langka → lewati
-      throw e;
-    }
-  }
-  return { masuk, dilewati: resolved.length - masuk };
+export async function commitImport(rows: ImportRowInput[], user: SessionUser): Promise<ImportCommitSummary> {
+  const { ringkasan, masuk } = await processImport(rows, user, true);
+  if (masuk === 0) throw new BusinessRuleError("Tidak ada baris valid untuk diimpor.");
+  return {
+    masuk,
+    dilewati: ringkasan.duplikat + ringkasan.error,
+    ruanganBaru: ringkasan.ruanganBaru.length,
+    itemBaru: ringkasan.itemBaru,
+  };
 }
 
 /* ------------------------------------------------------- bulk (lembar/Excel) */
@@ -664,6 +808,7 @@ export async function bulkCreateBarang(
   const seqOf = new Map<string, number>();
   for (const pre of prefixes) seqOf.set(pre, await nextSeq(pre));
 
+  const itemCache = new Map<string, { id: string; nama: string }>();
   const results: BulkRowResult[] = [];
   for (let i = 0; i < parsed.length; i++) {
     const p = parsed[i];
@@ -678,7 +823,14 @@ export async function bulkCreateBarang(
       results.push({ index: i, status: "error", nama: input.nama, message: "Ruangan tidak ditemukan." });
       continue;
     }
-    const data = { ...createScalar(input), createdBy: user.name, updatedBy: user.name };
+    const item = await resolveItem(input.nama, { satuanId: input.satuanId, kategoriId: input.kategoriId, user }, itemCache);
+    const data = {
+      ...createScalar(input),
+      nama: item?.nama ?? input.nama,
+      itemId: item?.id ?? null,
+      createdBy: user.name,
+      updatedBy: user.name,
+    };
     const manual = input.kodeBarang?.trim().toUpperCase();
 
     let done = false;

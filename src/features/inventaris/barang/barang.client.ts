@@ -18,6 +18,7 @@ export type BarangItem = {
   harga: number | null;
   statusAset: StatusAset;
   keterangan: string | null;
+  item: RefMini | null;
   kategori: RefMini | null;
   sumberAnggaran: (RefMini & { singkatan?: string | null }) | null;
   satuan: RefMini | null;
@@ -43,6 +44,7 @@ export type FormRefs = {
   sumberAnggaran: { id: string; nama: string; singkatan: string }[];
   kategori: { id: string; nama: string }[];
   ruangan: { id: string; kodePrefix: string; nama: string; pjNama: string | null; pjNip: string | null }[];
+  item: { id: string; nama: string }[];
 };
 
 export type BarangPayload = {
@@ -80,15 +82,25 @@ export type ImportRowResult = {
   kodeBarang: string | null;
   nama: string;
   ruangan: string | null;
+  unit: number;
   status: "valid" | "duplikat" | "error";
   catatan: string[];
+};
+export type ImportRingkasan = {
+  baris: number;
+  unit: number;
+  valid: number;
+  duplikat: number;
+  error: number;
+  ruanganBaru: { nama: string; prefix: string }[];
+  itemBaru: number;
 };
 export type ImportPreview = {
   mode: "preview";
   items: ImportRowResult[];
-  ringkasan: { total: number; valid: number; duplikat: number; error: number };
+  ringkasan: ImportRingkasan;
 };
-export type ImportCommitResult = { mode: "commit"; masuk: number; dilewati: number };
+export type ImportCommitResult = { mode: "commit"; masuk: number; dilewati: number; ruanganBaru: number; itemBaru: number };
 
 export type BulkRowResult = {
   index: number;
@@ -167,3 +179,29 @@ export const importCommit = (file: File) => importCall(file, "commit") as Promis
 export async function bulkCreateBarang(rows: BarangPayload[]): Promise<{ results: BulkRowResult[]; masuk: number }> {
   return (await jsonCall<{ results: BulkRowResult[]; masuk: number }>(`${BASE}/bulk`, "POST", { rows })).data;
 }
+
+/* ------------------------------------------------------------------ katalog */
+
+export type KatalogItem = {
+  id: string;
+  nama: string;
+  kategori: RefMini | null;
+  satuan: RefMini | null;
+  spesifikasi: string | null;
+  aktif: boolean;
+  jumlahUnit: number;
+  totalNilai: number;
+};
+export type KatalogMeta = { page: number; pageSize: number; total: number; totalPages: number };
+export type KatalogPayload = { nama: string; kategoriId?: string; satuanId?: string; spesifikasi?: string; aktif: boolean };
+
+export async function fetchKatalog(params: { search?: string; page?: number; pageSize?: number }): Promise<{ data: KatalogItem[]; meta: KatalogMeta }> {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v != null && String(v).trim() !== "") sp.set(k, String(v));
+  const q = sp.toString();
+  const j = await jsonCall<KatalogItem[]>(`${BASE}/katalog${q ? `?${q}` : ""}`);
+  return { data: j.data, meta: j.meta as KatalogMeta };
+}
+export const updateKatalog = (id: string, payload: KatalogPayload) =>
+  jsonCall<{ id: string }>(`${BASE}/katalog/${id}`, "PATCH", payload).then((j) => j.data);
+export const deleteKatalog = (id: string) => jsonCall<{ id: string }>(`${BASE}/katalog/${id}`, "DELETE").then((j) => j.data);

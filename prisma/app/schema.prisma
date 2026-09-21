@@ -191,6 +191,7 @@ model InvSatuan {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   barang InvBarang[]
+  item   InvItem[]
 
   @@map("inv_satuan")
 }
@@ -238,8 +239,31 @@ model InvKategori {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   barang InvBarang[]
+  item   InvItem[]
 
   @@map("inv_kategori")
+}
+
+/// Katalog jenis barang (master item). 1 item = 1 jenis; `namaKey` = nama ternormalkan (unik).
+/// Unit fisik (InvBarang) menautkan `itemId` → agregasi lintas ruangan & nama baku konsisten.
+model InvItem {
+  id          String   @id @default(cuid())
+  nama        String
+  namaKey     String   @unique @map("nama_key")
+  kategoriId  String?  @map("kategori_id")
+  satuanId    String?  @map("satuan_id")
+  spesifikasi String?  @db.Text
+  aktif       Boolean  @default(true)
+  createdBy   String?  @map("created_by")
+  updatedBy   String?  @map("updated_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  kategori InvKategori? @relation(fields: [kategoriId], references: [id], onDelete: SetNull)
+  satuan   InvSatuan?   @relation(fields: [satuanId], references: [id], onDelete: SetNull)
+  barang   InvBarang[]
+
+  @@map("inv_item")
 }
 
 /// Ruangan/lokasi aset + penanggung jawab. `kodePrefix` dipakai auto-generate
@@ -268,6 +292,7 @@ model InvBarang {
   kodeBarang       String    @unique @map("kode_barang")
   register         Int?
   nama             String
+  itemId           String?   @map("item_id")
   merk             String?
   nomorSeri        String?   @map("nomor_seri")
   kategoriId       String?   @map("kategori_id")
@@ -286,6 +311,7 @@ model InvBarang {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
+  item           InvItem?           @relation(fields: [itemId], references: [id], onDelete: SetNull)
   kategori       InvKategori?       @relation(fields: [kategoriId], references: [id], onDelete: SetNull)
   sumberAnggaran InvSumberAnggaran? @relation(fields: [sumberAnggaranId], references: [id], onDelete: SetNull)
   satuan         InvSatuan?         @relation(fields: [satuanId], references: [id], onDelete: SetNull)
@@ -297,6 +323,7 @@ model InvBarang {
   @@index([ruanganId])
   @@index([kondisiId])
   @@index([kategoriId])
+  @@index([itemId])
   @@index([statusAset])
   @@index([tahunPerolehan])
   @@map("inv_barang")

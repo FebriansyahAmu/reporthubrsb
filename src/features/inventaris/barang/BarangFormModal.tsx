@@ -18,6 +18,7 @@ import {
   type BarangPayload,
   type FormRefs,
 } from "./barang.client";
+import { NamaBarangField } from "./NamaBarangField";
 
 type FormState = {
   kodeBarang: string;
@@ -271,9 +272,16 @@ export function BarangFormModal({
 
           <div className="sm:col-span-2">
             <Label htmlFor="f-nama">
-              Nama Barang <span className="text-danger">*</span>
+              Nama / Jenis Barang <span className="text-danger">*</span>
             </Label>
-            <Input id="f-nama" value={form.nama} placeholder="mis. Tempat Tidur Pasien Elektrik" onChange={(e) => set("nama", e.target.value)} />
+            <NamaBarangField
+              id="f-nama"
+              value={form.nama}
+              onChange={(v) => set("nama", v)}
+              items={refs.item}
+              placeholder="mis. Tempat Tidur Pasien Elektrik"
+            />
+            <p className="mt-1 text-[11px] text-fg-subtle">Pilih dari katalog agar nama konsisten, atau ketik baru.</p>
           </div>
           <div>
             <Label htmlFor="f-register">Register</Label>

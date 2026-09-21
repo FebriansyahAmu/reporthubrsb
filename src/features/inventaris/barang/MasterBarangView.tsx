@@ -7,6 +7,7 @@ import {
   Eye,
   FileSpreadsheet,
   FileText,
+  Layers,
   Pencil,
   Plus,
   Search,
@@ -45,6 +46,7 @@ import { BarangFormModal } from "./BarangFormModal";
 import { BarangDetailModal } from "./BarangDetailModal";
 import { ImportBarangModal } from "./ImportBarangModal";
 import { BarangSheet } from "./BarangSheet";
+import { KatalogModal } from "./KatalogModal";
 
 type Tone = "neutral" | "brand" | "success" | "warning" | "danger" | "accent";
 const PAGE_SIZE = 20;
@@ -69,6 +71,7 @@ export function MasterBarangView({ perms }: { perms: BarangPerms }) {
   const [formState, setFormState] = useState<{ mode: "create" | "edit"; item?: BarangItem } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [katalogOpen, setKatalogOpen] = useState(false);
   const [deleteItem, setDeleteItem] = useState<BarangItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -176,6 +179,9 @@ export function MasterBarangView({ perms }: { perms: BarangPerms }) {
               />
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" size="md" icon={<Layers className="size-4" />} onClick={() => setKatalogOpen(true)}>
+                Katalog
+              </Button>
               <Button variant="secondary" size="md" icon={<FileSpreadsheet className="size-4" />} onClick={onExport} loading={exporting}>
                 Export
               </Button>
@@ -348,6 +354,17 @@ export function MasterBarangView({ perms }: { perms: BarangPerms }) {
       {/* Input Lembar (Excel) */}
       {sheetOpen && refs && (
         <BarangSheet open refs={refs} onClose={() => setSheetOpen(false)} onSaved={reload} />
+      )}
+
+      {/* Katalog Barang */}
+      {katalogOpen && refs && (
+        <KatalogModal
+          refs={refs}
+          canManage={perms.update}
+          canDelete={perms.delete}
+          onClose={() => setKatalogOpen(false)}
+          onChanged={reload}
+        />
       )}
 
       {/* Konfirmasi hapus */}

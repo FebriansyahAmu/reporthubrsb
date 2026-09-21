@@ -3,10 +3,13 @@
 import { useRef, useState } from "react";
 import {
   AlertTriangle,
+  Boxes,
   CheckCircle2,
   Copy,
+  DoorOpen,
   Download,
   FileSpreadsheet,
+  Layers,
   Loader2,
   Upload,
   XCircle,
@@ -76,7 +79,8 @@ export function ImportBarangModal({
     setCommitting(true);
     try {
       const res = await importCommit(file);
-      toast.success("Import selesai", `${res.masuk} barang berhasil ditambahkan.`);
+      const extra = [res.ruanganBaru ? `${res.ruanganBaru} ruangan baru` : "", res.itemBaru ? `${res.itemBaru} item katalog` : ""].filter(Boolean).join(" · ");
+      toast.success("Import selesai", `${res.masuk} unit ditambahkan${extra ? ` (${extra})` : ""}.`);
       onDone();
       reset();
       onClose();
@@ -129,7 +133,7 @@ export function ImportBarangModal({
               disabled={!preview || !r || r.valid === 0 || loading}
               icon={<Upload className="size-4" />}
             >
-              {r && r.valid > 0 ? `Impor ${r.valid} baris` : "Impor"}
+              {r && r.valid > 0 ? `Impor ${r.unit} unit` : "Impor"}
             </Button>
           </div>
         </div>
@@ -177,12 +181,34 @@ export function ImportBarangModal({
         {preview && r && (
           <>
             {/* Ringkasan */}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <Stat label="Total baris" value={r.total} tone="neutral" />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+              <Stat label="Baris" value={r.baris} tone="neutral" />
+              <Stat label="Unit dibuat" value={r.unit} tone="brand" icon={Boxes} />
               <Stat label="Valid" value={r.valid} tone="success" icon={CheckCircle2} />
               <Stat label="Duplikat" value={r.duplikat} tone="warning" icon={Copy} />
               <Stat label="Error" value={r.error} tone="danger" icon={XCircle} />
             </div>
+
+            {/* Ruangan & item baru */}
+            {(r.ruanganBaru.length > 0 || r.itemBaru > 0) && (
+              <div className="flex flex-col gap-1.5 rounded-[var(--radius-md)] border border-brand/25 bg-brand-soft/30 px-3 py-2 text-xs text-fg">
+                {r.ruanganBaru.length > 0 && (
+                  <div className="flex items-start gap-1.5">
+                    <DoorOpen className="mt-0.5 size-3.5 shrink-0 text-brand" />
+                    <span>
+                      <span className="font-medium">{r.ruanganBaru.length} ruangan baru</span> akan dibuat otomatis:{" "}
+                      {r.ruanganBaru.map((x) => `${x.nama} (${x.prefix})`).join(", ")}
+                    </span>
+                  </div>
+                )}
+                {r.itemBaru > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <Layers className="size-3.5 shrink-0 text-brand" />
+                    <span><span className="font-medium">{r.itemBaru} item katalog baru</span> akan dibuat dari nama barang.</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {r.valid === 0 && (
               <div className="flex items-start gap-2 rounded-[var(--radius-md)] border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-warning">
@@ -215,7 +241,10 @@ export function ImportBarangModal({
                           </Badge>
                         </td>
                         <td className="px-3 py-2">
-                          <p className="font-medium text-fg">{it.nama}</p>
+                          <p className="font-medium text-fg">
+                            {it.nama}
+                            {it.unit > 1 && <span className="ml-1.5 rounded bg-brand-soft px-1.5 py-0.5 text-[10px] font-semibold text-brand-soft-fg">× {it.unit}</span>}
+                          </p>
                           <p className="text-xs text-fg-subtle">
                             {it.kodeBarang ? <span className="font-mono">{it.kodeBarang}</span> : "kode otomatis"}
                             {it.ruangan ? ` · ${it.ruangan}` : ""}
@@ -248,11 +277,12 @@ function Stat({
 }: {
   label: string;
   value: number;
-  tone: "neutral" | "success" | "warning" | "danger";
+  tone: "neutral" | "brand" | "success" | "warning" | "danger";
   icon?: typeof CheckCircle2;
 }) {
   const ring: Record<string, string> = {
     neutral: "border-border bg-surface-2/50 text-fg",
+    brand: "border-brand/30 bg-brand-soft text-brand-soft-fg",
     success: "border-success/30 bg-success-soft text-success",
     warning: "border-warning/30 bg-warning-soft text-warning",
     danger: "border-danger/30 bg-danger-soft text-danger",
