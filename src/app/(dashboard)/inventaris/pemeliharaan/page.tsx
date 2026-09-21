@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
-import { PemeliharaanView } from "@/features/inventaris/pemeliharaan/PemeliharaanView";
+import { ChecklistView } from "@/features/inventaris/pemeliharaan/ChecklistView";
 import { hasModule, requireModule } from "@/server/rbac/guard";
 
 export const metadata = { title: "Pemeliharaan Barang · AuditTrail RS BOLTIM" };
@@ -25,10 +25,10 @@ export default async function PemeliharaanPage() {
         Kembali ke Inventarisasi
       </Link>
       <PageHeader
-        title="Pemeliharaan Barang"
-        description="Checklist & riwayat perawatan/pengecekan aset, dengan status jatuh tempo yang jelas."
+        title="Checklist Pemeliharaan"
+        description="Checklist perawatan berkala per ruangan — harian, mingguan, bulanan. Cukup centang atau tandai selesai tiap periode."
       />
-      <PemeliharaanView canCreate={canCreate} canUpdate={canUpdate} />
+      <ChecklistView canCreate={canCreate} canUpdate={canUpdate} />
     </FadeIn>
   );
 }

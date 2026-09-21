@@ -209,6 +209,7 @@ model InvKondisi {
 
   barang            InvBarang[]
   pemeliharaanHasil InvPemeliharaan[]
+  checklistPeriksa  InvChecklistPeriksa[]
 
   @@map("inv_kondisi")
 }
@@ -282,6 +283,7 @@ model InvRuangan {
   barang    InvBarang[]
   mutasiKe   InvMutasi[] @relation("MutasiKe")
   mutasiDari InvMutasi[] @relation("MutasiDari")
+  checklistRun      InvChecklistRun[]
 
   @@map("inv_ruangan")
 }
@@ -319,6 +321,7 @@ model InvBarang {
   ruangan        InvRuangan         @relation(fields: [ruanganId], references: [id], onDelete: Restrict)
   pemeliharaan   InvPemeliharaan[]
   mutasi         InvMutasi[]
+  checklistPeriksa InvChecklistPeriksa[]
 
   @@index([ruanganId])
   @@index([kondisiId])
@@ -371,6 +374,52 @@ model InvMutasi {
 
   @@index([barangId])
   @@map("inv_mutasi")
+}
+
+/// Pelaksanaan checklist pemeliharaan berkala satu ruangan pada satu periode.
+/// Isi checklist = daftar unit barang di ruangan itu (dari Master Barang).
+/// Frekuensi: HARIAN | MINGGUAN | BULANAN.
+model InvChecklistRun {
+  id         String    @id @default(cuid())
+  ruanganId  String    @map("ruangan_id")
+  frekuensi  String    @default("HARIAN")
+  periodeKey String    @map("periode_key")
+  selesaiAt  DateTime? @map("selesai_at")
+  selesaiBy  String?   @map("selesai_by")
+  catatan    String?   @db.Text
+  createdBy  String?   @map("created_by")
+  updatedBy  String?   @map("updated_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  ruangan InvRuangan            @relation(fields: [ruanganId], references: [id], onDelete: Cascade)
+  periksa InvChecklistPeriksa[]
+
+  @@unique([ruanganId, frekuensi, periodeKey])
+  @@index([ruanganId])
+  @@index([periodeKey])
+  @@map("inv_checklist_run")
+}
+
+/// Hasil pemeriksaan satu unit barang dalam satu pelaksanaan checklist.
+/// Baris ada = barang sudah diperiksa; `kondisiId` = status kondisi hasil periksa.
+model InvChecklistPeriksa {
+  id        String   @id @default(cuid())
+  runId     String   @map("run_id")
+  barangId  String   @map("barang_id")
+  kondisiId String?  @map("kondisi_id")
+  catatan   String?  @db.Text
+  checkedBy String?  @map("checked_by")
+  checkedAt DateTime @default(now()) @map("checked_at")
+
+  run     InvChecklistRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  barang  InvBarang       @relation(fields: [barangId], references: [id], onDelete: Cascade)
+  kondisi InvKondisi?     @relation(fields: [kondisiId], references: [id], onDelete: SetNull)
+
+  @@unique([runId, barangId])
+  @@index([runId])
+  @@index([barangId])
+  @@map("inv_checklist_periksa")
 }
 
 /// Refresh token (rotasi). Yang disimpan HANYA hash token-nya, bukan token asli,
