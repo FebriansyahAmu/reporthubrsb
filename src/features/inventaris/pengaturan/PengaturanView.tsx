@@ -15,6 +15,7 @@ type Tab = {
   columns: RefColumnDef[];
   fields: RefFieldDef[];
   emptyHint?: string;
+  inlineFields?: string[];
 };
 
 type BadgeTone = "neutral" | "brand" | "success" | "warning" | "danger" | "accent";
@@ -114,7 +115,7 @@ const TABS: Tab[] = [
       { key: "kodePrefix", header: "Prefix", render: (row) => mono(row.kodePrefix) },
       { key: "nama", header: "Nama Ruangan" },
       { key: "pjNama", header: "Penanggung Jawab" },
-      { key: "pjNip", header: "NIP", render: (row) => (row.pjNip ? mono(row.pjNip) : <span className="text-fg-subtle">—</span>) },
+      { key: "pjNip", header: "NIP" },
     ],
     fields: [
       {
@@ -130,7 +131,8 @@ const TABS: Tab[] = [
       { name: "pjNama", label: "Nama Penanggung Jawab", type: "text", placeholder: "mis. dr. Roynald Maramis" },
       { name: "pjNip", label: "NIP Penanggung Jawab", type: "text", placeholder: "mis. 198310272019031003" },
     ],
-    emptyHint: "prefix + penanggung jawab",
+    inlineFields: ["pjNama", "pjNip"],
+    emptyHint: "PJ & NIP bisa diedit langsung di kolomnya",
   },
 ];
 
@@ -175,6 +177,7 @@ export function PengaturanView({ canManage }: { canManage: boolean }) {
         fields={tab.fields}
         canManage={canManage}
         emptyHint={tab.emptyHint}
+        inlineFields={tab.inlineFields}
       />
     </div>
   );

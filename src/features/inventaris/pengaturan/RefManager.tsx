@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, Pencil, Plus, Trash2 } from "lucide-react";
+import { cn } from "@/lib/cn";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -59,6 +60,7 @@ export function RefManager({
   fields,
   canManage,
   emptyHint,
+  inlineFields = [],
 }: {
   entity: string;
   title: string;
@@ -67,6 +69,8 @@ export function RefManager({
   fields: RefFieldDef[];
   canManage: boolean;
   emptyHint?: string;
+  /** Field yang bisa diedit langsung di dalam sel tabel (mis. ["pjNama","pjNip"]). */
+  inlineFields?: string[];
 }) {
   const toast = useToast();
   const base = `/api/inventaris/pengaturan/${entity}`;
@@ -75,6 +79,47 @@ export function RefManager({
     [entity],
   );
   const rows = result ?? [];
+
+  // Edit inline (per baris): draf nilai + nilai tersimpan (overlay atas data server).
+  const inlineOn = canManage && inlineFields.length > 0;
+  const [edits, setEdits] = useState<Record<string, Record<string, string>>>({});
+  const [savedOverlay, setSavedOverlay] = useState<Record<string, Record<string, string>>>({});
+  const [savingRow, setSavingRow] = useState<string | null>(null);
+  const [srcRef, setSrcRef] = useState<RefRow[] | null>(result);
+  if (result !== srcRef) {
+    // Data server dimuat ulang → buang overlay & draf agar tak basi.
+    setSrcRef(result);
+    setEdits({});
+    setSavedOverlay({});
+  }
+
+  const savedVal = (row: RefRow, f: string) => savedOverlay[row.id]?.[f] ?? str(row[f]);
+  const shownVal = (row: RefRow, f: string) => edits[row.id]?.[f] ?? savedVal(row, f);
+  const rowDirty = (row: RefRow) => inlineFields.some((f) => shownVal(row, f) !== savedVal(row, f));
+  const setEdit = (rowId: string, f: string, v: string) =>
+    setEdits((e) => ({ ...e, [rowId]: { ...e[rowId], [f]: v } }));
+
+  async function saveRow(row: RefRow) {
+    if (!rowDirty(row) || savingRow) return;
+    setSavingRow(row.id);
+    try {
+      const payload: Record<string, unknown> = { aktif: !!row.aktif, urutan: Number(row.urutan) || 0 };
+      for (const f of fields) {
+        let v = inlineFields.includes(f.name) ? shownVal(row, f.name) : str(row[f.name]);
+        if (f.uppercase) v = v.toUpperCase();
+        payload[f.name] = v;
+      }
+      await apiCall(`${base}/${row.id}`, "PATCH", payload);
+      // Overlay nilai baru + hapus draf → baris jadi "bersih" tanpa reload.
+      setSavedOverlay((s) => ({ ...s, [row.id]: Object.fromEntries(inlineFields.map((f) => [f, shownVal(row, f)])) }));
+      setEdits((e) => { const n = { ...e }; delete n[row.id]; return n; });
+      toast.success("Tersimpan", `${title} berhasil diperbarui.`);
+    } catch (err) {
+      toast.error("Gagal menyimpan", err instanceof Error ? err.message : undefined);
+    } finally {
+      setSavingRow(null);
+    }
+  }
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -196,7 +241,7 @@ export function RefManager({
                 </TH>
               ))}
               <TH className="w-24 text-center">Status</TH>
-              {canManage && <TH className="w-24 text-right">Aksi</TH>}
+              {canManage && <TH className={cn("text-right", inlineOn ? "w-44" : "w-24")}>Aksi</TH>}
             </THead>
             <TBody>
               {rows.map((row, i) => (
@@ -204,11 +249,24 @@ export function RefManager({
                   <TD align="center" className="text-xs text-fg-subtle tabular">
                     {i + 1}
                   </TD>
-                  {columns.map((c) => (
-                    <TD key={c.key} className={c.className}>
-                      {c.render ? c.render(row) : str(row[c.key]) || <span className="text-fg-subtle">—</span>}
-                    </TD>
-                  ))}
+                  {columns.map((c) =>
+                    inlineOn && inlineFields.includes(c.key) ? (
+                      <TD key={c.key} className={c.className}>
+                        <Input
+                          value={shownVal(row, c.key)}
+                          placeholder={fields.find((f) => f.name === c.key)?.placeholder ?? "— tempel di sini —"}
+                          onChange={(e) => setEdit(row.id, c.key, e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") saveRow(row); }}
+                          className="h-9 min-w-[9rem]"
+                          aria-label={c.header}
+                        />
+                      </TD>
+                    ) : (
+                      <TD key={c.key} className={c.className}>
+                        {c.render ? c.render(row) : str(row[c.key]) || <span className="text-fg-subtle">—</span>}
+                      </TD>
+                    ),
+                  )}
                   <TD align="center">
                     <Badge tone={row.aktif ? "success" : "neutral"} dot>
                       {row.aktif ? "Aktif" : "Nonaktif"}
@@ -217,6 +275,16 @@ export function RefManager({
                   {canManage && (
                     <TD align="right">
                       <div className="flex items-center justify-end gap-1">
+                        {inlineOn && rowDirty(row) && (
+                          <Button
+                            size="sm"
+                            onClick={() => saveRow(row)}
+                            loading={savingRow === row.id}
+                            icon={<Check className="size-3.5" />}
+                          >
+                            Simpan
+                          </Button>
+                        )}
                         <button
                           type="button"
                           onClick={() => openEdit(row)}
