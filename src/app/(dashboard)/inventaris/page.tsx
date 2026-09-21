@@ -4,13 +4,13 @@ import {
   ClipboardList,
   PackageSearch,
   SlidersHorizontal,
-  TrendingUp,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
 import { Badge } from "@/components/ui/Badge";
+import { InventarisDashboardView } from "@/features/inventaris/dashboard/InventarisDashboardView";
 import { cn } from "@/lib/cn";
 import { hasModule, requireModule } from "@/server/rbac/guard";
 
@@ -74,23 +74,19 @@ export default async function InventarisLandingPage() {
         description="Manajemen seluruh data aset & barang RSUD Boltim — master barang, kartu inventaris ruangan, pemeliharaan, dan analitik tren."
       />
 
-      {/* Catatan dashboard analitik (menyusul) */}
-      <div className="flex items-start gap-3 rounded-[var(--radius-lg)] border border-brand/25 bg-brand-soft/40 px-4 py-3">
-        <TrendingUp className="mt-0.5 size-5 shrink-0 text-brand" />
-        <div className="text-sm">
-          <p className="font-medium text-fg">Dashboard Analitik Tren</p>
-          <p className="text-fg-muted">
-            Ringkasan nilai aset, komposisi kondisi, dan tren perolehan akan tampil di sini setelah data barang tersedia.
-          </p>
-        </div>
-      </div>
+      {/* Dashboard analitik tren */}
+      <InventarisDashboardView />
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {visible
-          .filter((f) => f.allowed)
-          .map((f) => (
-            <FeatureCard key={f.moduleKey} feature={f} />
-          ))}
+      {/* Pintasan modul */}
+      <div>
+        <h2 className="mb-3 text-sm font-semibold text-fg-muted">Modul</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {visible
+            .filter((f) => f.allowed)
+            .map((f) => (
+              <FeatureCard key={f.moduleKey} feature={f} />
+            ))}
+        </div>
       </div>
     </FadeIn>
   );
