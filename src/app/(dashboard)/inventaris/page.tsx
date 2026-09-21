@@ -57,7 +57,7 @@ const FEATURES: Feature[] = [
     icon: Wrench,
     title: "Pemeliharaan",
     description: "Checklist & riwayat perawatan/pengecekan aset, dengan status jatuh tempo yang jelas.",
-    status: "segera",
+    status: "tersedia",
   },
 ];
 

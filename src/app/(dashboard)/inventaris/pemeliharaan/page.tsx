@@ -1,15 +1,20 @@
 import Link from "next/link";
-import { ArrowLeft, Wrench } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
-import { ComingSoon } from "@/features/inventaris/ComingSoon";
-import { requireModule } from "@/server/rbac/guard";
+import { PemeliharaanView } from "@/features/inventaris/pemeliharaan/PemeliharaanView";
+import { hasModule, requireModule } from "@/server/rbac/guard";
 
 export const metadata = { title: "Pemeliharaan Barang · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default async function PemeliharaanPage() {
-  await requireModule("inventaris.pemeliharaan");
+  const user = await requireModule("inventaris.pemeliharaan");
+  const [canCreate, canUpdate] = await Promise.all([
+    hasModule(user, "inventaris.pemeliharaan", "create"),
+    hasModule(user, "inventaris.pemeliharaan", "update"),
+  ]);
+
   return (
     <FadeIn className="space-y-6">
       <Link
@@ -21,13 +26,9 @@ export default async function PemeliharaanPage() {
       </Link>
       <PageHeader
         title="Pemeliharaan Barang"
-        description="Checklist & riwayat perawatan/pengecekan aset."
+        description="Checklist & riwayat perawatan/pengecekan aset, dengan status jatuh tempo yang jelas."
       />
-      <ComingSoon
-        icon={Wrench}
-        title="Pemeliharaan — Sesi berikutnya"
-        description="Jadwalkan & catat inspeksi/perawatan per unit, dengan status jatuh tempo yang jelas dan notifikasi. Menunggu modul Master Barang."
-      />
+      <PemeliharaanView canCreate={canCreate} canUpdate={canUpdate} />
     </FadeIn>
   );
 }
