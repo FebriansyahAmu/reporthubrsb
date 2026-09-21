@@ -3,6 +3,7 @@ import { authorize } from "@/server/rbac/guard";
 import { fail } from "@/server/lib/http";
 import { getKirData } from "@/server/modules/inventaris/kir.service";
 import { buildKirPdf } from "@/server/modules/inventaris/kir.pdf";
+import { parseSignBlockParam } from "@/server/modules/inventaris/kir.schema";
 
 export const runtime = "nodejs";
 
@@ -15,13 +16,14 @@ function stamp(now: Date): string {
 type Ctx = { params: Promise<{ ruanganId: string }> };
 
 /** GET /api/inventaris/kir/[ruanganId]/pdf — cetak KIR resmi (PDF, ber-TTD PJ). */
-export async function GET(_req: NextRequest, ctx: Ctx) {
+export async function GET(req: NextRequest, ctx: Ctx) {
   try {
     const user = await authorize("inventaris.kir", "print");
     const { ruanganId } = await ctx.params;
     const data = await getKirData(ruanganId);
+    const sign = parseSignBlockParam(req.nextUrl.searchParams.get("sig"));
     const generatedAt = new Date();
-    const buf = await buildKirPdf(data, { generatedAt, by: user.name });
+    const buf = await buildKirPdf(data, { generatedAt, by: user.name, sign });
     const filename = `KIR_${data.ruangan.kodePrefix}_${stamp(generatedAt)}.pdf`;
     return new Response(new Uint8Array(buf), {
       status: 200,
