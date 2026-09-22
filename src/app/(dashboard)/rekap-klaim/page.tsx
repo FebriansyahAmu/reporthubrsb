@@ -25,7 +25,7 @@ const FEATURES: Feature[] = [
     icon: ReceiptText,
     title: "Data Klaim",
     description: "Entri klaim INA-CBG's & rujukan ambulans (Reguler/Pending/Susulan) beserta potongan/adjustment.",
-    status: "segera",
+    status: "tersedia",
   },
   {
     moduleKey: "rekap-klaim.laporan",
