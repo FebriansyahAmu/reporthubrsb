@@ -422,6 +422,61 @@ model InvChecklistPeriksa {
   @@map("inv_checklist_periksa")
 }
 
+/// Rekap Klaim BPJS — satu baris = satu entri klaim INA-CBG's / Rujukan Ambulans.
+/// Uang disimpan dalam rupiah penuh (BigInt). Enum sebagai String (divalidasi Zod).
+model KlaimKlaim {
+  id               String    @id @default(cuid())
+  nomorKlaim       String?   @map("nomor_klaim")
+  jenisKlaim       String    @default("REGULER") @map("jenis_klaim")
+  jenisLayanan     String    @default("RITL") @map("jenis_layanan")
+  kategori         String    @default("INA_CBGS")
+  bulanPelayanan   Int       @map("bulan_pelayanan") @db.TinyInt
+  tahunPelayanan   Int       @map("tahun_pelayanan") @db.SmallInt
+  jumlah           BigInt    @default(0)
+  jumlahDiajukan   BigInt?   @map("jumlah_diajukan")
+  jumlahKasus      Int?      @map("jumlah_kasus")
+  tglMasukRekening DateTime? @map("tgl_masuk_rekening") @db.Date
+  status           String    @default("SUBMITTED")
+  refBa            String?   @map("ref_ba")
+  catatan          String?   @db.Text
+  createdBy        String?   @map("created_by")
+  updatedBy        String?   @map("updated_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  potongan KlaimPotongan[]
+
+  @@index([tahunPelayanan])
+  @@index([tahunPelayanan, bulanPelayanan])
+  @@index([jenisKlaim])
+  @@index([jenisLayanan])
+  @@index([kategori])
+  @@index([status])
+  @@map("klaim_klaim")
+}
+
+/// Potongan / adjustment terhadap sebuah klaim (AAK, kelebihan bayar, cicilan, dll).
+model KlaimPotongan {
+  id           String    @id @default(cuid())
+  klaimId      String    @map("klaim_id")
+  jenis        String
+  jumlah       BigInt    @default(0)
+  cicilanKe    Int?      @map("cicilan_ke")
+  totalCicilan Int?      @map("total_cicilan")
+  refBa        String?   @map("ref_ba")
+  deskripsi    String?   @db.Text
+  tglTerapkan  DateTime? @map("tgl_terapkan") @db.Date
+  createdBy    String?   @map("created_by")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  klaim KlaimKlaim @relation(fields: [klaimId], references: [id], onDelete: Cascade)
+
+  @@index([klaimId])
+  @@index([jenis])
+  @@map("klaim_potongan")
+}
+
 /// Refresh token (rotasi). Yang disimpan HANYA hash token-nya, bukan token asli,
 /// sehingga bocornya DB tidak langsung memberi token yang bisa dipakai.
 model RefreshToken {
