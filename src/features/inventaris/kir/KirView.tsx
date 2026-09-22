@@ -40,10 +40,25 @@ function longTodayWita(): string {
   return `${w.getUTCDate()} ${BULAN[w.getUTCMonth()]} ${w.getUTCFullYear()}`;
 }
 
-function defaultSigners(data: KirData): Signer[] {
+/** Cari ruangan "Direktur" (sumber nama & NIP direktur) dari daftar ruangan. */
+function findDirektur(list: KirRuanganSummary[]): KirRuanganSummary | null {
+  const norm = (s: string) => s.trim().toLowerCase();
+  return (
+    list.find((r) => norm(r.nama) === "direktur") ??
+    list.find((r) => r.kodePrefix.trim().toUpperCase() === "DIR") ??
+    list.find((r) => norm(r.nama).includes("direktur")) ??
+    null
+  );
+}
+
+/**
+ * Default penanda tangan. Kolom 2 = "Mengetahui, / Direktur RSUD Boltim" dengan
+ * nama & NIP diambil dari ruangan "Direktur" (PJ ruangan tsb).
+ */
+function defaultSigners(direktur: KirRuanganSummary | null): Signer[] {
   return [
     { atas: "", jabatan: "Pengurus / Penyimpan Barang", name: "", nip: "" },
-    { atas: "Mengetahui,", jabatan: "Penanggung Jawab Ruangan", name: data.ruangan.pjNama ?? "", nip: data.ruangan.pjNip ?? "" },
+    { atas: "Mengetahui,", jabatan: "Direktur RSUD Boltim", name: direktur?.pjNama ?? "", nip: direktur?.pjNip ?? "" },
   ];
 }
 
@@ -70,7 +85,7 @@ export function KirView({ canPrint }: { canPrint: boolean }) {
   const [signKey, setSignKey] = useState("");
   if (data && data.ruangan.id === selectedId && signKey !== selectedId) {
     setSignKey(selectedId);
-    setSigners(defaultSigners(data));
+    setSigners(defaultSigners(findDirektur(list)));
   }
 
   const setSigner = (i: number, patch: Partial<Signer>) =>
