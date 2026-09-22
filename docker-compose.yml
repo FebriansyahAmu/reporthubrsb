@@ -29,3 +29,29 @@ services:
       timeout: 5s
       retries: 3
       start_period: 40s
+
+  # ---------------------------------------------------------------------------
+  # Migrasi DB (one-off). TIDAK ikut `docker compose up` (profile "tools").
+  # Memakai image runtime yang sama; folder scripts/ di-mount (tak ada di image
+  # standalone) dan env DATABASE_URL_APP disuntik dari .env (env_file).
+  # Pakai:
+  #   docker compose build
+  #   docker compose run --rm migrate      # inventaris: base → katalog → checklist
+  #   docker compose up -d
+  # ---------------------------------------------------------------------------
+  migrate:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: reporthubrsb-app:1.0.0
+    container_name: reporthubrsb-migrate
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    volumes:
+      - ./scripts:/app/scripts:ro
+    entrypoint: ["node"]
+    command: ["scripts/db/migrate-inventaris-all.mjs"]

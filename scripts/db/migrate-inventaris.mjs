@@ -1,31 +1,42 @@
 // ============================================================================
 // Migrasi + seed modul INVENTARISASI BARANG untuk DB APLIKASI `reporthub` (RW).
 // BUKAN SIMGOS. Idempoten: CREATE TABLE IF NOT EXISTS + INSERT IGNORE.
-// Jalankan via PowerShell (Bash sandbox tak menjangkau LAN DB):
-//   & "C:\Program Files\nodejs\node.exe" scripts/db/migrate-inventaris.mjs
+// Jalankan:
+//   dev (host): node scripts/db/migrate-inventaris.mjs   (baca DATABASE_URL_APP dari .env)
+//   produksi (Docker): via service `migrate` — lihat migrate-inventaris-all.mjs
 // DDL referensi manusiawi: scripts/db/inventaris.sql
 // ============================================================================
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import crypto from "node:crypto";
 
-const PROJECT = "d:/.code/Reporthubrsb/reporthubrsb";
-const require = createRequire(`${PROJECT}/package.json`);
+// Root proyek = dua tingkat di atas file ini (scripts/db/xxx.mjs). Portabel:
+// jalan di host (dev, Windows/Linux) maupun di dalam container (scripts di-mount,
+// node_modules standalone ada di /app).
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const require = createRequire(import.meta.url);
 const mariadb = require("mariadb");
 
+// Env: utamakan process.env (disuntik Docker Compose via env_file), fallback baca
+// file .env dari root proyek (dev/host). Baris diawali '#' dilewati.
 function envUrl(name) {
-  const txt = readFileSync(`${PROJECT}/.env`, "utf8");
-  for (const line of txt.split(/\r?\n/)) {
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const m = t.match(new RegExp(`^${name}\\s*=\\s*["']?([^"']+)["']?`));
-    if (m) return m[1];
-  }
+  if (process.env[name]) return process.env[name];
+  try {
+    const txt = readFileSync(`${ROOT}/.env`, "utf8");
+    for (const line of txt.split(/\r?\n/)) {
+      const t = line.trim();
+      if (!t || t.startsWith("#")) continue;
+      const m = t.match(new RegExp(`^${name}\\s*=\\s*["']?([^"']+)["']?`));
+      if (m) return m[1];
+    }
+  } catch { /* tak ada file .env (mis. di container) → andalkan process.env */ }
   return null;
 }
 
 const url = envUrl("DATABASE_URL_APP");
-if (!url) throw new Error("DATABASE_URL_APP tidak ditemukan di .env");
+if (!url) throw new Error("DATABASE_URL_APP tidak ditemukan (process.env atau .env)");
 const u = new URL(url);
 const database = u.pathname.replace(/^\//, "");
 if (database !== "reporthub") {
