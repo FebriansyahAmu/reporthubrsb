@@ -28,6 +28,7 @@ import {
 } from "@/server/modules/rekap-klaim/klaim.schema";
 import { deleteKlaim, fetchKlaim, type KlaimItem, type KlaimQuery } from "./klaim.client";
 import { KlaimFormModal, type KlaimDefaults } from "./KlaimFormModal";
+import { PotonganModal } from "./PotonganModal";
 
 type Perms = { create: boolean; update: boolean; delete: boolean };
 
@@ -89,6 +90,7 @@ export function DataKlaimView({ perms }: { perms: Perms }) {
   });
   const [del, setDel] = useState<KlaimItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [potonganFor, setPotonganFor] = useState<KlaimItem | null>(null);
 
   const openCreate = () => setModal({ open: true, mode: "create", item: null });
   const openEdit = (item: KlaimItem) => setModal({ open: true, mode: "edit", item });
@@ -182,7 +184,7 @@ export function DataKlaimView({ perms }: { perms: Perms }) {
                 <TH align="right">Diterima</TH>
                 <TH className="hidden lg:table-cell">Masuk Rek.</TH>
                 <TH>Status</TH>
-                {(perms.update || perms.delete) && <TH align="right">Aksi</TH>}
+                <TH align="right">Aksi</TH>
               </THead>
               <TBody>
                 {rows.map((r) => (
@@ -220,22 +222,27 @@ export function DataKlaimView({ perms }: { perms: Perms }) {
                     </TD>
                     <TD className="hidden text-sm text-fg-muted tabular-nums lg:table-cell">{fmtTgl(r.tglMasukRekening)}</TD>
                     <TD><Badge tone={STATUS_KLAIM_TONE[r.status]} dot>{STATUS_KLAIM_LABEL[r.status]}</Badge></TD>
-                    {(perms.update || perms.delete) && (
-                      <TD align="right">
-                        <div className="flex justify-end gap-1">
-                          {perms.update && (
-                            <button type="button" onClick={() => openEdit(r)} title="Ubah" className="rounded-md p-1.5 text-fg-subtle transition-colors hover:bg-brand-soft hover:text-brand">
-                              <Pencil className="size-4" />
-                            </button>
+                    <TD align="right">
+                      <div className="flex justify-end gap-1">
+                        <button type="button" onClick={() => setPotonganFor(r)} title="Potongan / adjustment"
+                          className={cn("relative rounded-md p-1.5 transition-colors hover:bg-brand-soft hover:text-brand", r.jumlahPotongan > 0 ? "text-brand" : "text-fg-subtle")}>
+                          <Scissors className="size-4" />
+                          {r.jumlahPotongan > 0 && (
+                            <span className="absolute -right-0.5 -top-0.5 flex size-3.5 items-center justify-center rounded-full bg-brand text-[9px] font-bold text-brand-fg">{r.jumlahPotongan}</span>
                           )}
-                          {perms.delete && (
-                            <button type="button" onClick={() => setDel(r)} title="Hapus" className="rounded-md p-1.5 text-fg-subtle transition-colors hover:bg-danger-soft hover:text-danger">
-                              <Trash2 className="size-4" />
-                            </button>
-                          )}
-                        </div>
-                      </TD>
-                    )}
+                        </button>
+                        {perms.update && (
+                          <button type="button" onClick={() => openEdit(r)} title="Ubah" className="rounded-md p-1.5 text-fg-subtle transition-colors hover:bg-brand-soft hover:text-brand">
+                            <Pencil className="size-4" />
+                          </button>
+                        )}
+                        {perms.delete && (
+                          <button type="button" onClick={() => setDel(r)} title="Hapus" className="rounded-md p-1.5 text-fg-subtle transition-colors hover:bg-danger-soft hover:text-danger">
+                            <Trash2 className="size-4" />
+                          </button>
+                        )}
+                      </div>
+                    </TD>
                   </TR>
                 ))}
               </TBody>
@@ -252,6 +259,15 @@ export function DataKlaimView({ perms }: { perms: Perms }) {
         defaults={defaults}
         onClose={closeModal}
         onSaved={(saved) => onSaved(saved)}
+      />
+
+      {/* Potongan & adjustment per klaim */}
+      <PotonganModal
+        open={!!potonganFor}
+        klaim={potonganFor}
+        perms={perms}
+        onClose={() => setPotonganFor(null)}
+        onChanged={() => state.reload()}
       />
 
       {/* Konfirmasi hapus */}
