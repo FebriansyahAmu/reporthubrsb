@@ -33,7 +33,7 @@ const FEATURES: Feature[] = [
     icon: FileBarChart,
     title: "Laporan & Rekapitulasi",
     description: "Rekap per tahun (format tabel), laporan pending & rujukan, perbandingan antar tahun, export Excel/PDF.",
-    status: "segera",
+    status: "tersedia",
   },
   {
     moduleKey: "rekap-klaim.audit",
