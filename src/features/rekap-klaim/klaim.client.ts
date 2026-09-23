@@ -98,5 +98,9 @@ export const createKlaim = (payload: KlaimPayload) =>
 export const updateKlaim = (id: string, payload: KlaimPayload) =>
   jsonCall<KlaimItem>(`${BASE}/${id}`, "PATCH", payload).then((j) => j.data);
 
+/** Ubah cepat status saja (PATCH parsial). */
+export const updateKlaimStatus = (id: string, status: KlaimItem["status"]) =>
+  jsonCall<KlaimItem>(`${BASE}/${id}`, "PATCH", { status }).then((j) => j.data);
+
 export const deleteKlaim = (id: string) =>
   jsonCall<{ id: string }>(`${BASE}/${id}`, "DELETE").then((j) => j.data);

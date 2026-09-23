@@ -21,7 +21,7 @@ const AUDIT_FIELDS = [
   "status", "refBa", "catatan",
 ] as const;
 
-const withCount = { _count: { select: { potongan: true } } } satisfies Prisma.KlaimKlaimInclude;
+export const withCount = { _count: { select: { potongan: true } } } satisfies Prisma.KlaimKlaimInclude;
 type KlaimRow = Prisma.KlaimKlaimGetPayload<{ include: typeof withCount }>;
 
 export type KlaimItem = {
@@ -56,7 +56,7 @@ export type KlaimListMeta = {
 
 const isoDate = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
-function serialize(k: KlaimRow): KlaimItem {
+export function serializeKlaim(k: KlaimRow): KlaimItem {
   const jumlah = Number(k.jumlah);
   const diajukan = k.jumlahDiajukan == null ? null : Number(k.jumlahDiajukan);
   return {
@@ -118,7 +118,7 @@ export async function listKlaim(q: KlaimListQuery): Promise<{ data: KlaimItem[];
   ]);
 
   return {
-    data: rows.map(serialize),
+    data: rows.map(serializeKlaim),
     meta: {
       total: agg._count,
       totalNilai: Number(agg._sum.jumlah ?? 0),
@@ -131,7 +131,7 @@ export async function getKlaim(id: string): Promise<KlaimItem> {
   const db = getAppDb();
   const k = await db.klaimKlaim.findUnique({ where: { id }, include: withCount });
   if (!k) throw new NotFoundError("Klaim tidak ditemukan.");
-  return serialize(k);
+  return serializeKlaim(k);
 }
 
 /* ------------------------------------------------------------ create/update */
@@ -165,7 +165,7 @@ export async function createKlaim(input: KlaimCreateInput, user: SessionUser): P
     user, entity: "klaim", action: "create", targetId: created.id,
     extra: { data: snapshot(created, AUDIT_FIELDS) },
   });
-  return serialize(created);
+  return serializeKlaim(created);
 }
 
 export async function updateKlaim(id: string, input: KlaimUpdateInput, user: SessionUser): Promise<KlaimItem> {
@@ -193,7 +193,7 @@ export async function updateKlaim(id: string, input: KlaimUpdateInput, user: Ses
   if (diffs.length) {
     await writeKlaimAudit({ user, entity: "klaim", action: "update", targetId: id, diffs });
   }
-  return serialize(updated);
+  return serializeKlaim(updated);
 }
 
 export async function deleteKlaim(id: string, user: SessionUser): Promise<void> {

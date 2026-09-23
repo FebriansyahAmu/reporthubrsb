@@ -23,12 +23,14 @@ import {
   JENIS_KLAIM, JENIS_KLAIM_LABEL, JENIS_KLAIM_TONE,
   JENIS_LAYANAN, JENIS_LAYANAN_LABEL,
   KATEGORI_KLAIM, KATEGORI_KLAIM_LABEL,
-  STATUS_KLAIM, STATUS_KLAIM_LABEL, STATUS_KLAIM_TONE,
+  STATUS_KLAIM, STATUS_KLAIM_LABEL,
   type JenisKlaim, type JenisLayanan, type KategoriKlaim, type StatusKlaim,
 } from "@/server/modules/rekap-klaim/klaim.schema";
-import { deleteKlaim, fetchKlaim, type KlaimItem, type KlaimQuery } from "./klaim.client";
+import { deleteKlaim, fetchKlaim, updateKlaimStatus, type KlaimItem, type KlaimQuery } from "./klaim.client";
 import { KlaimFormModal, type KlaimDefaults } from "./KlaimFormModal";
 import { PotonganModal } from "./PotonganModal";
+import { StatusPanel } from "./StatusPanel";
+import { StatusMenu } from "./StatusMenu";
 
 type Perms = { create: boolean; update: boolean; delete: boolean };
 
@@ -91,6 +93,18 @@ export function DataKlaimView({ perms }: { perms: Perms }) {
   const [del, setDel] = useState<KlaimItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [potonganFor, setPotonganFor] = useState<KlaimItem | null>(null);
+  const [rev, setRev] = useState(0);
+  const bump = () => { state.reload(); setRev((v) => v + 1); };
+
+  async function changeStatus(id: string, s: StatusKlaim) {
+    try {
+      await updateKlaimStatus(id, s);
+      toast.success("Status diperbarui", STATUS_KLAIM_LABEL[s]);
+      bump();
+    } catch (e) {
+      toast.error("Gagal ubah status", e instanceof Error ? e.message : undefined);
+    }
+  }
 
   const openCreate = () => setModal({ open: true, mode: "create", item: null });
   const openEdit = (item: KlaimItem) => setModal({ open: true, mode: "edit", item });
@@ -102,7 +116,7 @@ export function DataKlaimView({ perms }: { perms: Perms }) {
       jenisKlaim: saved.jenisKlaim, jenisLayanan: saved.jenisLayanan, kategori: saved.kategori,
       bulanPelayanan: saved.bulanPelayanan, tahunPelayanan: saved.tahunPelayanan, status: saved.status,
     });
-    state.reload();
+    bump();
   }
 
   async function confirmDelete() {
@@ -112,7 +126,7 @@ export function DataKlaimView({ perms }: { perms: Perms }) {
       await deleteKlaim(del.id);
       toast.success("Klaim dihapus", `${JENIS_KLAIM_LABEL[del.jenisKlaim]} · ${shortBulan(del.bulanPelayanan)} ${del.tahunPelayanan}`);
       setDel(null);
-      state.reload();
+      bump();
     } catch (e) {
       toast.error("Gagal menghapus", e instanceof Error ? e.message : undefined);
     } finally {
@@ -133,6 +147,15 @@ export function DataKlaimView({ perms }: { perms: Perms }) {
         <Tile icon={Layers} tone="warning" label="Klaim Pending" value={String(summary.pending)} sub={summary.kasus ? `${summary.kasus} kasus` : "entri"} />
         <Tile icon={AlertTriangle} tone={summary.perhatian ? "danger" : "neutral"} label="Perlu Perhatian" value={String(summary.perhatian)} sub="expired / selisih" highlight={summary.perhatian > 0} />
       </div>
+
+      {/* Status & tindak lanjut (alert deadline/expired/selisih + pending per bulan) */}
+      <StatusPanel
+        tahun={tahun}
+        rev={rev}
+        canChange={perms.update}
+        onEdit={openEdit}
+        onChangeStatus={changeStatus}
+      />
 
       {/* Toolbar */}
       <Card className="p-3">
@@ -221,7 +244,7 @@ export function DataKlaimView({ perms }: { perms: Perms }) {
                       </div>
                     </TD>
                     <TD className="hidden text-sm text-fg-muted tabular-nums lg:table-cell">{fmtTgl(r.tglMasukRekening)}</TD>
-                    <TD><Badge tone={STATUS_KLAIM_TONE[r.status]} dot>{STATUS_KLAIM_LABEL[r.status]}</Badge></TD>
+                    <TD><StatusMenu status={r.status} onSelect={(s) => changeStatus(r.id, s)} disabled={!perms.update} /></TD>
                     <TD align="right">
                       <div className="flex justify-end gap-1">
                         <button type="button" onClick={() => setPotonganFor(r)} title="Potongan / adjustment"
@@ -267,7 +290,7 @@ export function DataKlaimView({ perms }: { perms: Perms }) {
         klaim={potonganFor}
         perms={perms}
         onClose={() => setPotonganFor(null)}
-        onChanged={() => state.reload()}
+        onChanged={() => bump()}
       />
 
       {/* Konfirmasi hapus */}
