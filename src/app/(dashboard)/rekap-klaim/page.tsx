@@ -42,7 +42,7 @@ const FEATURES: Feature[] = [
     icon: History,
     title: "Audit Trail",
     description: "Riwayat perubahan data klaim (siapa, kapan, apa yang berubah) — read-only untuk akuntabilitas.",
-    status: "segera",
+    status: "tersedia",
   },
 ];
 
