@@ -201,7 +201,7 @@ export const MODULES: readonly AppModule[] = [
     description: "Entri klaim & potongan (CRUD, import, cetak)",
     icon: ReceiptText,
     navHref: "/rekap-klaim/data",
-    apiPrefixes: ["/api/rekap-klaim/klaim", "/api/rekap-klaim/potongan", "/api/rekap-klaim/status"],
+    apiPrefixes: ["/api/rekap-klaim/klaim", "/api/rekap-klaim/potongan", "/api/rekap-klaim/status", "/api/rekap-klaim/import"],
     actions: ["view", "create", "update", "delete", "print"],
     order: 81,
   },

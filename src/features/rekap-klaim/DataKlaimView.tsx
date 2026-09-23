@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
-  AlertTriangle, Coins, FileStack, Layers, Pencil, Plus, ReceiptText, Scissors, Search, Trash2, TrendingDown,
+  AlertTriangle, Coins, FileStack, Layers, Pencil, Plus, ReceiptText, Scissors, Search, Trash2, TrendingDown, Upload,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -29,6 +29,7 @@ import {
 import { deleteKlaim, fetchKlaim, updateKlaimStatus, type KlaimItem, type KlaimQuery } from "./klaim.client";
 import { KlaimFormModal, type KlaimDefaults } from "./KlaimFormModal";
 import { PotonganModal } from "./PotonganModal";
+import { ImportKlaimModal } from "./ImportKlaimModal";
 import { StatusPanel } from "./StatusPanel";
 import { StatusMenu } from "./StatusMenu";
 
@@ -93,6 +94,7 @@ export function DataKlaimView({ perms }: { perms: Perms }) {
   const [del, setDel] = useState<KlaimItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [potonganFor, setPotonganFor] = useState<KlaimItem | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [rev, setRev] = useState(0);
   const bump = () => { state.reload(); setRev((v) => v + 1); };
 
@@ -173,7 +175,10 @@ export function DataKlaimView({ perms }: { perms: Perms }) {
           {hasFilter && (
             <Button variant="ghost" size="sm" onClick={resetFilter} className="mb-0.5">Reset</Button>
           )}
-          <div className="ml-auto">
+          <div className="ml-auto flex gap-2">
+            {perms.create && (
+              <Button variant="secondary" size="sm" icon={<Upload className="size-4" />} onClick={() => setImportOpen(true)}>Import</Button>
+            )}
             {perms.create && (
               <Button size="sm" icon={<Plus className="size-4" />} onClick={openCreate}>Tambah Klaim</Button>
             )}
@@ -292,6 +297,11 @@ export function DataKlaimView({ perms }: { perms: Perms }) {
         onClose={() => setPotonganFor(null)}
         onChanged={() => bump()}
       />
+
+      {/* Import historis dari Excel */}
+      {perms.create && (
+        <ImportKlaimModal open={importOpen} onClose={() => setImportOpen(false)} onDone={() => bump()} />
+      )}
 
       {/* Konfirmasi hapus */}
       <Modal
