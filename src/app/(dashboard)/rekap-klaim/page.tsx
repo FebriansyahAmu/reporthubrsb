@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/cn";
+import { DashboardKlaimView } from "@/features/rekap-klaim/DashboardKlaimView";
 import { hasModule, requireModule } from "@/server/rbac/guard";
 
 export const metadata = { title: "Rekap Klaim BPJS · AuditTrail RS BOLTIM" };
@@ -58,14 +59,8 @@ export default async function RekapKlaimLandingPage() {
         description="Rekap dana klaim INA-CBG's & rujukan ambulans BPJS — pencatatan terpusat, pelacakan potongan, status, dan audit trail."
       />
 
-      {/* Dashboard analitik menyusul (Sesi 6) */}
-      <div className="rounded-[var(--radius-lg)] border border-dashed border-border bg-surface-2/40 px-5 py-8 text-center">
-        <p className="text-sm font-medium text-fg">Dashboard analitik sedang disiapkan</p>
-        <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-fg-muted">
-          Ringkasan total klaim YTD, pending belum cair, potongan berjalan, dan tren bulanan akan tampil di sini.
-        </p>
-        <span className="mt-3 inline-flex"><Badge tone="neutral">Segera</Badge></span>
-      </div>
+      {/* Dashboard analitik (F-04.6) */}
+      <DashboardKlaimView />
 
       {/* Pintasan modul */}
       <div>
