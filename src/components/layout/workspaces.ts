@@ -188,9 +188,9 @@ export const WORKSPACES: Workspace[] = [
       },
       {
         href: "/inventaris/kir",
-        label: "KIR",
+        label: "KIR & BAST",
         icon: ClipboardList,
-        description: "Kartu Inventaris Ruangan",
+        description: "Kartu Inventaris Ruangan & Berita Acara Serah Terima",
         moduleKey: "inventaris.kir",
       },
       {

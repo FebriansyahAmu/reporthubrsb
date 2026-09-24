@@ -21,6 +21,7 @@ export type KirBarang = {
   nomorSeri: string | null;
   tahunPerolehan: number | null;
   kondisi: string | null;
+  satuan: string | null;
   statusAset: StatusAset;
   harga: number | null;
   keterangan: string | null;
@@ -30,6 +31,15 @@ export type KirData = {
   ruangan: { id: string; kodePrefix: string; nama: string; pjNama: string | null; pjNip: string | null; aktif: boolean };
   barang: KirBarang[];
   totalNilai: number;
+};
+
+export type BastPihak = { nama: string; nip: string; jabatan: string };
+export type BastInput = {
+  nomor?: string;
+  tanggal?: string;
+  pihak1?: BastPihak;
+  pihak2?: BastPihak;
+  direktur?: BastPihak;
 };
 
 async function jsonGet<T>(url: string): Promise<T> {
@@ -44,3 +54,8 @@ async function jsonGet<T>(url: string): Promise<T> {
 
 export const fetchKirRuangan = () => jsonGet<KirRuanganSummary[]>("/api/inventaris/kir");
 export const fetchKirData = (ruanganId: string) => jsonGet<KirData>(`/api/inventaris/kir/${ruanganId}`);
+
+/** URL unduh PDF BAST utk sebuah ruangan (input BAST dikirim sbg query JSON). */
+export function bastPdfUrl(ruanganId: string, bast: BastInput): string {
+  return `/api/inventaris/kir/${ruanganId}/bast?bast=${encodeURIComponent(JSON.stringify(bast))}`;
+}

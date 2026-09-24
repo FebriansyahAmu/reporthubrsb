@@ -5,7 +5,7 @@ import { FadeIn } from "@/components/motion/Motion";
 import { KirView } from "@/features/inventaris/kir/KirView";
 import { hasModule, requireModule } from "@/server/rbac/guard";
 
-export const metadata = { title: "KIR · AuditTrail RS BOLTIM" };
+export const metadata = { title: "KIR & BAST · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 export default async function KirPage() {
@@ -22,8 +22,8 @@ export default async function KirPage() {
         Kembali ke Inventarisasi
       </Link>
       <PageHeader
-        title="KIR — Kartu Inventaris Ruangan"
-        description="Daftar aset per ruangan, siap cetak resmi bertanda tangan penanggung jawab."
+        title="KIR & BAST"
+        description="Kartu Inventaris Ruangan (KIR) atau Berita Acara Serah Terima Barang (BAST) — pilih via toggle, siap cetak resmi bertanda tangan."
       />
       <KirView canPrint={canPrint} />
     </FadeIn>

@@ -153,8 +153,8 @@ export const MODULES: readonly AppModule[] = [
   {
     key: "inventaris.kir",
     group: "Inventarisasi Barang",
-    label: "KIR (Kartu Inventaris Ruangan)",
-    description: "Daftar aset per ruangan + cetak resmi",
+    label: "KIR & BAST",
+    description: "Kartu Inventaris Ruangan & Berita Acara Serah Terima Barang + cetak resmi",
     icon: ClipboardList,
     navHref: "/inventaris/kir",
     apiPrefixes: ["/api/inventaris/kir"],

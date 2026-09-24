@@ -27,6 +27,7 @@ export type KirBarang = {
   nomorSeri: string | null;
   tahunPerolehan: number | null;
   kondisi: string | null;
+  satuan: string | null;
   statusAset: StatusAset;
   harga: number | null;
   keterangan: string | null;
@@ -68,6 +69,7 @@ export async function getKirData(ruanganId: string): Promise<KirData> {
       kodeBarang: true, register: true, nama: true, merk: true, nomorSeri: true,
       tahunPerolehan: true, statusAset: true, harga: true, keterangan: true,
       kondisi: { select: { nama: true } },
+      satuan: { select: { nama: true } },
     },
   });
 
@@ -83,6 +85,7 @@ export async function getKirData(ruanganId: string): Promise<KirData> {
       nomorSeri: b.nomorSeri ?? null,
       tahunPerolehan: b.tahunPerolehan ?? null,
       kondisi: b.kondisi?.nama ?? null,
+      satuan: b.satuan?.nama ?? null,
       statusAset: (isStatusAset(b.statusAset) ? b.statusAset : "AKTIF") as StatusAset,
       harga,
       keterangan: b.keterangan ?? null,

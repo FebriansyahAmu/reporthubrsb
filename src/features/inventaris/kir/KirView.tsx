@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Boxes, DoorOpen, MapPin, Plus, Printer, Stamp, User, Wallet, X } from "lucide-react";
+import { Boxes, ClipboardList, DoorOpen, FileSignature, MapPin, Plus, Printer, Stamp, User, Wallet, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -16,6 +16,7 @@ import { formatRupiah, formatRupiahRingkas } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { STATUS_ASET_LABEL, STATUS_ASET_TONE } from "@/server/modules/inventaris/barang.schema";
 import { fetchKirData, fetchKirRuangan, type KirData, type KirRuanganSummary } from "./kir.client";
+import { BastPanel } from "./BastPanel";
 
 type Signer = { atas: string; jabatan: string; name: string; nip: string };
 
@@ -78,6 +79,11 @@ export function KirView({ canPrint }: { canPrint: boolean }) {
     [selectedId],
   );
   const data = dataState.result;
+
+  // Toggle dokumen: KIR (kartu inventaris) atau BAST (berita acara serah terima).
+  const [doc, setDoc] = useState<"kir" | "bast">("kir");
+  const direktur = findDirektur(list);
+  const direkturDefault = { nama: direktur?.pjNama ?? "", nip: direktur?.pjNip ?? "" };
 
   // Penanda tangan + tempat (bisa diedit); di-seed ulang saat ganti ruangan.
   const [place, setPlace] = useState(DEFAULT_PLACE);
@@ -170,6 +176,16 @@ export function KirView({ canPrint }: { canPrint: boolean }) {
 
       {/* Pratinjau + editor tanda tangan */}
       <div className="space-y-4">
+        {/* Toggle jenis dokumen */}
+        <div className="inline-flex rounded-[var(--radius-md)] border border-border bg-surface-2/50 p-1">
+          <DocTab active={doc === "kir"} icon={ClipboardList} label="KIR" onClick={() => setDoc("kir")} />
+          <DocTab active={doc === "bast"} icon={FileSignature} label="BAST" onClick={() => setDoc("bast")} />
+        </div>
+
+        {doc === "bast" ? (
+          <BastPanel data={data} direkturDefault={direkturDefault} canPrint={canPrint} />
+        ) : (
+        <>
         <Card className="overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
             <div>
@@ -214,8 +230,35 @@ export function KirView({ canPrint }: { canPrint: boolean }) {
             pjAvailable={!!data.ruangan.pjNama}
           />
         )}
+        </>
+        )}
       </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------- toggle dok */
+
+function DocTab({
+  active, icon: Icon, label, onClick,
+}: {
+  active: boolean;
+  icon: typeof ClipboardList;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring",
+        active ? "bg-brand text-brand-fg shadow-sm" : "text-fg-muted hover:text-fg",
+      )}
+    >
+      <Icon className="size-4" />
+      {label}
+    </button>
   );
 }
 
