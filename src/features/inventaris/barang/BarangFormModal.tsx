@@ -92,6 +92,7 @@ export function BarangFormModal({
   const [kodePreview, setKodePreview] = useState("");
   const [loadingKode, setLoadingKode] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [registerAuto, setRegisterAuto] = useState(false);
 
   const isEdit = mode === "edit";
 
@@ -102,6 +103,7 @@ export function BarangFormModal({
     setForm(isEdit && item ? fromItem(item) : empty);
     setManualKode(false);
     setKodePreview("");
+    setRegisterAuto(false);
   } else if (!open && wasOpen) {
     setWasOpen(false);
   }
@@ -123,7 +125,20 @@ export function BarangFormModal({
 
   function onRuanganChange(rid: string) {
     set("ruanganId", rid);
-    refreshKode(rid);
+    // Saat tambah: kode preview + Register otomatis (urutan berikutnya di ruangan ini).
+    if (isEdit || !rid) {
+      setKodePreview("");
+      return;
+    }
+    setLoadingKode(true);
+    fetchNextKode(rid)
+      .then((r) => {
+        if (!manualKode) setKodePreview(r.kode);
+        set("register", String(r.register));
+        setRegisterAuto(true);
+      })
+      .catch(() => setKodePreview(""))
+      .finally(() => setLoadingKode(false));
   }
 
   function toggleManualKode() {
@@ -136,7 +151,7 @@ export function BarangFormModal({
   }
 
   const ruanganOpts = useMemo<SelectOption[]>(
-    () => refs.ruangan.map((r) => ({ value: r.id, label: `${r.kodePrefix} — ${r.nama}` })),
+    () => refs.ruangan.map((r) => ({ value: r.id, label: r.nama })),
     [refs.ruangan],
   );
   const kategoriOpts = useMemo<SelectOption[]>(() => refs.kategori.map((k) => ({ value: k.id, label: k.nama })), [refs.kategori]);
@@ -285,7 +300,16 @@ export function BarangFormModal({
           </div>
           <div>
             <Label htmlFor="f-register">Register</Label>
-            <Input id="f-register" inputMode="numeric" value={form.register} placeholder="mis. 1" onChange={(e) => set("register", digits(e.target.value))} />
+            <Input
+              id="f-register"
+              inputMode="numeric"
+              value={form.register}
+              placeholder="mis. 1"
+              onChange={(e) => { set("register", digits(e.target.value)); setRegisterAuto(false); }}
+            />
+            {!isEdit && registerAuto && form.register && (
+              <p className="mt-1 text-[11px] text-fg-subtle">Otomatis: urutan ke-{form.register} di ruangan ini (bisa diubah).</p>
+            )}
           </div>
 
           <div>

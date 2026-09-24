@@ -49,7 +49,7 @@ import { BarangSheet } from "./BarangSheet";
 import { KatalogModal } from "./KatalogModal";
 
 type Tone = "neutral" | "brand" | "success" | "warning" | "danger" | "accent";
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 export type BarangPerms = { create: boolean; update: boolean; delete: boolean };
 
@@ -99,7 +99,7 @@ export function MasterBarangView({ perms }: { perms: BarangPerms }) {
 
   // Opsi filter
   const ruanganOpts = useMemo<SelectOption[]>(
-    () => [{ value: "", label: "Semua ruangan" }, ...(refs?.ruangan ?? []).map((r) => ({ value: r.id, label: `${r.kodePrefix} — ${r.nama}` }))],
+    () => [{ value: "", label: "Semua ruangan" }, ...(refs?.ruangan ?? []).map((r) => ({ value: r.id, label: r.nama }))],
     [refs],
   );
   const kategoriOpts = useMemo<SelectOption[]>(
@@ -280,7 +280,7 @@ export function MasterBarangView({ perms }: { perms: BarangPerms }) {
                     <p className="mt-0.5 font-medium text-fg">{b.nama}</p>
                     {b.merk && <p className="text-xs text-fg-subtle">{b.merk}</p>}
                   </TD>
-                  <TD className="hidden text-sm text-fg-muted lg:table-cell">{b.ruangan.kodePrefix}</TD>
+                  <TD className="hidden text-sm text-fg-muted lg:table-cell">{b.ruangan.nama}</TD>
                   <TD className="hidden text-sm text-fg-muted md:table-cell">{b.kategori?.nama ?? "—"}</TD>
                   <TD>
                     {b.kondisi ? (

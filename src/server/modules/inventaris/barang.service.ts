@@ -279,12 +279,16 @@ async function nextSeq(prefix: string): Promise<number> {
 }
 
 /** Preview kode berikutnya untuk sebuah ruangan (dipakai form). */
-export async function previewNextKode(ruanganId: string): Promise<{ prefix: string; kode: string }> {
+export async function previewNextKode(ruanganId: string): Promise<{ prefix: string; kode: string; register: number }> {
   const db = getAppDb();
   const r = await db.invRuangan.findUnique({ where: { id: ruanganId }, select: { kodePrefix: true } });
   if (!r) throw new NotFoundError("Ruangan tidak ditemukan.");
-  const seq = await nextSeq(r.kodePrefix);
-  return { prefix: r.kodePrefix, kode: `${r.kodePrefix}-${pad3(seq)}` };
+  // Register = urutan berikutnya berdasar jumlah barang di ruangan ini.
+  const [seq, jumlah] = await Promise.all([
+    nextSeq(r.kodePrefix),
+    db.invBarang.count({ where: { ruanganId } }),
+  ]);
+  return { prefix: r.kodePrefix, kode: `${r.kodePrefix}-${pad3(seq)}`, register: jumlah + 1 };
 }
 
 /* --------------------------------------------------------------- create/update */

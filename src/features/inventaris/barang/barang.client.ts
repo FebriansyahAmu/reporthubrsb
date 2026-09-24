@@ -147,8 +147,8 @@ export async function fetchRefs(): Promise<FormRefs> {
   return (await jsonCall<FormRefs>(`${BASE}/refs`)).data;
 }
 
-export async function fetchNextKode(ruanganId: string): Promise<{ prefix: string; kode: string }> {
-  return (await jsonCall<{ prefix: string; kode: string }>(`${BASE}/next-kode?ruanganId=${encodeURIComponent(ruanganId)}`)).data;
+export async function fetchNextKode(ruanganId: string): Promise<{ prefix: string; kode: string; register: number }> {
+  return (await jsonCall<{ prefix: string; kode: string; register: number }>(`${BASE}/next-kode?ruanganId=${encodeURIComponent(ruanganId)}`)).data;
 }
 
 export async function createBarang(payload: BarangPayload): Promise<BarangItem> {
