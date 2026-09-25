@@ -30,6 +30,8 @@ export const SIMGOS_DB = {
   BPJS: "bpjs",
   /** Aplikasi/akun SIMGOS: `pengguna` (LOGIN + PASSWORD bcrypt) — untuk login via akun SIMGOS. */
   APLIKASI: "aplikasi",
+  /** Log SIMGOS: `pengguna_akses_log` (audit CRUD per-record), `bridge_log` (interop). Read-only. */
+  LOGS: "logs",
 } as const;
 
 export type SimgosDb = (typeof SIMGOS_DB)[keyof typeof SIMGOS_DB];
