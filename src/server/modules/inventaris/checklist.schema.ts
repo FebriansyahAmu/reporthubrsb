@@ -65,3 +65,22 @@ export const completeSchema = z.object({
   catatan: optText(2000),
 });
 export type CompleteInput = z.infer<typeof completeSchema>;
+
+/** Riwayat: daftar pelaksanaan checklist (per periode) satu ruangan/frekuensi. */
+export const riwayatQuerySchema = z.object({
+  ruanganId: z.string().trim().min(1, "Ruangan wajib dipilih"),
+  frekuensi: z.enum(FREKUENSI).default("HARIAN"),
+  limit: z.coerce.number().int().min(1).max(120).default(24),
+});
+export type RiwayatQuery = z.infer<typeof riwayatQuerySchema>;
+
+/** Ekspor: checklist satu periode (mode "periode") atau ringkasan riwayat (mode "riwayat"). */
+export const exportQuerySchema = z.object({
+  ruanganId: z.string().trim().min(1, "Ruangan wajib dipilih"),
+  frekuensi: z.enum(FREKUENSI).default("HARIAN"),
+  mode: z.enum(["periode", "riwayat"]).default("periode"),
+  /** Untuk mode "periode": kunci periode (default periode berjalan). */
+  periodeKey: optText(20),
+  limit: z.coerce.number().int().min(1).max(120).default(60),
+});
+export type ExportQuery = z.infer<typeof exportQuerySchema>;

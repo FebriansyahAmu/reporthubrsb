@@ -58,6 +58,54 @@ export type ChecklistRefs = {
   kondisi: { id: string; nama: string; kode: string; tone: string }[];
 };
 
+export type RiwayatRun = {
+  id: string;
+  periodeKey: string;
+  periodeLabel: string;
+  selesai: boolean;
+  selesaiAt: string | null;
+  selesaiBy: string | null;
+  done: number;
+  total: number;
+  current: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RiwayatOverview = {
+  ruangan: { id: string; kodePrefix: string; nama: string };
+  frekuensi: Frekuensi;
+  total: number;
+  runs: RiwayatRun[];
+};
+
+export type RunDetailRow = {
+  barangId: string;
+  kodeBarang: string;
+  nama: string;
+  merk: string | null;
+  checked: boolean;
+  kondisi: { nama: string; tone: string } | null;
+  catatan: string | null;
+  checkedBy: string | null;
+  checkedAt: string | null;
+};
+
+export type RunDetail = {
+  id: string | null;
+  ruangan: { id: string; kodePrefix: string; nama: string };
+  frekuensi: Frekuensi;
+  periodeKey: string;
+  periodeLabel: string;
+  selesai: boolean;
+  selesaiAt: string | null;
+  selesaiBy: string | null;
+  catatan: string | null;
+  done: number;
+  total: number;
+  rows: RunDetailRow[];
+};
+
 const BASE = "/api/inventaris/pemeliharaan/checklist";
 
 async function jsonCall<T>(url: string, method = "GET", body?: unknown): Promise<{ data: T }> {
@@ -87,3 +135,24 @@ export const periksaBarang = (payload: {
 
 export const completeChecklist = (payload: { ruanganId: string; frekuensi: string; selesai: boolean; catatan?: string }) =>
   jsonCall<PeriksaState>(`${BASE}/complete`, "POST", payload).then((j) => j.data);
+
+export const fetchRiwayat = (params: { ruanganId: string; frekuensi: string; limit?: number }) => {
+  const sp = new URLSearchParams({ ruanganId: params.ruanganId, frekuensi: params.frekuensi });
+  if (params.limit) sp.set("limit", String(params.limit));
+  return jsonCall<RiwayatOverview>(`${BASE}/riwayat?${sp.toString()}`).then((j) => j.data);
+};
+
+export const fetchRunDetail = (runId: string) =>
+  jsonCall<RunDetail>(`${BASE}/riwayat/${encodeURIComponent(runId)}`).then((j) => j.data);
+
+/** URL ekspor .xlsx (dipakai downloadFromEndpoint). */
+export function exportChecklistUrl(params: {
+  ruanganId: string;
+  frekuensi: string;
+  mode: "periode" | "riwayat";
+  periodeKey?: string;
+}): string {
+  const sp = new URLSearchParams({ ruanganId: params.ruanganId, frekuensi: params.frekuensi, mode: params.mode });
+  if (params.periodeKey) sp.set("periodeKey", params.periodeKey);
+  return `${BASE}/export?${sp.toString()}`;
+}

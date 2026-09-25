@@ -26,7 +26,7 @@ export default async function PemeliharaanPage() {
       </Link>
       <PageHeader
         title="Checklist Pemeliharaan"
-        description="Checklist perawatan berkala per ruangan — harian, mingguan, bulanan. Cukup centang atau tandai selesai tiap periode."
+        description="Checklist perawatan berkala per ruangan — harian, mingguan, bulanan. Centang tiap barang lewat kartu, telusuri riwayat pelaksanaan, dan ekspor ke Excel."
       />
       <ChecklistView canCreate={canCreate} canUpdate={canUpdate} />
     </FadeIn>

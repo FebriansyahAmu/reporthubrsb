@@ -3,7 +3,15 @@ import { getAppDb } from "@/server/db/app.client";
 import type { SessionUser } from "@/server/auth/session";
 import { BusinessRuleError, NotFoundError } from "@/server/lib/errors";
 import { isStatusAset, type StatusAset } from "./barang.schema";
-import type { CompleteInput, Frekuensi, OverviewQuery, PeriksaInput } from "./checklist.schema";
+import {
+  isFrekuensi,
+  type CompleteInput,
+  type ExportQuery,
+  type Frekuensi,
+  type OverviewQuery,
+  type PeriksaInput,
+  type RiwayatQuery,
+} from "./checklist.schema";
 
 /* ------------------------------------------------------------ periode (WITA) */
 
@@ -14,6 +22,7 @@ const BLN_PANJANG = [
   "Juli", "Agustus", "September", "Oktober", "November", "Desember",
 ];
 const BLN_PENDEK = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+const HARI = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
 function nowWita(): Date {
   return new Date(Date.now() + WITA_MS);
@@ -73,6 +82,44 @@ export function periodeInfo(frekuensi: Frekuensi, base: Date = nowWita()): Perio
   const prevY = m === 0 ? y - 1 : y;
   const prevM = m === 0 ? 12 : m;
   return { key: `${y}-${p2(m + 1)}`, label: `Bulan ini · ${BLN_PANJANG[m]} ${y}`, prevKey: `${prevY}-${p2(prevM)}` };
+}
+
+/** Senin (00:00 UTC) dari minggu-ISO ke-`week` tahun `year`. */
+function mondayOfIsoWeek(year: number, week: number): Date {
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Dow = (jan4.getUTCDay() + 6) % 7; // Senin=0
+  const week1Mon = addDays(jan4, -jan4Dow);
+  return addDays(week1Mon, (week - 1) * 7);
+}
+
+/** Label ramah untuk sebuah kunci periode historis (bukan periode berjalan). */
+export function labelForPeriodeKey(frekuensi: Frekuensi, key: string): string {
+  if (frekuensi === "HARIAN") {
+    const [Y, M, D] = key.split("-").map(Number);
+    if (!Y || !M || !D) return key;
+    const d = new Date(Date.UTC(Y, M - 1, D));
+    return `${HARI[d.getUTCDay()]}, ${D} ${BLN_PENDEK[M - 1]} ${Y}`;
+  }
+  if (frekuensi === "MINGGUAN") {
+    const m = /^(\d{4})-W(\d{2})$/.exec(key);
+    if (!m) return key;
+    const year = Number(m[1]);
+    const week = Number(m[2]);
+    const start = mondayOfIsoWeek(year, week);
+    const end = addDays(start, 6);
+    const sameMonth = start.getUTCMonth() === end.getUTCMonth();
+    const range = sameMonth
+      ? `${start.getUTCDate()}–${end.getUTCDate()} ${BLN_PENDEK[end.getUTCMonth()]} ${end.getUTCFullYear()}`
+      : `${start.getUTCDate()} ${BLN_PENDEK[start.getUTCMonth()]}–${end.getUTCDate()} ${BLN_PENDEK[end.getUTCMonth()]} ${end.getUTCFullYear()}`;
+    return `Minggu ke-${week} · ${range}`;
+  }
+  const [Y, M] = key.split("-").map(Number);
+  if (!Y || !M) return key;
+  return `${BLN_PANJANG[M - 1]} ${Y}`;
+}
+
+function asFrekuensi(v: string): Frekuensi {
+  return isFrekuensi(v) ? v : "HARIAN";
 }
 
 /* -------------------------------------------------------------------- tipe */
@@ -387,3 +434,190 @@ export async function completeRun(input: CompleteInput, user: SessionUser): Prom
   const sum = await runSummary(input.ruanganId, input.frekuensi, info.key, total);
   return { barangId: null, checked: input.selesai, kondisiId: null, catatan: null, checkedAt: null, ...sum };
 }
+
+/* ---------------------------------------------------------------- riwayat */
+
+export type RiwayatRun = {
+  id: string;
+  periodeKey: string;
+  periodeLabel: string;
+  selesai: boolean;
+  selesaiAt: string | null;
+  selesaiBy: string | null;
+  done: number;
+  total: number;
+  /** Apakah baris ini = periode yang sedang berjalan. */
+  current: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RiwayatOverview = {
+  ruangan: { id: string; kodePrefix: string; nama: string };
+  frekuensi: Frekuensi;
+  /** Jumlah unit barang di ruangan saat ini (acuan progres). */
+  total: number;
+  runs: RiwayatRun[];
+};
+
+export type RunDetailRow = {
+  barangId: string;
+  kodeBarang: string;
+  nama: string;
+  merk: string | null;
+  checked: boolean;
+  /** Kondisi hasil periksa saat itu (bukan kondisi terkini aset). */
+  kondisi: { nama: string; tone: string } | null;
+  catatan: string | null;
+  checkedBy: string | null;
+  checkedAt: string | null;
+};
+
+export type RunDetail = {
+  id: string | null;
+  ruangan: { id: string; kodePrefix: string; nama: string };
+  frekuensi: Frekuensi;
+  periodeKey: string;
+  periodeLabel: string;
+  selesai: boolean;
+  selesaiAt: string | null;
+  selesaiBy: string | null;
+  catatan: string | null;
+  done: number;
+  total: number;
+  rows: RunDetailRow[];
+};
+
+type PeriksaLite = {
+  barangId: string;
+  catatan: string | null;
+  checkedBy: string | null;
+  checkedAt: Date;
+  kondisi: { nama: string; tone: string } | null;
+};
+
+/** Bangun baris detail: seluruh barang ruangan + status periksa pada satu run. */
+async function detailRows(ruanganId: string, periksa: PeriksaLite[]): Promise<RunDetailRow[]> {
+  const barang = await barangDiRuangan(ruanganId);
+  const pmap = new Map(periksa.map((p) => [p.barangId, p]));
+  return barang.map((b) => {
+    const p = pmap.get(b.id);
+    return {
+      barangId: b.id,
+      kodeBarang: b.kodeBarang,
+      nama: b.nama,
+      merk: b.merk ?? null,
+      checked: !!p,
+      kondisi: p?.kondisi ? { nama: p.kondisi.nama, tone: p.kondisi.tone } : null,
+      catatan: p?.catatan ?? null,
+      checkedBy: p?.checkedBy ?? null,
+      checkedAt: p?.checkedAt ? p.checkedAt.toISOString() : null,
+    };
+  });
+}
+
+/** Daftar pelaksanaan checklist (per periode) satu ruangan/frekuensi, terbaru dulu. */
+export async function listRiwayat(q: RiwayatQuery): Promise<RiwayatOverview> {
+  const db = getAppDb();
+  const ruangan = await requireRuangan(q.ruanganId);
+  const total = await db.invBarang.count({ where: { ruanganId: ruangan.id, statusAset: { not: "DIHAPUS" } } });
+  const info = periodeInfo(q.frekuensi);
+
+  const runs = await db.invChecklistRun.findMany({
+    where: { ruanganId: ruangan.id, frekuensi: q.frekuensi },
+    orderBy: [{ periodeKey: "desc" }],
+    take: q.limit,
+    select: {
+      id: true, periodeKey: true, selesaiAt: true, selesaiBy: true,
+      createdAt: true, updatedAt: true, _count: { select: { periksa: true } },
+    },
+  });
+
+  return {
+    ruangan,
+    frekuensi: q.frekuensi,
+    total,
+    runs: runs.map((r) => ({
+      id: r.id,
+      periodeKey: r.periodeKey,
+      periodeLabel: labelForPeriodeKey(q.frekuensi, r.periodeKey),
+      selesai: !!r.selesaiAt,
+      selesaiAt: r.selesaiAt ? r.selesaiAt.toISOString() : null,
+      selesaiBy: r.selesaiBy ?? null,
+      done: r._count.periksa,
+      total,
+      current: r.periodeKey === info.key,
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+    })),
+  };
+}
+
+/** Detail satu pelaksanaan checklist (per run id). */
+export async function getRunDetail(runId: string): Promise<RunDetail> {
+  const db = getAppDb();
+  const run = await db.invChecklistRun.findUnique({
+    where: { id: runId },
+    select: {
+      id: true, ruanganId: true, frekuensi: true, periodeKey: true,
+      selesaiAt: true, selesaiBy: true, catatan: true,
+      ruangan: { select: { id: true, kodePrefix: true, nama: true } },
+      periksa: {
+        select: { barangId: true, catatan: true, checkedBy: true, checkedAt: true, kondisi: { select: { nama: true, tone: true } } },
+      },
+    },
+  });
+  if (!run) throw new NotFoundError("Riwayat checklist tidak ditemukan.");
+  const frekuensi = asFrekuensi(run.frekuensi);
+  const rows = await detailRows(run.ruanganId, run.periksa);
+  return {
+    id: run.id,
+    ruangan: run.ruangan,
+    frekuensi,
+    periodeKey: run.periodeKey,
+    periodeLabel: labelForPeriodeKey(frekuensi, run.periodeKey),
+    selesai: !!run.selesaiAt,
+    selesaiAt: run.selesaiAt ? run.selesaiAt.toISOString() : null,
+    selesaiBy: run.selesaiBy ?? null,
+    catatan: run.catatan ?? null,
+    done: rows.filter((r) => r.checked).length,
+    total: rows.length,
+    rows,
+  };
+}
+
+/** Detail checklist satu periode (default periode berjalan) — dipakai ekspor. */
+export async function periodeDetail(ruanganId: string, frekuensi: Frekuensi, periodeKey?: string): Promise<RunDetail> {
+  const db = getAppDb();
+  const ruangan = await requireRuangan(ruanganId);
+  const info = periodeInfo(frekuensi);
+  const key = periodeKey?.trim() || info.key;
+  const isCurrent = key === info.key;
+
+  const run = await db.invChecklistRun.findUnique({
+    where: { ruanganId_frekuensi_periodeKey: { ruanganId, frekuensi, periodeKey: key } },
+    select: {
+      id: true, selesaiAt: true, selesaiBy: true, catatan: true,
+      periksa: {
+        select: { barangId: true, catatan: true, checkedBy: true, checkedAt: true, kondisi: { select: { nama: true, tone: true } } },
+      },
+    },
+  });
+  const rows = await detailRows(ruangan.id, run?.periksa ?? []);
+  return {
+    id: run?.id ?? null,
+    ruangan,
+    frekuensi,
+    periodeKey: key,
+    periodeLabel: isCurrent ? periodeInfo(frekuensi).label.replace(/^[^·]*·\s*/, "") : labelForPeriodeKey(frekuensi, key),
+    selesai: !!run?.selesaiAt,
+    selesaiAt: run?.selesaiAt ? run.selesaiAt.toISOString() : null,
+    selesaiBy: run?.selesaiBy ?? null,
+    catatan: run?.catatan ?? null,
+    done: rows.filter((r) => r.checked).length,
+    total: rows.length,
+    rows,
+  };
+}
+
+export type { ExportQuery };
