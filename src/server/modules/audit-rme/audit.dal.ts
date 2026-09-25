@@ -236,3 +236,58 @@ export async function queryLoginEvents(f: LoginFilter, cursorId: string | null, 
   >(sql, ...params);
   return rows.map((r) => ({ id: String(r.id), ts: r.ts, pengguna: String(r.pengguna), ip: r.ip ?? null }));
 }
+
+/* ------------------------------------------------------------- agregasi (dashboard) */
+
+const RME_SCOPE = `OBJEK IN (${objekPlaceholders}) AND ID >= ? AND ID <= ?`;
+
+/** Aktivitas RME per hari (YYMMDD) × AKSI. Rentang via prefix ID. */
+export async function queryRmeDailyByAksi(lo: string, hi: string): Promise<{ d: string; a: "C" | "U"; n: number }[]> {
+  const sql = `SELECT ${CAP} LEFT(ID, 6) AS d, AKSI AS a, COUNT(*) AS n
+    FROM ${L}.pengguna_akses_log WHERE ${RME_SCOPE}
+    GROUP BY LEFT(ID, 6), AKSI`;
+  const rows = await getSimgos().$queryRawUnsafe<{ d: string; a: "C" | "U"; n: number | bigint }[]>(sql, ...AUDIT_OBJEK_IDS, lo, hi);
+  return rows.map((r) => ({ d: String(r.d), a: r.a, n: Number(r.n) }));
+}
+
+/** Aktivitas RME per objek. */
+export async function queryRmeByObjek(lo: string, hi: string): Promise<{ objek: string; n: number }[]> {
+  const sql = `SELECT ${CAP} OBJEK AS objek, COUNT(*) AS n
+    FROM ${L}.pengguna_akses_log WHERE ${RME_SCOPE} GROUP BY OBJEK`;
+  const rows = await getSimgos().$queryRawUnsafe<{ objek: string; n: number | bigint }[]>(sql, ...AUDIT_OBJEK_IDS, lo, hi);
+  return rows.map((r) => ({ objek: String(r.objek), n: Number(r.n) }));
+}
+
+/** Distribusi aktivitas RME per jam (0–23). */
+export async function queryRmeByHour(lo: string, hi: string): Promise<{ h: number; n: number }[]> {
+  const sql = `SELECT ${CAP} HOUR(TANGGAL) AS h, COUNT(*) AS n
+    FROM ${L}.pengguna_akses_log WHERE ${RME_SCOPE} GROUP BY HOUR(TANGGAL)`;
+  const rows = await getSimgos().$queryRawUnsafe<{ h: number; n: number | bigint }[]>(sql, ...AUDIT_OBJEK_IDS, lo, hi);
+  return rows.map((r) => ({ h: Number(r.h), n: Number(r.n) }));
+}
+
+/** Jumlah pengguna unik yang beraktivitas RME dalam rentang. */
+export async function queryRmeDistinctUsers(lo: string, hi: string): Promise<number> {
+  const sql = `SELECT ${CAP} COUNT(DISTINCT PENGGUNA) AS n
+    FROM ${L}.pengguna_akses_log WHERE ${RME_SCOPE}`;
+  const rows = await getSimgos().$queryRawUnsafe<{ n: number | bigint }[]>(sql, ...AUDIT_OBJEK_IDS, lo, hi);
+  return Number(rows[0]?.n ?? 0);
+}
+
+/** Pengguna teraktif (RME) — top N. */
+export async function queryRmeTopUsers(lo: string, hi: string, limit: number): Promise<{ pengguna: string; n: number }[]> {
+  const sql = `SELECT ${CAP} PENGGUNA AS pengguna, COUNT(*) AS n
+    FROM ${L}.pengguna_akses_log WHERE ${RME_SCOPE}
+    GROUP BY PENGGUNA ORDER BY n DESC LIMIT ${Math.trunc(limit)}`;
+  const rows = await getSimgos().$queryRawUnsafe<{ pengguna: number | bigint; n: number | bigint }[]>(sql, ...AUDIT_OBJEK_IDS, lo, hi);
+  return rows.map((r) => ({ pengguna: String(r.pengguna), n: Number(r.n) }));
+}
+
+/** Login per hari (YYYY-MM-DD). Rentang via TANGGAL_AKSES (ter-index). */
+export async function queryLoginDaily(from: string, to: string): Promise<{ d: string; n: number }[]> {
+  const sql = `SELECT ${CAP} DATE_FORMAT(TANGGAL_AKSES, '%Y-%m-%d') AS d, COUNT(*) AS n
+    FROM ${A}.pengguna_log WHERE TANGGAL_AKSES >= ? AND TANGGAL_AKSES <= ?
+    GROUP BY DATE_FORMAT(TANGGAL_AKSES, '%Y-%m-%d')`;
+  const rows = await getSimgos().$queryRawUnsafe<{ d: string; n: number | bigint }[]>(sql, `${from} 00:00:00`, `${to} 23:59:59`);
+  return rows.map((r) => ({ d: String(r.d), n: Number(r.n) }));
+}

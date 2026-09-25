@@ -36,6 +36,13 @@ export const eventsQuerySchema = z.object({
 });
 export type EventsQuery = z.infer<typeof eventsQuerySchema>;
 
+/** Query dashboard: rentang tanggal (default 30 hari terakhir di service). */
+export const dashboardQuerySchema = z.object({
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+});
+export type DashboardQuery = z.infer<typeof dashboardQuerySchema>;
+
 /* --------------------------------------------------------------- kursor keyset */
 
 /** Kursor per-sumber: id terakhir yang sudah ditampilkan dari tiap tabel. */

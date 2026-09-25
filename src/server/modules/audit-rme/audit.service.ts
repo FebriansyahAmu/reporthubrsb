@@ -5,6 +5,7 @@ import {
   AKSI_JENIS,
   AUDIT_OBJEKS,
   getAuditObjek,
+  idBounds,
   idToIsoDate,
   todayWitaIso,
   type JenisAktivitas,
@@ -12,16 +13,22 @@ import {
 import {
   queryActiveUserCount,
   queryEventDetail,
+  queryLoginDaily,
   queryLoginEvents,
   queryLoginSummary,
   queryObjekMeta,
+  queryRmeByHour,
+  queryRmeByObjek,
+  queryRmeDailyByAksi,
+  queryRmeDistinctUsers,
   queryRmeEvents,
+  queryRmeTopUsers,
   queryScopeCounts,
   queryScopeIdRange,
 } from "./audit.dal";
 import { computeDiff, detectSoftDelete, type DiffField } from "./audit.diff";
 import { getUserResolver, type UserMini } from "./audit.resolver";
-import { decodeCursor, encodeCursor, type EventsQuery } from "./audit.schema";
+import { decodeCursor, encodeCursor, type DashboardQuery, type EventsQuery } from "./audit.schema";
 
 export type AuditScopeItem = {
   objek: string;
@@ -284,5 +291,107 @@ export async function getEventDetail(logId: string): Promise<EventDetail> {
     fields,
     changedCount,
     hasSnapshot: !!(row.sebelum?.trim() || row.sesudah?.trim()),
+  };
+}
+
+/* --------------------------------------------------------------- dashboard */
+
+export type AuditDashboard = {
+  range: { from: string; to: string; days: number };
+  totals: { rme: number; penambahan: number; perubahan: number; login: number; penggunaAktif: number };
+  trenRme: { date: string; penambahan: number; perubahan: number; total: number }[];
+  trenLogin: { date: string; total: number }[];
+  perObjek: { objek: string; label: string; total: number }[];
+  topPengguna: { id: string; nama: string | null; login: string | null; total: number }[];
+  perJam: { hour: number; value: number }[];
+};
+
+const EMPTY_DASHBOARD = (from: string, to: string, days: number): AuditDashboard => ({
+  range: { from, to, days },
+  totals: { rme: 0, penambahan: 0, perubahan: 0, login: 0, penggunaAktif: 0 },
+  trenRme: [],
+  trenLogin: [],
+  perObjek: AUDIT_OBJEKS.map((o) => ({ objek: o.objek, label: o.label, total: 0 })),
+  topPengguna: [],
+  perJam: Array.from({ length: 24 }, (_, h) => ({ hour: h, value: 0 })),
+});
+
+function enumerateDays(from: string, to: string): string[] {
+  const out: string[] = [];
+  let cur = from;
+  for (let i = 0; i < 400 && cur <= to; i++) {
+    out.push(cur);
+    cur = addDaysIso(cur, 1);
+  }
+  return out;
+}
+
+/** yymmdd (LEFT(ID,6)) → YYYY-MM-DD. */
+function yymmddToIso(d: string): string {
+  return `20${d.slice(0, 2)}-${d.slice(2, 4)}-${d.slice(4, 6)}`;
+}
+
+/** Dashboard tren & kepatuhan (agregasi read-only, rentang default 30 hari). */
+export async function getDashboard(q: DashboardQuery): Promise<AuditDashboard> {
+  const to = q.to ?? todayWitaIso();
+  const from = q.from ?? addDaysIso(to, -29);
+  const days = enumerateDays(from, to).length;
+  if (!isSimgosConfigured()) return EMPTY_DASHBOARD(from, to, days);
+
+  const { lo, hi } = idBounds(from, to);
+  const loB = lo ?? "000000000000000";
+  const hiB = hi ?? "999999999999999";
+
+  const [daily, byObjek, byHour, distinct, topUsers, loginDaily, resolver] = await Promise.all([
+    queryRmeDailyByAksi(loB, hiB),
+    queryRmeByObjek(loB, hiB),
+    queryRmeByHour(loB, hiB),
+    queryRmeDistinctUsers(loB, hiB),
+    queryRmeTopUsers(loB, hiB, 10),
+    queryLoginDaily(from, to),
+    getUserResolver(),
+  ]);
+
+  // Tren RME per hari (isi hari kosong = 0).
+  const rmeByDay = new Map<string, { penambahan: number; perubahan: number }>();
+  for (const r of daily) {
+    const iso = yymmddToIso(r.d);
+    const e = rmeByDay.get(iso) ?? { penambahan: 0, perubahan: 0 };
+    if (r.a === "C") e.penambahan += r.n;
+    else e.perubahan += r.n;
+    rmeByDay.set(iso, e);
+  }
+  const loginByDay = new Map(loginDaily.map((r) => [r.d, r.n]));
+  const axis = enumerateDays(from, to);
+  const trenRme = axis.map((date) => {
+    const e = rmeByDay.get(date) ?? { penambahan: 0, perubahan: 0 };
+    return { date, penambahan: e.penambahan, perubahan: e.perubahan, total: e.penambahan + e.perubahan };
+  });
+  const trenLogin = axis.map((date) => ({ date, total: loginByDay.get(date) ?? 0 }));
+
+  const penambahan = trenRme.reduce((s, x) => s + x.penambahan, 0);
+  const perubahan = trenRme.reduce((s, x) => s + x.perubahan, 0);
+  const login = trenLogin.reduce((s, x) => s + x.total, 0);
+
+  const objekCount = new Map(byObjek.map((r) => [r.objek, r.n]));
+  const perObjek = AUDIT_OBJEKS.map((o) => ({ objek: o.objek, label: o.label, total: objekCount.get(o.objek) ?? 0 }))
+    .sort((a, b) => b.total - a.total);
+
+  const hourCount = new Map(byHour.map((r) => [r.h, r.n]));
+  const perJam = Array.from({ length: 24 }, (_, h) => ({ hour: h, value: hourCount.get(h) ?? 0 }));
+
+  const topPengguna = topUsers.map((u) => {
+    const m = resolver.map.get(u.pengguna);
+    return { id: u.pengguna, nama: m?.nama ?? null, login: m?.login ?? null, total: u.n };
+  });
+
+  return {
+    range: { from, to, days },
+    totals: { rme: penambahan + perubahan, penambahan, perubahan, login, penggunaAktif: distinct },
+    trenRme,
+    trenLogin,
+    perObjek,
+    topPengguna,
+    perJam,
   };
 }

@@ -78,6 +78,24 @@ export const fetchAuditRefs = () => jsonCall<AuditRefs>("/api/audit-rme/refs").t
 export const fetchEventDetail = (logId: string) =>
   jsonCall<EventDetail>(`/api/audit-rme/events/${encodeURIComponent(logId)}`).then((j) => j.data);
 
+export type AuditDashboard = {
+  range: { from: string; to: string; days: number };
+  totals: { rme: number; penambahan: number; perubahan: number; login: number; penggunaAktif: number };
+  trenRme: { date: string; penambahan: number; perubahan: number; total: number }[];
+  trenLogin: { date: string; total: number }[];
+  perObjek: { objek: string; label: string; total: number }[];
+  topPengguna: { id: string; nama: string | null; login: string | null; total: number }[];
+  perJam: { hour: number; value: number }[];
+};
+
+export function fetchAuditDashboard(range?: { from?: string; to?: string }): Promise<AuditDashboard> {
+  const sp = new URLSearchParams();
+  if (range?.from) sp.set("from", range.from);
+  if (range?.to) sp.set("to", range.to);
+  const qs = sp.toString();
+  return jsonCall<AuditDashboard>(`/api/audit-rme/dashboard${qs ? `?${qs}` : ""}`).then((j) => j.data);
+}
+
 export function fetchAuditEvents(f: EventsFilter): Promise<EventsPage> {
   const sp = new URLSearchParams();
   if (f.from) sp.set("from", f.from);
