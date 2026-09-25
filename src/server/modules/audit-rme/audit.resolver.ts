@@ -1,17 +1,35 @@
 import "server-only";
 import { queryAllUsers } from "./audit.dal";
+import { queryRuanganMaster, type RuanganRow } from "./kunjungan.dal";
 
 /**
  * Resolver pengguna (PENGGUNA id → nama/login) dengan cache in-process TTL pendek.
  * Master pengguna kecil (± 200 baris) & jarang berubah → sekali muat, dipakai
  * ulang untuk resolusi nama di timeline (hindari N+1). Tidak pernah memuat PASSWORD.
  */
-export type UserMini = { id: string; nama: string | null; login: string | null };
+export type UserMini = {
+  id: string;
+  nama: string | null;
+  login: string | null;
+  /** `master.pegawai.PROFESI` (referensi JENIS=36) — null bila pengguna bukan pegawai. */
+  profesi: number | null;
+};
 
 type Cache = { at: number; map: Map<string, UserMini>; list: UserMini[] };
+type RuanganCache = { at: number; map: Map<string, RuanganRow> };
 const TTL_MS = 5 * 60_000;
 
-const globalForResolver = globalThis as unknown as { auditUserCache?: Cache };
+const globalForResolver = globalThis as unknown as { auditUserCache?: Cache; auditRuanganCache?: RuanganCache };
+
+/** Resolver ruang leaf → nama/jenis/bangsal induk (± 40 baris, cache TTL sama). */
+export async function getRuanganResolver(): Promise<RuanganCache> {
+  const hit = globalForResolver.auditRuanganCache;
+  if (hit && Date.now() - hit.at < TTL_MS) return hit;
+  const rows = await queryRuanganMaster();
+  const cache: RuanganCache = { at: Date.now(), map: new Map(rows.map((r) => [r.id, r])) };
+  globalForResolver.auditRuanganCache = cache;
+  return cache;
+}
 
 export async function getUserResolver(): Promise<Cache> {
   const hit = globalForResolver.auditUserCache;

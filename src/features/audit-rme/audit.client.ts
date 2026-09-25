@@ -4,7 +4,7 @@ import type { JenisAktivitas } from "@/server/modules/audit-rme/audit.constants"
 
 export type { JenisAktivitas };
 
-export type AuditUser = { id: string; nama: string | null; login: string | null };
+export type AuditUser = { id: string; nama: string | null; login: string | null; profesi: number | null };
 
 export type AuditRefs = {
   scope: { objek: string; label: string; tabel: string }[];

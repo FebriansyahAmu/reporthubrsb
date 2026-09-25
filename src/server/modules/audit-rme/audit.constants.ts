@@ -118,6 +118,13 @@ export function idToIsoDate(id: string | null | undefined): string | null {
   return `20${id.slice(0, 2)}-${id.slice(2, 4)}-${id.slice(4, 6)}`;
 }
 
+/** Geser tanggal `YYYY-MM-DD` sebanyak `n` hari (kalender, bebas TZ). */
+export function addDaysIso(iso: string, n: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}`;
+}
+
 /** WITA (UTC+8) `YYYY-MM-DD` hari ini — untuk default rentang / prefix ID. */
 export function todayWitaIso(now: Date = new Date()): string {
   const w = new Date(now.getTime() + 8 * 3600 * 1000);

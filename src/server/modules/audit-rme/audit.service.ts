@@ -2,6 +2,7 @@ import "server-only";
 import { isSimgosConfigured } from "@/server/lib/env";
 import { NotFoundError } from "@/server/lib/errors";
 import {
+  addDaysIso,
   AKSI_JENIS,
   AUDIT_OBJEKS,
   getAuditObjek,
@@ -134,13 +135,6 @@ export type AuditEvent = {
 };
 
 export type EventsPage = { items: AuditEvent[]; nextCursor: string | null; hasMore: boolean };
-
-const p2 = (n: number) => String(n).padStart(2, "0");
-function addDaysIso(iso: string, n: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}`;
-}
 
 type Merged = AuditEvent & { srcId: string };
 

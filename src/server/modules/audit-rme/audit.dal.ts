@@ -75,12 +75,25 @@ export async function queryActiveUserCount(): Promise<number> {
   return Number(rows[0]?.n ?? 0);
 }
 
-/** Master pengguna ringkas untuk resolver & filter (TANPA PASSWORD). */
+/**
+ * Master pengguna ringkas untuk resolver & filter (TANPA PASSWORD) + profesi
+ * pegawai (`pengguna.NIP` → `master.pegawai.NIP`, unik; NIP kosong tak di-join).
+ */
 export async function queryAllUsers(): Promise<UserMini[]> {
-  const rows = await getSimgos().$queryRawUnsafe<{ id: number | bigint; nama: string | null; login: string | null }[]>(
-    `SELECT ID AS id, NAMA AS nama, LOGIN AS login FROM ${A}.pengguna ORDER BY NAMA`,
+  const rows = await getSimgos().$queryRawUnsafe<
+    { id: number | bigint; nama: string | null; login: string | null; profesi: number | null }[]
+  >(
+    `SELECT u.ID AS id, u.NAMA AS nama, u.LOGIN AS login, pg.PROFESI AS profesi
+     FROM ${A}.pengguna u
+     LEFT JOIN ${SIMGOS_DB.MASTER}.pegawai pg ON pg.NIP = u.NIP AND u.NIP <> ''
+     ORDER BY u.NAMA`,
   );
-  return rows.map((r) => ({ id: String(r.id), nama: r.nama ?? null, login: r.login ?? null }));
+  return rows.map((r) => ({
+    id: String(r.id),
+    nama: r.nama ?? null,
+    login: r.login ?? null,
+    profesi: r.profesi == null ? null : Number(r.profesi),
+  }));
 }
 
 /* ------------------------------------------------------------- timeline events */
