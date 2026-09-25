@@ -1,7 +1,8 @@
 import "server-only";
 import { getSimgos } from "@/server/db/simgos.client";
 import { SIMGOS_DB } from "@/server/db/simgos-databases";
-import { AUDIT_OBJEK_IDS } from "./audit.constants";
+import { AUDIT_OBJEK_IDS, idBounds } from "./audit.constants";
+import type { UserMini } from "./audit.resolver";
 
 /**
  * DAL Audit Trail RME — **READ-ONLY** atas SIMGOS (HIGH ALERT: hanya SELECT).
@@ -72,4 +73,124 @@ export async function queryActiveUserCount(): Promise<number> {
     `SELECT COUNT(*) AS n FROM ${A}.pengguna WHERE STATUS = 1`,
   );
   return Number(rows[0]?.n ?? 0);
+}
+
+/** Master pengguna ringkas untuk resolver & filter (TANPA PASSWORD). */
+export async function queryAllUsers(): Promise<UserMini[]> {
+  const rows = await getSimgos().$queryRawUnsafe<{ id: number | bigint; nama: string | null; login: string | null }[]>(
+    `SELECT ID AS id, NAMA AS nama, LOGIN AS login FROM ${A}.pengguna ORDER BY NAMA`,
+  );
+  return rows.map((r) => ({ id: String(r.id), nama: r.nama ?? null, login: r.login ?? null }));
+}
+
+/* ------------------------------------------------------------- timeline events */
+
+export type RmeFilter = {
+  from: string;
+  to: string;
+  objek?: string;
+  aksi?: "C" | "U";
+  pengguna?: string;
+  q?: string;
+};
+
+export type RmeRow = {
+  id: string;
+  ts: string;
+  aksi: "C" | "U";
+  pengguna: string;
+  objek: string;
+  ref: string | null;
+};
+
+/**
+ * Baris audit CRUD (RME) — TERBARU dulu, keyset by `ID`. Rentang tanggal lewat
+ * prefix `ID` (kronologis, ter-index). TIDAK mengambil SEBELUM/SESUDAH (berat).
+ */
+export async function queryRmeEvents(f: RmeFilter, cursorId: string | null, limit: number): Promise<RmeRow[]> {
+  const cond: string[] = [];
+  const params: unknown[] = [];
+
+  if (f.objek) {
+    cond.push("OBJEK = ?");
+    params.push(f.objek);
+  } else {
+    cond.push(`OBJEK IN (${objekPlaceholders})`);
+    params.push(...AUDIT_OBJEK_IDS);
+  }
+  const { lo, hi } = idBounds(f.from, f.to);
+  if (lo) {
+    cond.push("ID >= ?");
+    params.push(lo);
+  }
+  if (hi) {
+    cond.push("ID <= ?");
+    params.push(hi);
+  }
+  if (f.aksi) {
+    cond.push("AKSI = ?");
+    params.push(f.aksi);
+  }
+  if (f.pengguna) {
+    cond.push("PENGGUNA = ?");
+    params.push(Number(f.pengguna));
+  }
+  if (f.q) {
+    cond.push("REF LIKE ?");
+    params.push(`${f.q}%`);
+  }
+  if (cursorId) {
+    cond.push("ID < ?");
+    params.push(cursorId);
+  }
+
+  const sql = `SELECT ${CAP} ID AS id, DATE_FORMAT(TANGGAL, '%Y-%m-%dT%H:%i:%s') AS ts,
+      AKSI AS aksi, PENGGUNA AS pengguna, OBJEK AS objek, REF AS ref
+    FROM ${L}.pengguna_akses_log
+    WHERE ${cond.join(" AND ")}
+    ORDER BY ID DESC
+    LIMIT ${Math.trunc(limit)}`;
+  const rows = await getSimgos().$queryRawUnsafe<
+    { id: string; ts: string; aksi: "C" | "U"; pengguna: number | bigint; objek: string; ref: string | null }[]
+  >(sql, ...params);
+  return rows.map((r) => ({
+    id: String(r.id),
+    ts: r.ts,
+    aksi: r.aksi,
+    pengguna: String(r.pengguna),
+    objek: String(r.objek),
+    ref: r.ref ?? null,
+  }));
+}
+
+export type LoginFilter = { from: string; to: string; pengguna?: string };
+
+export type LoginRow = { id: string; ts: string; pengguna: string; ip: string | null };
+
+/** Baris login — TERBARU dulu, keyset by `ID`. Rentang via `TANGGAL_AKSES` (ter-index). */
+export async function queryLoginEvents(f: LoginFilter, cursorId: string | null, limit: number): Promise<LoginRow[]> {
+  const cond: string[] = [];
+  const params: unknown[] = [];
+  cond.push("TANGGAL_AKSES >= ?");
+  params.push(`${f.from} 00:00:00`);
+  cond.push("TANGGAL_AKSES <= ?");
+  params.push(`${f.to} 23:59:59`);
+  if (f.pengguna) {
+    cond.push("PENGGUNA = ?");
+    params.push(Number(f.pengguna));
+  }
+  if (cursorId) {
+    cond.push("ID < ?");
+    params.push(cursorId);
+  }
+  const sql = `SELECT ${CAP} ID AS id, DATE_FORMAT(TANGGAL_AKSES, '%Y-%m-%dT%H:%i:%s') AS ts,
+      PENGGUNA AS pengguna, LOKASI_AKSES AS ip
+    FROM ${A}.pengguna_log
+    WHERE ${cond.join(" AND ")}
+    ORDER BY ID DESC
+    LIMIT ${Math.trunc(limit)}`;
+  const rows = await getSimgos().$queryRawUnsafe<
+    { id: number | bigint; ts: string; pengguna: number | bigint; ip: string | null }[]
+  >(sql, ...params);
+  return rows.map((r) => ({ id: String(r.id), ts: r.ts, pengguna: String(r.pengguna), ip: r.ip ?? null }));
 }

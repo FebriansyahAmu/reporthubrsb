@@ -1,6 +1,6 @@
 import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
-import { AuditStatusView } from "@/features/audit-rme/AuditStatusView";
+import { AuditTimelineView } from "@/features/audit-rme/AuditTimelineView";
 import { requireModule } from "@/server/rbac/guard";
 
 export const metadata = { title: "Audit Trail RME · AuditTrail RS BOLTIM" };
@@ -15,7 +15,7 @@ export default async function AuditRmePage() {
         title="Audit Trail RME"
         description="Log aktivitas rekam medis elektronik (read-only dari SIMGOS) — pemantauan penambahan, perubahan, dan akses data untuk kepatuhan."
       />
-      <AuditStatusView />
+      <AuditTimelineView />
     </FadeIn>
   );
 }
