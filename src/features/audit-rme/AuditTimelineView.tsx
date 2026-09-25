@@ -21,6 +21,7 @@ import {
 import {
   fetchAuditEvents, fetchAuditRefs, type AuditEvent, type AuditRefs, type EventsFilter,
 } from "./audit.client";
+import { AuditDetailModal } from "./AuditDetailModal";
 
 type Sumber = "SEMUA" | "RME" | "LOGIN";
 type Aksi = "" | "C" | "U";
@@ -188,6 +189,7 @@ export function AuditTimelineView() {
   }
 
   const groups = useMemo(() => groupByDate(items), [items]);
+  const [detailEvent, setDetailEvent] = useState<AuditEvent | null>(null);
 
   return (
     <div className="space-y-4">
@@ -269,7 +271,7 @@ export function AuditTimelineView() {
               <Card className="overflow-hidden">
                 <ul className="divide-y divide-border">
                   {g.rows.map((ev) => (
-                    <EventRow key={ev.id} ev={ev} />
+                    <EventRow key={ev.id} ev={ev} onOpen={ev.logId ? () => setDetailEvent(ev) : undefined} />
                   ))}
                 </ul>
               </Card>
@@ -286,18 +288,31 @@ export function AuditTimelineView() {
           {!hasMore && <p className="pt-1 text-center text-xs text-fg-subtle">— akhir dari hasil —</p>}
         </div>
       )}
+
+      <AuditDetailModal event={detailEvent} onClose={() => setDetailEvent(null)} />
     </div>
   );
 }
 
-function EventRow({ ev }: { ev: AuditEvent }) {
+function EventRow({ ev, onOpen }: { ev: AuditEvent; onOpen?: () => void }) {
   const tone = JENIS_TONE[ev.jenis];
   const Icon = JENIS_ICON[ev.jenis];
   const time = ev.ts.slice(11, 16);
   const nama = ev.pengguna.nama || ev.pengguna.login || `#${ev.pengguna.id}`;
+  const clickable = !!onOpen;
 
   return (
-    <li className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface-2/50">
+    <li
+      className={cn(
+        "flex items-start gap-3 px-4 py-3 transition-colors",
+        clickable ? "cursor-pointer hover:bg-surface-2/60" : "hover:bg-surface-2/50",
+      )}
+      onClick={onOpen}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } } : undefined}
+      aria-label={clickable ? `Lihat detail: ${JENIS_LABEL[ev.jenis]} ${ev.objek?.label ?? ""}` : undefined}
+    >
       <span className={cn("mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full", DOT_BG[tone])} title={JENIS_LABEL[ev.jenis]}>
         <Icon className="size-4" />
       </span>

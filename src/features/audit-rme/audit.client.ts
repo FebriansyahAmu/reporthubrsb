@@ -49,7 +49,34 @@ async function jsonCall<T>(url: string): Promise<{ data: T }> {
   return json as { data: T };
 }
 
+export type DiffStatus = "added" | "removed" | "changed" | "unchanged";
+export type DiffField = {
+  key: string;
+  label: string;
+  before: string | null;
+  after: string | null;
+  status: DiffStatus;
+};
+
+export type EventDetail = {
+  logId: string;
+  ts: string;
+  aksi: "C" | "U";
+  jenis: JenisAktivitas;
+  pengguna: AuditUser;
+  objek: { id: string; label: string; tabel: string };
+  ref: string | null;
+  softDelete: boolean;
+  isCreate: boolean;
+  fields: DiffField[];
+  changedCount: number;
+  hasSnapshot: boolean;
+};
+
 export const fetchAuditRefs = () => jsonCall<AuditRefs>("/api/audit-rme/refs").then((j) => j.data);
+
+export const fetchEventDetail = (logId: string) =>
+  jsonCall<EventDetail>(`/api/audit-rme/events/${encodeURIComponent(logId)}`).then((j) => j.data);
 
 export function fetchAuditEvents(f: EventsFilter): Promise<EventsPage> {
   const sp = new URLSearchParams();

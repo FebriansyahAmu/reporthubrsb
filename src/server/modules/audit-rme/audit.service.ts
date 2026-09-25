@@ -1,5 +1,6 @@
 import "server-only";
 import { isSimgosConfigured } from "@/server/lib/env";
+import { NotFoundError } from "@/server/lib/errors";
 import {
   AKSI_JENIS,
   AUDIT_OBJEKS,
@@ -10,6 +11,7 @@ import {
 } from "./audit.constants";
 import {
   queryActiveUserCount,
+  queryEventDetail,
   queryLoginEvents,
   queryLoginSummary,
   queryObjekMeta,
@@ -17,6 +19,7 @@ import {
   queryScopeCounts,
   queryScopeIdRange,
 } from "./audit.dal";
+import { computeDiff, detectSoftDelete, type DiffField } from "./audit.diff";
 import { getUserResolver, type UserMini } from "./audit.resolver";
 import { decodeCursor, encodeCursor, type EventsQuery } from "./audit.schema";
 
@@ -232,5 +235,54 @@ export async function listEvents(q: EventsQuery): Promise<EventsPage> {
     items,
     nextCursor: hasMore ? encodeCursor({ r: lastR, l: lastL }) : null,
     hasMore,
+  };
+}
+
+/* ------------------------------------------------------------------ detail */
+
+export type EventDetail = {
+  logId: string;
+  ts: string;
+  aksi: "C" | "U";
+  jenis: JenisAktivitas;
+  pengguna: { id: string; nama: string | null; login: string | null };
+  objek: { id: string; label: string; tabel: string };
+  ref: string | null;
+  /** Terdeteksi soft-delete/pembatalan (perubahan status → nonaktif). */
+  softDelete: boolean;
+  isCreate: boolean;
+  fields: DiffField[];
+  changedCount: number;
+  hasSnapshot: boolean;
+};
+
+/**
+ * Detail satu event RME + diff SEBELUM→SESUDAH. Dibatasi objek scope (di luar
+ * scope → NotFound). Mengambil kolom berat hanya untuk baris ini.
+ */
+export async function getEventDetail(logId: string): Promise<EventDetail> {
+  const row = await queryEventDetail(logId);
+  if (!row) throw new NotFoundError("Aktivitas tidak ditemukan atau di luar cakupan modul.");
+
+  const resolver = await getUserResolver();
+  const u = resolver.map.get(row.pengguna);
+  const o = getAuditObjek(row.objek);
+  const fields = computeDiff(row.sebelum, row.sesudah);
+  const softDelete = detectSoftDelete(fields);
+  const changedCount = fields.filter((f) => f.status !== "unchanged").length;
+
+  return {
+    logId: row.id,
+    ts: row.ts,
+    aksi: row.aksi,
+    jenis: softDelete ? "PENGHAPUSAN" : AKSI_JENIS[row.aksi],
+    pengguna: { id: row.pengguna, nama: u?.nama ?? null, login: u?.login ?? null },
+    objek: o ? { id: o.objek, label: o.label, tabel: o.tabel } : { id: row.objek, label: row.objek, tabel: "" },
+    ref: row.ref,
+    softDelete,
+    isCreate: row.aksi === "C",
+    fields,
+    changedCount,
+    hasSnapshot: !!(row.sebelum?.trim() || row.sesudah?.trim()),
   };
 }

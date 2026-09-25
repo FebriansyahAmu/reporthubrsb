@@ -163,6 +163,48 @@ export async function queryRmeEvents(f: RmeFilter, cursorId: string | null, limi
   }));
 }
 
+export type RmeDetailRow = {
+  id: string;
+  ts: string;
+  aksi: "C" | "U";
+  pengguna: string;
+  objek: string;
+  ref: string | null;
+  sebelum: string | null;
+  sesudah: string | null;
+};
+
+/**
+ * Satu baris audit CRUD lengkap dgn snapshot diff (SEBELUM/SESUDAH mediumtext) —
+ * HANYA untuk satu ID (index) & DIBATASI objek scope (cegah akses di luar modul).
+ * Ini satu-satunya query yang mengambil kolom berat.
+ */
+export async function queryEventDetail(logId: string): Promise<RmeDetailRow | null> {
+  const sql = `SELECT ID AS id, DATE_FORMAT(TANGGAL, '%Y-%m-%dT%H:%i:%s') AS ts,
+      AKSI AS aksi, PENGGUNA AS pengguna, OBJEK AS objek, REF AS ref, SEBELUM AS sebelum, SESUDAH AS sesudah
+    FROM ${L}.pengguna_akses_log
+    WHERE ID = ? AND OBJEK IN (${objekPlaceholders})
+    LIMIT 1`;
+  const rows = await getSimgos().$queryRawUnsafe<
+    {
+      id: string; ts: string; aksi: "C" | "U"; pengguna: number | bigint; objek: string;
+      ref: string | null; sebelum: string | null; sesudah: string | null;
+    }[]
+  >(sql, logId, ...AUDIT_OBJEK_IDS);
+  const r = rows[0];
+  if (!r) return null;
+  return {
+    id: String(r.id),
+    ts: r.ts,
+    aksi: r.aksi,
+    pengguna: String(r.pengguna),
+    objek: String(r.objek),
+    ref: r.ref ?? null,
+    sebelum: r.sebelum ?? null,
+    sesudah: r.sesudah ?? null,
+  };
+}
+
 export type LoginFilter = { from: string; to: string; pengguna?: string };
 
 export type LoginRow = { id: string; ts: string; pengguna: string; ip: string | null };
