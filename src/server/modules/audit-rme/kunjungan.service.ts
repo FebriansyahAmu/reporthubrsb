@@ -7,6 +7,7 @@ import {
   JENIS_KUNJUNGAN_ORDER,
   KATEGORI_KEYS,
   kategoriWajib,
+  KELOMPOK_JENIS,
   profesiLabel,
   PROFESI_ORDER,
   RENTANG_MAKS_HARI,
@@ -84,9 +85,18 @@ function resolveRange(q: { from?: string; to?: string }): { from: string; to: st
   return { from, to };
 }
 
-function toFilter(q: RuanganTreeQuery & Partial<Pick<KunjunganQuery, "jenis" | "ruangan">>): KunjunganFilter {
+function toFilter(q: RuanganTreeQuery & Partial<Pick<KunjunganQuery, "jenis" | "kelompok" | "ruangan">>): KunjunganFilter {
   const { from, to } = resolveRange(q);
-  return { from, to, jenis: q.jenis, ruangan: q.ruangan, aktif: q.aktif, batal: q.batal, q: q.q };
+  return {
+    from,
+    to,
+    jenis: q.jenis,
+    jenisIn: q.kelompok ? KELOMPOK_JENIS[q.kelompok] : undefined,
+    ruangan: q.ruangan,
+    aktif: q.aktif,
+    batal: q.batal,
+    q: q.q,
+  };
 }
 
 /** Selisih hari kalender `YYYY-MM-DD` (b − a). */

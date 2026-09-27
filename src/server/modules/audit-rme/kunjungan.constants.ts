@@ -56,6 +56,17 @@ export function jenisKunjunganLabel(id: number | null | undefined): string {
   return JENIS_KUNJUNGAN[id]?.label ?? `Jenis #${id}`;
 }
 
+/**
+ * Kelompok jenis kunjungan. "KLINIS" = layanan yang wajib 5 kategori RME —
+ * default papan agar kunjungan penunjang (farmasi/lab, mayoritas volume) tidak
+ * menenggelamkan data kepatuhan klinis.
+ */
+export const KELOMPOK_JENIS = {
+  KLINIS: [1, 2, 3],
+} as const;
+export type KelompokJenis = keyof typeof KELOMPOK_JENIS;
+export const KELOMPOK_LABEL: Record<KelompokJenis, string> = { KLINIS: "Layanan klinis" };
+
 /** Jenis kunjungan yang boleh dipilih di filter (validasi Zod). */
 export const JENIS_KUNJUNGAN_IDS = Object.keys(JENIS_KUNJUNGAN).map(Number);
 

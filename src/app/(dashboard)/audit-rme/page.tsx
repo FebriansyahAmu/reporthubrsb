@@ -13,7 +13,7 @@ export default async function AuditRmePage() {
     <FadeIn className="space-y-6">
       <PageHeader
         title="Audit Trail RME"
-        description="Log aktivitas rekam medis elektronik (read-only dari SIMGOS) — pemantauan penambahan, perubahan, dan akses data untuk kepatuhan."
+        description="Kepatuhan pengimputan RME per kunjungan & ruangan — data aktual + log aktivitas (read-only dari SIMGOS)."
       />
       <AuditRmeView />
     </FadeIn>

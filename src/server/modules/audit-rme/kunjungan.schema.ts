@@ -36,6 +36,8 @@ export const kunjunganQuerySchema = z.object({
       .refine((n) => JENIS_KUNJUNGAN_IDS.includes(n), "Jenis kunjungan tidak dikenal")
       .optional(),
   ),
+  /** Kelompok jenis (mis. KLINIS = RJ/IGD/RI). Diabaikan bila `jenis` diisi. */
+  kelompok: z.preprocess(blankToUndef, z.enum(["KLINIS"]).optional()),
   /** Prefiks ID ruangan: 7 digit = bangsal/grup, 9 digit = ruang. */
   ruangan: z.preprocess(blankToUndef, z.string().regex(/^\d{7}(\d{2})?$/, "ID ruangan tidak valid").optional()),
   page: z.coerce.number().int().min(1).max(1000).default(1),

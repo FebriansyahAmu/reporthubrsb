@@ -270,6 +270,8 @@ Timeline panjang diganti **tabel ringkas berpaginasi bernomor** (kepadatan tingg
 
 ### Stage K1 — Papan Kunjungan (UI)
 - Tab baru jadi landing; rail ruangan, kartu kunjungan dengan pip kategori, ringkasan, paginasi bernomor, pencarian nama/RM, filter "aktif sekarang".
+- ✅ **SELESAI (26 Sep 2026)** — E2E 21/21 (API + interaksi UI nyata di Chrome headless) + K0 ulang 32/32. Tambahan hasil review visual: default **Layanan klinis (RI·IGD·RJ)** (param `kelompok=KLINIS`; Farmasi 340/617 kunjungan tanpa kategori RME tak lagi menenggelamkan papan), mode **Kartu | Ringkas** (tabel 1 baris/kunjungan), `NumberedPagination` (komponen UI generik baru), rail dengan label ruangan yang dapat turun baris, chip lokasi di mobile.
+- ⚠️ **Koreksi data (penting):** Diagnosis kini menghitung SEMUA baris `diagnosa` aktif. `INA_GROUPER=1` ternyata diinput **dokter** (70% dari seluruh diagnosis, 30 hari) — bukan injeksi grouper. Filter `INA_GROUPER=0` sebelumnya membuat IGD tampak tanpa diagnosis (21/61 → kini 61/61).
 
 ### Stage K2 — Drawer Jejak Kunjungan
 - Data aktual per kategori (aktif + batal), pelaku pembatalan dari log, petugas per profesi, **matriks 24 jam × shift** (RI), isi klinis per record + riwayat edit (reuse diff Fase 1).

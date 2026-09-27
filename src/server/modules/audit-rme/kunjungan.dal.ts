@@ -42,8 +42,10 @@ export const KATEGORI_SOURCES: readonly KategoriSource[] = [
   { kategori: "ASESMEN", tabel: `${MR}.pemeriksaan_fisik`, kunci: "KUNJUNGAN", objek: "21014" },
   { kategori: "CPPT", tabel: `${MR}.cppt`, kunci: "KUNJUNGAN", objek: "21002" },
   { kategori: "TTV", tabel: `${MR}.tanda_vital`, kunci: "KUNJUNGAN", objek: "21032" },
-  // Diagnosis klinis manual saja (INA_GROUPER=0) — baris injeksi grouper bukan input klinis.
-  { kategori: "DIAGNOSIS", tabel: `${MR}.diagnosa`, kunci: "NOPEN", extra: "INA_GROUPER = 0", objek: "21003" },
+  // SEMUA baris diagnosa dihitung. Catatan: INA_GROUPER=1 BUKAN injeksi otomatis —
+  // 70% diagnosis diinput dokter dengan INA_GROUPER=1 (verifikasi 26 Sep 2026);
+  // memfilter INA_GROUPER=0 akan salah menandai dokter "tidak mengisi diagnosis".
+  { kategori: "DIAGNOSIS", tabel: `${MR}.diagnosa`, kunci: "NOPEN", objek: "21003" },
   { kategori: "TINDAKAN", tabel: `${LY}.tindakan_medis`, kunci: "KUNJUNGAN", objek: "18020" },
 ];
 
@@ -53,6 +55,8 @@ export type KunjunganFilter = {
   from: string;
   to: string;
   jenis?: number;
+  /** Daftar jenis (kelompok) — dipakai hanya bila `jenis` kosong. */
+  jenisIn?: readonly number[];
   ruangan?: string;
   aktif?: boolean;
   batal?: boolean;
@@ -86,6 +90,9 @@ function kunjunganWhere(f: KunjunganFilter, opts: { withLokasi: boolean }): { sq
   if (opts.withLokasi && f.jenis != null) {
     cond.push("r.JENIS_KUNJUNGAN = ?");
     params.push(f.jenis);
+  } else if (opts.withLokasi && f.jenisIn?.length) {
+    cond.push(`r.JENIS_KUNJUNGAN IN (${f.jenisIn.map(() => "?").join(",")})`);
+    params.push(...f.jenisIn);
   }
   if (opts.withLokasi && f.ruangan) {
     cond.push("k.RUANGAN LIKE ?");

@@ -1,6 +1,8 @@
 "use client";
 
 import type { JenisAktivitas } from "@/server/modules/audit-rme/audit.constants";
+// Hanya tipe (dihapus saat kompilasi) — tidak menarik kode server-only ke klien.
+import type { KunjunganPage, RuanganTree } from "@/server/modules/audit-rme/kunjungan.service";
 
 export type { JenisAktivitas };
 
@@ -95,6 +97,53 @@ export function fetchAuditDashboard(range?: { from?: string; to?: string }): Pro
   const qs = sp.toString();
   return jsonCall<AuditDashboard>(`/api/audit-rme/dashboard${qs ? `?${qs}` : ""}`).then((j) => j.data);
 }
+
+/* ------------------------------------------------ Fase 2: papan kunjungan */
+
+export type {
+  JenisNode,
+  KategoriStat,
+  KunjunganCard,
+  KunjunganPage,
+  RuanganGrupNode,
+  RuanganNode,
+  RuanganTree,
+} from "@/server/modules/audit-rme/kunjungan.service";
+
+export type KunjunganFilter = {
+  from: string;
+  to: string;
+  aktif?: boolean;
+  batal?: boolean;
+  q?: string;
+  jenis?: number;
+  kelompok?: "KLINIS";
+  ruangan?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+function kunjunganParams(f: KunjunganFilter, withLokasi: boolean): string {
+  const sp = new URLSearchParams({ from: f.from, to: f.to });
+  if (f.aktif) sp.set("aktif", "1");
+  if (f.batal) sp.set("batal", "1");
+  if (f.q) sp.set("q", f.q);
+  if (withLokasi) {
+    if (f.jenis != null) sp.set("jenis", String(f.jenis));
+    else if (f.kelompok) sp.set("kelompok", f.kelompok);
+    if (f.ruangan) sp.set("ruangan", f.ruangan);
+    if (f.page) sp.set("page", String(f.page));
+    if (f.pageSize) sp.set("pageSize", String(f.pageSize));
+  }
+  return sp.toString();
+}
+
+export const fetchKunjungan = (f: KunjunganFilter) =>
+  jsonCall<KunjunganPage>(`/api/audit-rme/kunjungan?${kunjunganParams(f, true)}`).then((j) => j.data);
+
+/** Pohon ruangan memakai filter yang sama KECUALI lokasi & halaman (rail tetap utuh). */
+export const fetchRuanganTree = (f: KunjunganFilter) =>
+  jsonCall<RuanganTree>(`/api/audit-rme/ruangan?${kunjunganParams(f, false)}`).then((j) => j.data);
 
 export function fetchAuditEvents(f: EventsFilter): Promise<EventsPage> {
   const sp = new URLSearchParams();
