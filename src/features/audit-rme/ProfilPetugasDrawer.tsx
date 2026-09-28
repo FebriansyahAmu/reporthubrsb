@@ -18,7 +18,7 @@ import {
   SUMBER,
   TTV_TERLAMBAT_MENIT,
 } from "@/server/modules/audit-rme/kunjungan.constants";
-import { KOMPONEN, KOMPONEN_KEYS } from "@/server/modules/audit-rme/skor";
+import { KOMPONEN, KOMPONEN_KEYS, nilaiPenjelasan, rumusTerhitung } from "@/server/modules/audit-rme/skor";
 import {
   fetchProfilPetugas,
   type KunjunganPetugas,
@@ -28,11 +28,12 @@ import {
   type TemuanBatal,
   type TemuanTtv,
 } from "./audit.client";
+import { EksporMenu } from "./Ekspor";
 import { JejakKunjunganDrawer } from "./JejakKunjunganDrawer";
 import { KalenderAktivitas } from "./KalenderAktivitas";
 import { fmtWaktu } from "./KunjunganCardView";
 import { KATEGORI_TONE } from "./RekamList";
-import { nilaiPenjelasan, PetugasAvatar, SkorBar, SkorPill } from "./SkorParts";
+import { PetugasAvatar, SkorBar, SkorPill } from "./SkorParts";
 
 type Tab = "ringkasan" | "pasien" | "temuan";
 const PASIEN_PAGE = 10;
@@ -68,7 +69,7 @@ export function ProfilPetugasDrawer({
         title="Profil kepatuhan petugas"
         size="xl"
         dismissible={!jejak}
-        header={item ? <Header it={item} /> : null}
+        header={item ? <Header it={item} filter={filter} /> : null}
       >
         {item &&
           (d ? (
@@ -84,7 +85,7 @@ export function ProfilPetugasDrawer({
   );
 }
 
-function Header({ it }: { it: PetugasSkorItem }) {
+function Header({ it, filter }: { it: PetugasSkorItem; filter: PetugasFilter }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <PetugasAvatar nama={it.nama} profesi={it.profesi} size="lg" />
@@ -100,7 +101,10 @@ function Header({ it }: { it: PetugasSkorItem }) {
           )}
         </p>
       </div>
-      <SkorPill skor={it.skor} band={it.band} size="lg" />
+      <div className="flex items-center gap-2">
+        <SkorPill skor={it.skor} band={it.band} size="lg" />
+        <EksporMenu laporan="profil" params={{ ...filter, id: it.id }} />
+      </div>
     </div>
   );
 }
@@ -163,9 +167,7 @@ function ProfilBody({ it, d, onOpenKunjungan }: { it: PetugasSkorItem; d: Profil
 /* -------------------------------------------------------------- ringkasan */
 
 function Ringkasan({ it, d }: { it: PetugasSkorItem; d: ProfilPetugas }) {
-  const berlaku = KOMPONEN_KEYS.filter((k) => it.komponen[k].skor != null);
-  const rumus = berlaku.map((k) => `${KOMPONEN[k].bobot}×${it.komponen[k].skor}`).join(" + ");
-  const totalBobot = berlaku.reduce((s, k) => s + KOMPONEN[k].bobot, 0);
+  const rumus = rumusTerhitung(it);
   const maksKat = Math.max(1, ...KATEGORI_KEYS.map((k) => d.perKategori[k]));
   const totalShift = SHIFTS.reduce((s, x) => s + d.perShift[x.key], 0);
 
@@ -190,7 +192,7 @@ function Ringkasan({ it, d }: { it: PetugasSkorItem; d: ProfilPetugas }) {
                 );
               })}
               <p className="rounded-md bg-surface-2/60 px-2.5 py-1.5 font-mono text-[11px] text-fg-muted">
-                ({rumus}) ÷ {totalBobot} = <b className="text-fg">{it.skor}</b>
+                {rumus} = <b className="text-fg">{it.skor}</b>
               </p>
             </div>
           ) : (

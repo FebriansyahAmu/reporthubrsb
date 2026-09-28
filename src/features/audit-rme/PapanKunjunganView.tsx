@@ -20,6 +20,7 @@ import {
   type KunjunganPage,
   type RuanganTree,
 } from "./audit.client";
+import { EksporMenu } from "./Ekspor";
 import { KunjunganCardView } from "./KunjunganCardView";
 import { JejakKunjunganDrawer } from "./JejakKunjunganDrawer";
 import { KunjunganRowList } from "./KunjunganRowList";
@@ -184,25 +185,32 @@ export function PapanKunjunganView() {
             </button>
           )}
         </span>
-        <div className="ml-auto inline-flex rounded-[var(--radius-md)] border border-border bg-surface-2 p-0.5" role="group" aria-label="Mode tampilan">
-          {([
-            { key: "kartu", label: "Kartu", icon: LayoutGrid },
-            { key: "ringkas", label: "Ringkas", icon: Rows3 },
-          ] as const).map((m) => (
-            <button
-              key={m.key}
-              type="button"
-              aria-pressed={mode === m.key}
-              onClick={() => setMode(m.key)}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 py-1 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring",
-                mode === m.key ? "bg-surface text-fg shadow-xs" : "text-fg-muted hover:text-fg",
-              )}
-            >
-              <m.icon className="size-3.5" />
-              {m.label}
-            </button>
-          ))}
+        <div className="ml-auto flex items-center gap-2">
+          <EksporMenu
+            laporan="kunjungan"
+            params={{ ...base, kelompok: sel.kelompok, jenis: sel.jenis, ruangan: sel.ruangan }}
+            disabled={!data || data.summary.total === 0}
+          />
+          <div className="inline-flex rounded-[var(--radius-md)] border border-border bg-surface-2 p-0.5" role="group" aria-label="Mode tampilan">
+            {([
+              { key: "kartu", label: "Kartu", icon: LayoutGrid },
+              { key: "ringkas", label: "Ringkas", icon: Rows3 },
+            ] as const).map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                aria-pressed={mode === m.key}
+                onClick={() => setMode(m.key)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2.5 py-1 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring",
+                  mode === m.key ? "bg-surface text-fg shadow-xs" : "text-fg-muted hover:text-fg",
+                )}
+              >
+                <m.icon className="size-3.5" />
+                {m.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

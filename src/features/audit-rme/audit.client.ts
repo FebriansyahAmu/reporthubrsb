@@ -1,6 +1,9 @@
 "use client";
 
+import { downloadFromEndpoint } from "@/lib/download";
 import type { JenisAktivitas } from "@/server/modules/audit-rme/audit.constants";
+import type { FormatEkspor, LaporanEkspor } from "@/server/modules/audit-rme/ekspor.constants";
+import type { RiwayatEksporPage } from "@/server/modules/audit-rme/ekspor.service";
 // Hanya tipe (dihapus saat kompilasi) — tidak menarik kode server-only ke klien.
 import type { KunjunganPage, RuanganTree } from "@/server/modules/audit-rme/kunjungan.service";
 import type { KunjunganDetail, RekamIsi } from "@/server/modules/audit-rme/jejak.service";
@@ -214,3 +217,31 @@ export function fetchLog(f: LogFilter): Promise<LogPage> {
 /** Pohon ruangan memakai filter yang sama KECUALI lokasi & halaman (rail tetap utuh). */
 export const fetchRuanganTree = (f: KunjunganFilter) =>
   jsonCall<RuanganTree>(`/api/audit-rme/ruangan?${kunjunganParams(f, false)}`).then((j) => j.data);
+
+/* ------------------------------------------------------ Fase 2: ekspor (K5) */
+
+export type { RiwayatEksporItem, RiwayatEksporPage } from "@/server/modules/audit-rme/ekspor.service";
+
+/** Parameter filter ekspor = filter layar sumbernya (nilai kosong/false diabaikan). */
+export type EksporParams = Record<string, string | number | boolean | null | undefined>;
+
+/**
+ * Unduh ekspor Excel/PDF. Pesan galat server (mis. "Terlalu banyak kunjungan…")
+ * diteruskan apa adanya. Mengembalikan nama berkas & kode ekspor (meta-audit).
+ */
+export async function unduhEkspor(
+  laporan: LaporanEkspor,
+  format: FormatEkspor,
+  params: EksporParams,
+): Promise<{ namaBerkas: string; kode: string | null }> {
+  const sp = new URLSearchParams({ laporan, format });
+  for (const [k, v] of Object.entries(params)) {
+    if (v == null || v === "" || v === false) continue;
+    sp.set(k, v === true ? "1" : String(v));
+  }
+  const { filename, headers } = await downloadFromEndpoint(`/api/audit-rme/ekspor?${sp}`, `AuditRME.${format}`);
+  return { namaBerkas: filename, kode: headers.get("X-Ekspor-Kode") };
+}
+
+export const fetchRiwayatEkspor = (page: number) =>
+  jsonCall<RiwayatEksporPage>(`/api/audit-rme/ekspor/riwayat?page=${page}`).then((j) => j.data);

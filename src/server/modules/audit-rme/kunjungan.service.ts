@@ -1,5 +1,5 @@
 import "server-only";
-import { ValidationError } from "@/server/lib/errors";
+import { BusinessRuleError, ValidationError } from "@/server/lib/errors";
 import { addDaysIso, todayWitaIso } from "./audit.constants";
 import { getRuanganResolver, getTindakanResolver, getUserResolver } from "./audit.resolver";
 import {
@@ -18,8 +18,10 @@ import {
   type StatusKunjungan,
 } from "./kunjungan.constants";
 import {
+  PETA_KUNJUNGAN_CAP,
   queryKategoriCounts,
   queryKunjunganPage,
+  queryKunjunganSemua,
   queryLegBerasesmen,
   queryKunjunganPerRuangan,
   queryKunjunganSummary,
@@ -27,7 +29,7 @@ import {
   type KunjunganFilter,
   type KunjunganRow,
 } from "./kunjungan.dal";
-import type { KunjunganQuery, RuanganTreeQuery } from "./kunjungan.schema";
+import type { KunjunganFilterQuery, KunjunganQuery, RuanganTreeQuery } from "./kunjungan.schema";
 
 /* ------------------------------------------------------------------- tipe */
 
@@ -246,6 +248,52 @@ export async function cariAsesmenRujukan(
   return out;
 }
 
+const KATEGORI_CHUNK = 300;
+
+/** Hitungan kategori per kunjungan (`K:<nomor>`) & per episode (`E:<nopen>`, Diagnosis). */
+export type IndeksKategori = Map<string, KategoriCountRow[]>;
+
+/**
+ * Hitungan kategori banyak kunjungan — `IN (…)` per potongan 300, berurutan
+ * (tidak menekan koneksi SIMGOS). Item tarif tidak dihitung sebagai Tindakan.
+ */
+export async function indeksKategori(rows: KunjunganRow[], tarifIds: readonly number[]): Promise<IndeksKategori> {
+  const byRef: IndeksKategori = new Map();
+  for (let i = 0; i < rows.length; i += KATEGORI_CHUNK) {
+    const part = rows.slice(i, i + KATEGORI_CHUNK);
+    const counts = await queryKategoriCounts(part.map((r) => r.nomor), [...new Set(part.map((r) => r.nopen))], tarifIds);
+    for (const c of counts) {
+      const key = `${c.kategori === "DIAGNOSIS" ? "E" : "K"}:${c.ref}`;
+      const list = byRef.get(key);
+      if (list) list.push(c);
+      else byRef.set(key, [c]);
+    }
+  }
+  return byRef;
+}
+
+/** Hitungan yang relevan untuk satu kunjungan (kunjungan itu + episode-nya). */
+export const hitunganKunjungan = (idx: IndeksKategori, r: KunjunganRow): KategoriCountRow[] => [
+  ...(idx.get(`K:${r.nomor}`) ?? []),
+  ...(idx.get(`E:${r.nopen}`) ?? []),
+];
+
+/**
+ * Kartu untuk sekumpulan kunjungan: hitungan kategori + asesmen rujukan (RI
+ * tanpa asesmen sendiri, 1 query) → `buildCard`. Dipakai papan (satu halaman)
+ * dan ekspor (semua baris filter) sehingga angkanya identik.
+ */
+async function bangunKartu(rows: KunjunganRow[]): Promise<KunjunganCard[]> {
+  const [tindakan, users, ruangan] = await Promise.all([getTindakanResolver(), getUserResolver(), getRuanganResolver()]);
+  const idx = await indeksKategori(rows, tindakan.tarifIds);
+  const tanpaAsesmen = rows.filter(
+    (r) => r.jenis === JENIS_RAWAT_INAP && !(idx.get(`K:${r.nomor}`) ?? []).some((c) => c.kategori === "ASESMEN" && c.aktif > 0),
+  );
+  const rujukan = await cariAsesmenRujukan(tanpaAsesmen, ruangan);
+  const today = todayWitaIso();
+  return rows.map((r) => buildCard(r, hitunganKunjungan(idx, r), users, ruangan, today, rujukan.get(r.nomor) ?? null));
+}
+
 /**
  * Satu halaman papan kunjungan + ringkasan per kategori. Biaya SIMGOS tetap:
  * ringkasan + halaman (paralel), lalu 1 query kategori `IN (<halaman>)` (+ 1
@@ -253,45 +301,15 @@ export async function cariAsesmenRujukan(
  */
 export async function listKunjungan(q: KunjunganQuery): Promise<KunjunganPage> {
   const f = toFilter(q);
-  const [summary, rows, tindakan] = await Promise.all([
+  const [summary, rows] = await Promise.all([
     queryKunjunganSummary(f),
     queryKunjunganPage(f, (q.page - 1) * q.pageSize, q.pageSize),
+    // Hangatkan cache resolver sejajar halaman → `bangunKartu` tanpa round-trip tambahan.
     getTindakanResolver(),
-  ]);
-
-  const nomors = rows.map((r) => r.nomor);
-  const nopens = [...new Set(rows.map((r) => r.nopen))];
-  const [counts, users, ruangan] = await Promise.all([
-    queryKategoriCounts(nomors, nopens, tindakan.tarifIds),
     getUserResolver(),
     getRuanganResolver(),
   ]);
-
-  // Indeks hitungan: per kunjungan (KUNJUNGAN) & per episode (NOPEN, Diagnosis).
-  const byRef = new Map<string, KategoriCountRow[]>();
-  for (const c of counts) {
-    const key = `${c.kategori === "DIAGNOSIS" ? "E" : "K"}:${c.ref}`;
-    const list = byRef.get(key);
-    if (list) list.push(c);
-    else byRef.set(key, [c]);
-  }
-
-  const tanpaAsesmen = rows.filter(
-    (r) => r.jenis === JENIS_RAWAT_INAP && !(byRef.get(`K:${r.nomor}`) ?? []).some((c) => c.kategori === "ASESMEN" && c.aktif > 0),
-  );
-  const rujukan = await cariAsesmenRujukan(tanpaAsesmen, ruangan);
-
-  const today = todayWitaIso();
-  const items = rows.map((r) =>
-    buildCard(
-      r,
-      [...(byRef.get(`K:${r.nomor}`) ?? []), ...(byRef.get(`E:${r.nopen}`) ?? [])],
-      users,
-      ruangan,
-      today,
-      rujukan.get(r.nomor) ?? null,
-    ),
-  );
+  const items = await bangunKartu(rows);
 
   return {
     range: { from: f.from, to: f.to },
@@ -301,6 +319,25 @@ export async function listKunjungan(q: KunjunganQuery): Promise<KunjunganPage> {
     summary,
     items,
   };
+}
+
+export type KunjunganSemua = { range: { from: string; to: string }; summary: KunjunganPage["summary"]; items: KunjunganCard[] };
+
+/**
+ * SEMUA kunjungan cocok filter papan (tanpa halaman) — bahan ekspor. Urutan
+ * sama dengan papan (terbaru dulu). Ditolak bila melebihi batas agar ekspor
+ * tidak pernah terpotong diam-diam.
+ */
+export async function semuaKunjungan(q: KunjunganFilterQuery): Promise<KunjunganSemua> {
+  const f = toFilter(q);
+  const summary = await queryKunjunganSummary(f);
+  if (summary.total > PETA_KUNJUNGAN_CAP) {
+    throw new BusinessRuleError(
+      `Terlalu banyak kunjungan (${summary.total.toLocaleString("id-ID")}) untuk satu ekspor — maksimal ${PETA_KUNJUNGAN_CAP.toLocaleString("id-ID")}. Persempit rentang atau lokasi.`,
+    );
+  }
+  const rows = (await queryKunjunganSemua(f)).reverse(); // MASUK, NOMOR ↑ → ↓ (urutan papan)
+  return { range: { from: f.from, to: f.to }, summary, items: await bangunKartu(rows) };
 }
 
 /* ---------------------------------------------------------------- pohon ruangan */

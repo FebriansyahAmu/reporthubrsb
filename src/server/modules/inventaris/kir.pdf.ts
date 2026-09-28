@@ -1,7 +1,5 @@
 import "server-only";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { buildReportPdf, type PdfColumnDef, type PdfSignatory } from "@/server/lib/pdf";
+import { buildReportPdf, loadInstansiLogo, type PdfColumnDef, type PdfSignatory } from "@/server/lib/pdf";
 import { stampWita } from "@/server/lib/excel";
 import { STATUS_ASET_LABEL } from "./barang.schema";
 import type { KirSignBlockInput } from "./kir.schema";
@@ -19,18 +17,6 @@ function longDateWita(d: Date): string {
 }
 
 const rupiah = (n: number | null): string => (n == null ? "-" : `Rp${n.toLocaleString("id-ID")}`);
-
-// Logo instansi (public/logo/logoboltim.png) — dibaca sekali & di-cache.
-let logoCache: Uint8Array | null | undefined;
-function loadLogo(): Uint8Array | undefined {
-  if (logoCache !== undefined) return logoCache ?? undefined;
-  try {
-    logoCache = new Uint8Array(readFileSync(join(process.cwd(), "public", "logo", "logoboltim.png")));
-  } catch {
-    logoCache = null;
-  }
-  return logoCache ?? undefined;
-}
 
 /** Susun PDF Kartu Inventaris Ruangan (KIR) resmi ber-kop, logo & tanda tangan. */
 export async function buildKirPdf(
@@ -75,7 +61,7 @@ export async function buildKirPdf(
         ];
   const place = opts.sign?.place || "Sumber Rejo";
 
-  const logo = loadLogo();
+  const logo = loadInstansiLogo();
 
   return buildReportPdf({
     title: "KARTU INVENTARIS RUANGAN (KIR)",

@@ -21,9 +21,12 @@ import {
 } from "@/server/modules/audit-rme/kunjungan.constants";
 import {
   BAND,
+  BAND_TEKS,
   INTEGRITAS_BATAS,
   KOMPONEN,
   KOMPONEN_KEYS,
+  KOMPONEN_PENDEK,
+  komponenEkstrem,
   SKOR_SYARAT,
   type BandKey,
   type KomponenKey,
@@ -37,17 +40,10 @@ import {
   type ProfesiRingkas,
   type RuanganTree,
 } from "./audit.client";
+import { EksporMenu } from "./Ekspor";
 import { ProfilPetugasDrawer } from "./ProfilPetugasDrawer";
 import type { LokasiSel } from "./RuanganRail";
-import {
-  BAND_STYLE,
-  KOMPONEN_PENDEK,
-  komponenEkstrem,
-  nilaiRingkas,
-  PetugasAvatar,
-  SkorBar,
-  SkorPill,
-} from "./SkorParts";
+import { BAND_STYLE, nilaiRingkas, PetugasAvatar, SkorBar, SkorPill } from "./SkorParts";
 
 const PAGE_SIZE = 12;
 const PODIUM_MAKS = 5;
@@ -153,14 +149,17 @@ export function KepatuhanPetugasView() {
             <Label htmlFor="kp-lokasi">Lokasi input</Label>
             <Select id="kp-lokasi" value={encodeLokasi(lokasi)} onChange={(v) => setLokasi(decodeLokasi(v))} options={lokasiOptions(tree.result)} />
           </div>
-          <button
-            type="button"
-            onClick={() => setRumus((v) => !v)}
-            aria-expanded={rumus}
-            className="inline-flex items-center gap-1.5 self-start rounded-[var(--radius-md)] border border-border px-3 py-2 text-xs font-medium text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring xl:ml-auto xl:self-end"
-          >
-            <Info className="size-3.5" /> Cara skor dihitung
-          </button>
+          <div className="flex items-center gap-2 self-start xl:ml-auto xl:self-end">
+            <button
+              type="button"
+              onClick={() => setRumus((v) => !v)}
+              aria-expanded={rumus}
+              className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-border px-3 py-2 text-xs font-medium text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+            >
+              <Info className="size-3.5" /> Cara skor dihitung
+            </button>
+            <EksporMenu laporan="petugas" params={filter} disabled={!data || data.items.length === 0} />
+          </div>
         </div>
       </Card>
 
@@ -591,9 +590,7 @@ function RumusSkor({ onClose }: { onClose: () => void }) {
           Dinilai bila aktif ≥ {SKOR_SYARAT.hariAktifMin} hari dinas dan ≥ {SKOR_SYARAT.inputMin} input klinis. Pembanding = rekan seprofesi pada
           rentang & lokasi yang sama. Hari dinas dimulai 07.00.
         </li>
-        <li>
-          Pita: {BAND.map((b, i) => `${b.label} ${i === 0 ? `≥ ${b.min}` : i === BAND.length - 1 ? `< ${BAND[i - 1].min}` : `${b.min}–${BAND[i - 1].min - 1}`}`).join(" · ")}.
-        </li>
+        <li>Pita: {BAND_TEKS}.</li>
         <li>
           Integritas hanya menilai pembatalan (maks. penalti pada {INTEGRITAS_BATAS * 100}%). Nilai TTV tak wajar (mis. suhu 362) ditampilkan sebagai
           temuan, tidak mengurangi skor — polanya sistemik (± 47% TTV).

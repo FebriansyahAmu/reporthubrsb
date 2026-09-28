@@ -306,6 +306,15 @@ Timeline panjang diganti **tabel ringkas berpaginasi bernomor** (kepadatan tingg
 
 ### Stage K5 — Ekspor (menggantikan Stage 4 Fase 1)
 - Excel/PDF: rekap kepatuhan per petugas, per ruangan, dan rincian per kunjungan (bukti pembinaan/penghargaan). Meta-audit ekspor.
+- ✅ **SELESAI (29 Sep 2026)** — E2E 60/60 (isi setiap berkas dibaca ulang — ExcelJS & content stream PDF — lalu dicocokkan dengan API layar & SQL SIMGOS independen; meta-audit; RBAC; UI nyata + HP 390 px) + regresi K2 27/27, K1 21/21, K0 32/32, Stage 1–3; K3/K4 semua cek data lulus (hanya ambang latensi yang meleset saat latensi jaringan SIMGOS ± 130 ms/round-trip).
+  - **6 laporan, satu endpoint** `GET /api/audit-rme/ekspor?laporan=…&format=xlsx|pdf` (izin **`audit-rme:print`**), filter = skema endpoint layar sumbernya (tidak bisa menyimpang): **rekap petugas** (ringkasan per profesi + lembar peringkat per profesi + metodologi), **profil petugas** (komponen + dasar perhitungan + rumus terhitung, kalender hari dinas, kunjungan ditangani, temuan batal/TTV; TTD petugas–atasan–mengetahui, NIP), **rekap ruangan** (ringkasan per ruang, matriks ruang × hari berwarna pita = heatmap, rincian pasien per hari [Excel]), **daftar kunjungan** (semua baris filter papan, pip kategori + kelengkapan), **jejak kunjungan** (identitas, kategori, matriks 24 jam, data aktual + pelaku batal, rekap petugas, log), **log aktivitas** (semua baris tabel + label Pembatalan).
+  - **Satu model dokumen** (`ekspor.dokumen.ts`) dirender ke Excel (angka tetap angka, tanggal = tanggal, banyak lembar, freeze + filter) **dan** PDF (logo, lebar kolom auto-skala, gaya sel, TTD); builder memakai service layar apa adanya → angka ekspor = angka layar.
+  - **Tidak pernah terpotong diam-diam:** daftar kunjungan > 3.000 atau log > 5.000 baris → 409 + pesan "persempit filter" (log 31 hari ± 9.976 baris).
+  - **Meta-audit fail-closed:** setiap berkas → 1 baris `audit_log` (`audit-rme.ekspor`; kode `EKS-YYMMDD-XXXXXX`, laporan, format, filter, jumlah baris, ukuran, nama berkas, IP). Gagal mencatat = berkas tidak diserahkan (`writeAudit(…, { strict: true })`). Kode dicetak di kepala & kaki dokumen → berkas cetak dapat ditelusuri. **Tanpa PHI** di meta-audit: pencarian nama/RM pasien disamarkan, ringkasan jejak hanya nomor kunjungan. Permintaan yang ditolak (403/404/409/422) tidak dicatat sebagai ekspor.
+  - **Riwayat ekspor** (`/api/audit-rme/ekspor/riwayat`, izin view): drawer dari bilah tab — siapa, kapan, laporan, cakupan, baris, ukuran, kode; paginasi.
+  - UI: tombol **Ekspor** (menu Excel/PDF + catatan "tercatat di Riwayat ekspor") di Papan, Kepatuhan Petugas, Peta Ruangan, Log Aktivitas, drawer Profil & Jejak; disembunyikan tanpa izin print (context `EksporProvider`).
+  - Refactor bersama: `indeksKategori`/`bangunKartu` (papan, peta, ekspor), `perkaya` log (halaman & ekspor), `nilaiPenjelasan`/`rumusTerhitung`/`komponenEkstrem`/`BAND_TEKS` → `skor.ts`, `SEL_LABEL` → `kepatuhan.ts`; helper PDF bersama: gaya sel, catatan tabel, baris meta dibungkus, `loadInstansiLogo` (dipakai juga KIR).
+  - Kinerja (jaringan dev ± 130 ms/round-trip): rekap petugas ± 2,2 dtk, profil ± 2–3 dtk, peta 31 hari ± 3,4 dtk, daftar kunjungan 7 hari ± 3,9 dtk, log 7 hari (2.143 baris) ± 6,5–9 dtk.
 
 Opsional setelahnya: Stage 5 `bridge_log`, kategori tambahan (Farmasi `layanan.farmasi`, hasil lab `layanan.hasil_lab`, `diagnosis` teks, triage IGD), target yang dapat diatur dari UI.
 
@@ -328,7 +337,7 @@ Opsional setelahnya: Stage 5 `bridge_log`, kategori tambahan (Farmasi `layanan.f
 1. **Target RI & shift:** ✅ **default §4.2** — CPPT perawat ≥ 1/shift (≥ 3/24 jam), CPPT dokter ≥ 1/24 jam, TTV ≥ 3/24 jam; shift **Pagi 07–14, Siang 14–21, Malam 21–07** (WITA). Disimpan di konstanta, bisa diubah nanti.
 2. **Asesmen:** ✅ **3 tabel inti** — `anamnesis` + `keluhan_utama` + `pemeriksaan_fisik`.
 3. **Farmasi & Lab:** ✅ **lewat kategori Tindakan dulu**; kategori Farmasi (`layanan.farmasi`) jadi stage opsional.
-4. **Urutan:** ✅ **K0 → K1 Papan Kunjungan** → K2 Drawer → K3 Kepatuhan Petugas → K4 → K5.
+4. **Urutan:** ✅ **K0 → K1 Papan Kunjungan** → K2 Drawer → K3 Kepatuhan Petugas → K4 → K5 (seluruhnya selesai 29 Sep 2026).
 5. **Item tarif pada Tindakan:** ✅ dipisah dari skor petugas (K3) **dan** dari kartu/kelengkapan/drawer/matriks (K4) — aturan `TINDAKAN_TARIF`.
 6. **Asesmen RI:** ✅ (K4) dipenuhi bila asesmen di leg IGD/RJ pasien sama ≤ 48 jam sebelum masuk RI (NOPEN boleh berbeda).
 

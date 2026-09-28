@@ -99,7 +99,7 @@ export async function getAuditStatus(): Promise<AuditStatus> {
 
 export type AuditRefs = {
   scope: { objek: string; label: string; tabel: string }[];
-  users: UserMini[];
+  users: Omit<UserMini, "nip">[];
   coverage: { minDate: string | null; maxDate: string | null };
 };
 
@@ -114,7 +114,7 @@ export async function getRefs(): Promise<AuditRefs> {
   const [resolver, range] = await Promise.all([getUserResolver(), queryScopeIdRange()]);
   return {
     scope: empty.scope,
-    users: resolver.list,
+    users: resolver.list.map(({ id, nama, login, profesi }) => ({ id, nama, login, profesi })),
     coverage: { minDate: idToIsoDate(range.minId), maxDate: idToIsoDate(range.maxId) },
   };
 }

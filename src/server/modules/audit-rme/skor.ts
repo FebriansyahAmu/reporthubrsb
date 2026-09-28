@@ -11,6 +11,7 @@
  * - Item tarif pada Tindakan tidak dihitung (lihat `TINDAKAN_TARIF`).
  */
 
+import { formatNumber } from "@/lib/format";
 import {
   PROFESI_BIDAN,
   PROFESI_DOKTER,
@@ -75,6 +76,10 @@ export const BAND: readonly { key: BandKey; label: string; min: number }[] = [
 ];
 export const bandOf = (skor: number): BandKey => BAND.find((b) => skor >= b.min)!.key;
 export const bandLabel = (key: BandKey) => BAND.find((b) => b.key === key)!.label;
+/** "Teladan ≥ 75 · Baik 60–74 · Cukup 40–59 · Perlu pembinaan < 40". */
+export const BAND_TEKS = BAND.map(
+  (b, i) => `${b.label} ${i === 0 ? `≥ ${b.min}` : i === BAND.length - 1 ? `< ${BAND[i - 1].min}` : `${b.min}–${BAND[i - 1].min - 1}`}`,
+).join(" · ");
 
 /* ----------------------------------------------------------------- tipe */
 
@@ -223,4 +228,52 @@ export function hitungSkor(metrik: MetrikPetugas[]): SkorPetugas[] {
     list.forEach((h, i) => (h.peringkat = i + 1));
   }
   return hasil;
+}
+
+/* ------------------------------------------------ penjelasan (UI & ekspor) */
+
+export const KOMPONEN_PENDEK: Record<KomponenKey, string> = {
+  aktivitas: "Aktivitas",
+  kontribusiRi: "Kontribusi RI",
+  ketepatanTtv: "TTV tepat waktu",
+  integritas: "Integritas",
+};
+
+const pct = (n: number, d: number) => (d ? `${formatNumber(Math.round((n / d) * 1000) / 10)}%` : "—");
+const desimal = (n: number | null) => (n == null ? "—" : formatNumber(n));
+
+/** Dasar angka satu komponen, kalimat utuh — sama persis di profil (UI) dan dokumen ekspor. */
+export function nilaiPenjelasan(key: KomponenKey, it: SkorPetugas & { profesiLabel: string }): string {
+  const k = it.komponen[key];
+  const peer = `${formatNumber(it.pembanding)} ${it.profesiLabel.toLowerCase()}`;
+  switch (key) {
+    case "aktivitas":
+      return `${formatNumber(it.klinis)} input klinis dalam ${formatNumber(it.hariAktif)} hari dinas = ${desimal(k.nilai)}/hari · persentil ${k.skor} dari ${peer}.`;
+    case "kontribusiRi": {
+      if (k.skor == null) return `Tidak berlaku — menangani ${formatNumber(it.riHariPasien)} hari-pasien RI (syarat ≥ ${SKOR_SYARAT.riHariPasienMin}) atau profesi tanpa target RI.`;
+      const n = it.profesi === PROFESI_DOKTER ? `${formatNumber(it.riVisite)} hari-pasien RI divisite (CPPT dokter)` : `${formatNumber(it.riShift)} shift-pasien RI diisi CPPT`;
+      return `${n} = ${desimal(k.nilai)}/hari dinas · persentil ${k.skor} dari rekan yang bertugas di RI.`;
+    }
+    case "ketepatanTtv":
+      if (k.skor == null) return `Tidak berlaku — ${formatNumber(it.ttv)} TTV (syarat ≥ ${SKOR_SYARAT.ttvMin}).`;
+      return `${formatNumber(it.ttv - it.ttvTerlambat)} dari ${formatNumber(it.ttv)} TTV disimpan tepat waktu (${pct(it.ttv - it.ttvTerlambat, it.ttv)}).`;
+    case "integritas":
+      return `${formatNumber(it.batal)} dari ${formatNumber(it.klinis + it.batal)} input dibatalkan (${pct(it.batal, it.klinis + it.batal)}).`;
+  }
+}
+
+/** Komponen terkuat & terlemah (yang berlaku) — ringkasan papan & ekspor. */
+export function komponenEkstrem(it: SkorPetugas): { kuat: KomponenKey | null; lemah: KomponenKey | null } {
+  const ada = KOMPONEN_KEYS.filter((k) => it.komponen[k].skor != null);
+  if (ada.length === 0) return { kuat: null, lemah: null };
+  const by = [...ada].sort((a, b) => it.komponen[b].skor! - it.komponen[a].skor!);
+  return { kuat: by[0], lemah: by[by.length - 1] };
+}
+
+/** Ruas kiri rumus skor terhitung, mis. "(35×62 + 20×90 + 15×100) ÷ 70" (hasilnya `it.skor`); null bila belum dinilai. */
+export function rumusTerhitung(it: SkorPetugas): string | null {
+  if (!it.dinilai || it.skor == null) return null;
+  const berlaku = KOMPONEN_KEYS.filter((k) => it.komponen[k].skor != null);
+  const bobot = berlaku.reduce((s, k) => s + KOMPONEN[k].bobot, 0);
+  return `(${berlaku.map((k) => `${KOMPONEN[k].bobot}×${it.komponen[k].skor}`).join(" + ")}) ÷ ${bobot}`;
 }

@@ -25,6 +25,7 @@ import {
   type PetugasRekap,
 } from "./audit.client";
 import { AuditDetailModal } from "./AuditDetailModal";
+import { EksporMenu } from "./Ekspor";
 import { KelengkapanMeter, MiniPip, fmtWaktu } from "./KunjunganCardView";
 import { AvatarStack, MatriksShiftView } from "./MatriksShiftView";
 import { KATEGORI_TONE, LOG_JENIS, RekamList, type SelFilter } from "./RekamList";
@@ -100,6 +101,9 @@ function Header({ k }: { k: KunjunganCard }) {
         {k.status !== "SELESAI" && (
           <Badge tone={k.status === "BATAL" ? "danger" : "accent"} dot className="px-2">{STATUS_KUNJUNGAN_LABEL[k.status]}</Badge>
         )}
+        <div className="ml-auto">
+          <EksporMenu laporan="jejak" params={{ nomor: k.nomor }} />
+        </div>
       </div>
       <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-muted">
         <span className="font-mono">RM {k.norm}</span>

@@ -89,9 +89,9 @@ export async function queryActiveUserCount(): Promise<number> {
  */
 export async function queryAllUsers(): Promise<UserMini[]> {
   const rows = await getSimgos().$queryRawUnsafe<
-    { id: number | bigint; nama: string | null; login: string | null; profesi: number | null }[]
+    { id: number | bigint; nama: string | null; login: string | null; profesi: number | null; nip: string | null }[]
   >(
-    `SELECT u.ID AS id, u.NAMA AS nama, u.LOGIN AS login, pg.PROFESI AS profesi
+    `SELECT u.ID AS id, u.NAMA AS nama, u.LOGIN AS login, pg.PROFESI AS profesi, u.NIP AS nip
      FROM ${A}.pengguna u
      LEFT JOIN ${SIMGOS_DB.MASTER}.pegawai pg ON pg.NIP = u.NIP AND u.NIP <> ''
      ORDER BY u.NAMA`,
@@ -101,6 +101,7 @@ export async function queryAllUsers(): Promise<UserMini[]> {
     nama: r.nama ?? null,
     login: r.login ?? null,
     profesi: r.profesi == null ? null : Number(r.profesi),
+    nip: r.nip?.trim() || null,
   }));
 }
 

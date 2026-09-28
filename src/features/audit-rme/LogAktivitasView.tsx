@@ -20,6 +20,7 @@ import { JENIS_LABEL, JENIS_TONE } from "@/server/modules/audit-rme/audit.consta
 import { KATEGORI, KATEGORI_KEYS, RENTANG_MAKS_HARI, SUMBER, SUMBER_KEYS } from "@/server/modules/audit-rme/kunjungan.constants";
 import { fetchAuditRefs, fetchLog, type AuditRefs, type LogBaris, type LogFilter, type LogPage } from "./audit.client";
 import { AuditDetailBody } from "./AuditDetailModal";
+import { EksporMenu } from "./Ekspor";
 import { JejakKunjunganDrawer } from "./JejakKunjunganDrawer";
 import { KATEGORI_TONE } from "./RekamList";
 import { PetugasAvatar } from "./SkorParts";
@@ -230,9 +231,12 @@ export function LogAktivitasView() {
               </>
             )}
           </p>
-          <Button variant="ghost" size="sm" icon={<RotateCcw className="size-4" />} onClick={reset}>
-            Atur ulang
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" icon={<RotateCcw className="size-4" />} onClick={reset}>
+              Atur ulang
+            </Button>
+            <EksporMenu laporan="log" params={{ ...filter, page: undefined, pageSize: undefined }} disabled={!data || data.total === 0} />
+          </div>
         </div>
       </Card>
 

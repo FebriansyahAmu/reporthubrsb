@@ -42,9 +42,11 @@ const lokasiFilter = {
   ruangan: z.preprocess(blankToUndef, z.string().regex(/^\d{7}(\d{2})?$/, "ID ruangan tidak valid").optional()),
 };
 
-export const kunjunganQuerySchema = z.object({
-  ...baseFilter,
-  ...lokasiFilter,
+/** Filter papan kunjungan tanpa halaman (dipakai juga ekspor). */
+export const kunjunganFilterSchema = z.object({ ...baseFilter, ...lokasiFilter });
+export type KunjunganFilterQuery = z.infer<typeof kunjunganFilterSchema>;
+
+export const kunjunganQuerySchema = kunjunganFilterSchema.extend({
   page: z.coerce.number().int().min(1).max(1000).default(1),
   pageSize: z.coerce.number().int().min(6).max(48).default(24),
 });

@@ -9,6 +9,7 @@ import {
   SHIFTS,
   type ShiftKey,
 } from "@/server/modules/audit-rme/kunjungan.constants";
+import { SEL_LABEL } from "@/server/modules/audit-rme/kepatuhan";
 import type { HariDinas, Matriks, Petugas, SelStatus, ShiftCell } from "./audit.client";
 
 export const SEL_STYLE: Record<SelStatus, string> = {
@@ -17,13 +18,6 @@ export const SEL_STYLE: Record<SelStatus, string> = {
   PARSIAL: "border-dashed border-border-strong bg-surface",
   NANTI: "border-dashed border-border bg-surface-2/40",
   LUAR: "border-transparent bg-surface-2/40",
-};
-export const SEL_LABEL: Record<SelStatus, string> = {
-  OK: "Terpenuhi",
-  KURANG: "Tidak terpenuhi",
-  PARSIAL: "Sebagian dalam masa rawat — tidak dinilai",
-  NANTI: "Belum berjalan",
-  LUAR: "Di luar masa rawat",
 };
 
 export function StatusIcon({ s, className }: { s: SelStatus; className?: string }) {

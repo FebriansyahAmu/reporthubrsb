@@ -3,8 +3,12 @@
 /**
  * Unduh file dari endpoint (respons blob) di browser, memakai nama dari header
  * `Content-Disposition` bila ada. Melempar Error dengan pesan server bila gagal.
+ * Mengembalikan nama berkas & header respons (mis. kode ekspor).
  */
-export async function downloadFromEndpoint(url: string, fallbackName: string): Promise<void> {
+export async function downloadFromEndpoint(
+  url: string,
+  fallbackName: string,
+): Promise<{ filename: string; headers: Headers }> {
   const res = await fetch(url);
   if (!res.ok) {
     const j = await res.json().catch(() => null);
@@ -22,4 +26,5 @@ export async function downloadFromEndpoint(url: string, fallbackName: string): P
   a.click();
   a.remove();
   URL.revokeObjectURL(objUrl);
+  return { filename, headers: res.headers };
 }

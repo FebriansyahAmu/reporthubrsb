@@ -31,9 +31,11 @@ import {
   type PetaSel,
   type RuanganTree,
 } from "./audit.client";
+import { EksporMenu } from "./Ekspor";
 import { JejakKunjunganDrawer } from "./JejakKunjunganDrawer";
 import { fmtWaktu } from "./KunjunganCardView";
-import { SEL_LABEL, SEL_STYLE, StatusIcon } from "./MatriksShiftView";
+import { SEL_LABEL } from "@/server/modules/audit-rme/kepatuhan";
+import { SEL_STYLE, StatusIcon } from "./MatriksShiftView";
 
 const PRESETS = [7, RENTANG_PETA_DEFAULT_HARI, RENTANG_MAKS_HARI];
 const todayIso = () => toLocalDateInput(new Date());
@@ -152,6 +154,9 @@ export function PetaRuanganView() {
                 </button>
               ))}
             </div>
+          </div>
+          <div className="self-start xl:self-end">
+            <EksporMenu laporan="ruangan" params={filter} disabled={!d || d.baris.length === 0} />
           </div>
         </div>
       </Card>

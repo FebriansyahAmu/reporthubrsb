@@ -14,6 +14,8 @@ export type UserMini = {
   login: string | null;
   /** `master.pegawai.PROFESI` (referensi JENIS=36) — null bila pengguna bukan pegawai. */
   profesi: number | null;
+  /** `aplikasi.pengguna.NIP` — hanya untuk dokumen ekspor resmi (tidak dikirim ke daftar filter). */
+  nip: string | null;
 };
 
 type Cache = { at: number; map: Map<string, UserMini>; list: UserMini[] };

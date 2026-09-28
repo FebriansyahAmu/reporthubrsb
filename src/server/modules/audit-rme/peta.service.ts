@@ -10,15 +10,16 @@ import {
   RENTANG_PETA_DEFAULT_HARI,
   type KategoriKey,
 } from "./kunjungan.constants";
-import {
-  queryKategoriCounts,
-  queryKunjunganSemua,
-  queryRecordsKunjungan,
-  type KategoriCountRow,
-  type KunjunganRow,
-} from "./kunjungan.dal";
+import { queryKunjunganSemua, queryRecordsKunjungan, type KunjunganRow } from "./kunjungan.dal";
 import type { PetaQuery } from "./kunjungan.schema";
-import { buildCard, resolveRange, type RuanganResolver, type UserResolver } from "./kunjungan.service";
+import {
+  buildCard,
+  hitunganKunjungan,
+  indeksKategori,
+  resolveRange,
+  type RuanganResolver,
+  type UserResolver,
+} from "./kunjungan.service";
 
 /**
  * Peta Ruangan (Fase 2 · K4): heatmap ruang × hari. Read-only.
@@ -243,8 +244,6 @@ function isiRawatInap(grid: Grid, kunjungan: KunjunganRow[], records: Awaited<Re
 
 /* ---------------------------------------------------- kelengkapan (non-RI) */
 
-const KATEGORI_CHUNK = 300;
-
 async function isiKelengkapan(
   grid: Grid,
   kunjungan: KunjunganRow[],
@@ -252,21 +251,10 @@ async function isiKelengkapan(
   users: UserResolver,
   ruangan: RuanganResolver,
 ) {
-  const counts: KategoriCountRow[] = [];
-  for (let i = 0; i < kunjungan.length; i += KATEGORI_CHUNK) {
-    const part = kunjungan.slice(i, i + KATEGORI_CHUNK);
-    counts.push(...(await queryKategoriCounts(part.map((k) => k.nomor), [...new Set(part.map((k) => k.nopen))], tarifIds)));
-  }
-  const byRef = new Map<string, KategoriCountRow[]>();
-  for (const c of counts) {
-    const key = `${c.kategori === "DIAGNOSIS" ? "E" : "K"}:${c.ref}`;
-    const list = byRef.get(key);
-    if (list) list.push(c);
-    else byRef.set(key, [c]);
-  }
+  const idx = await indeksKategori(kunjungan, tarifIds);
   const today = todayWitaIso();
   for (const k of kunjungan) {
-    const rel = [...(byRef.get(`K:${k.nomor}`) ?? []), ...(byRef.get(`E:${k.nopen}`) ?? [])];
+    const rel = hitunganKunjungan(idx, k);
     const card = buildCard(k, rel, users, ruangan, today);
     const petugas = new Set(rel.filter((c) => c.oleh && c.aktif > 0).map((c) => c.oleh!));
     const terpenuhi = new Set(card.kelengkapan.terpenuhi);

@@ -45,6 +45,14 @@ export type MatriksRecord = {
  */
 export type SelStatus = "OK" | "KURANG" | "PARSIAL" | "NANTI" | "LUAR";
 
+export const SEL_LABEL: Record<SelStatus, string> = {
+  OK: "Terpenuhi",
+  KURANG: "Tidak terpenuhi",
+  PARSIAL: "Sebagian dalam masa rawat — tidak dinilai",
+  NANTI: "Belum berjalan",
+  LUAR: "Di luar masa rawat",
+};
+
 export type Hitungan = {
   cpptKeperawatan: number;
   cpptDokter: number;

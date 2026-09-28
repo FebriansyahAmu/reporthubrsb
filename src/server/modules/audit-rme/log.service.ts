@@ -1,6 +1,7 @@
 import "server-only";
+import { BusinessRuleError } from "@/server/lib/errors";
 import { AKSI_JENIS, type JenisAktivitas } from "./audit.constants";
-import { queryLogCount, queryLogPage, queryLogSnapshots, type LogFilter } from "./audit.dal";
+import { queryLogCount, queryLogPage, queryLogSnapshots, type LogFilter, type LogPageRow } from "./audit.dal";
 import { computeDiff, detectSoftDelete } from "./audit.diff";
 import { getRuanganResolver, getUserResolver } from "./audit.resolver";
 import type { LogQuery } from "./audit.schema";
@@ -50,12 +51,22 @@ export type LogPage = {
 };
 
 const RENTANG_LOG_DEFAULT_HARI = 7;
+/** Batas baris satu ekspor log (7 hari ± 2.000 baris gabungan — 28 Sep 2026). */
+export const LOG_EKSPOR_CAP = 5000;
+/** Ukuran potongan `IN (…)` saat memperkaya banyak baris (ekspor). */
+const POTONG = 500;
 
-export async function getLogAktivitas(q: LogQuery): Promise<LogPage> {
+async function bertahap<T, R>(items: T[], fn: (part: T[]) => Promise<R[]>): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += POTONG) out.push(...(await fn(items.slice(i, i + POTONG))));
+  return out;
+}
+
+function toLogFilter(q: Omit<LogQuery, "page" | "pageSize">): LogFilter {
   const { from, to } = resolveRange(q, RENTANG_LOG_DEFAULT_HARI);
   // Filter khusus CRUD (objek/aksi/REF) → login tidak relevan.
   const khususRme = !!q.objek || !!q.aksi || !!q.q;
-  const f: LogFilter = {
+  return {
     from,
     to,
     objek: q.objek ? [q.objek] : SUMBER_OBJEK_IDS,
@@ -65,27 +76,32 @@ export async function getLogAktivitas(q: LogQuery): Promise<LogPage> {
     rme: q.sumber !== "LOGIN",
     login: q.sumber !== "RME" && !khususRme,
   };
+}
 
-  const [jumlah, users] = await Promise.all([queryLogCount(f), getUserResolver()]);
-  const total = jumlah.rme + jumlah.login;
-  const totalPages = Math.max(1, Math.ceil(total / q.pageSize));
-  const page = Math.min(q.page, totalPages);
-  const rows = total ? await queryLogPage(f, (page - 1) * q.pageSize, q.pageSize) : [];
-
-  // Resolusi REF → kunjungan & deteksi pembatalan hanya untuk baris halaman ini.
-  const perSumber = new Map<SumberKey, string[]>();
+/**
+ * Perkaya baris log: pasien/ruangan (REF → record → kunjungan) & label
+ * Pembatalan (diff SEBELUM/SESUDAH perubahan yang menyentuh STATUS — sama
+ * dengan panel diff). `IN (…)` dipotong per 500 baris, berurutan.
+ */
+async function perkaya(rows: LogPageRow[], f: LogFilter): Promise<LogBaris[]> {
+  const perSumber = new Map<SumberKey, Set<string>>();
   for (const r of rows) {
     const s = r.objek ? getSumberByObjek(r.objek) : undefined;
     if (!s || !r.ref || !/^\d{1,20}$/.test(r.ref)) continue;
-    perSumber.set(s.key, [...(perSumber.get(s.key) ?? []), r.ref]);
+    perSumber.set(s.key, (perSumber.get(s.key) ?? new Set()).add(r.ref));
   }
   const ubahIds = rows.filter((r) => r.aksi === "U").map((r) => r.id);
-  const [refs, snaps, ruangan] = await Promise.all([
-    queryRefKunjungan([...perSumber.entries()].map(([sumber, ids]) => ({ sumber, ids: [...new Set(ids)] }))),
-    queryLogSnapshots(ubahIds, f),
+  const [refs, snaps, ruangan, users] = await Promise.all([
+    bertahap([...perSumber.entries()].flatMap(([sumber, ids]) => [...ids].map((id) => ({ sumber, id }))), (part) => {
+      const g = new Map<SumberKey, string[]>();
+      for (const x of part) g.set(x.sumber, [...(g.get(x.sumber) ?? []), x.id]);
+      return queryRefKunjungan([...g.entries()].map(([sumber, ids]) => ({ sumber, ids })));
+    }),
+    bertahap(ubahIds, (part) => queryLogSnapshots(part, f)),
     getRuanganResolver(),
+    getUserResolver(),
   ]);
-  const kunjungan = await queryKunjunganByNomors([...new Set(refs.flatMap((r) => (r.kunjungan ? [r.kunjungan] : [])))]);
+  const kunjungan = await bertahap([...new Set(refs.flatMap((r) => (r.kunjungan ? [r.kunjungan] : [])))], queryKunjunganByNomors);
 
   const kjByRef = new Map(refs.map((r) => [`${r.sumber}:${r.id}`, r.kunjungan]));
   const kInfo = new Map(
@@ -102,7 +118,7 @@ export async function getLogAktivitas(q: LogQuery): Promise<LogPage> {
   );
   const batal = new Set(snaps.filter((s) => detectSoftDelete(computeDiff(s.sebelum, s.sesudah))).map((s) => s.id));
 
-  const items: LogBaris[] = rows.map((r) => {
+  return rows.map((r) => {
     const s = r.objek ? getSumberByObjek(r.objek) : undefined;
     const nomor = s && r.ref ? kjByRef.get(`${s.key}:${r.ref}`) : null;
     return {
@@ -118,6 +134,33 @@ export async function getLogAktivitas(q: LogQuery): Promise<LogPage> {
       kunjungan: nomor ? (kInfo.get(nomor) ?? null) : null,
     };
   });
+}
 
-  return { range: { from, to }, page, pageSize: q.pageSize, total, totalPages, jumlah, items };
+export async function getLogAktivitas(q: LogQuery): Promise<LogPage> {
+  const f = toLogFilter(q);
+  const jumlah = await queryLogCount(f);
+  const total = jumlah.rme + jumlah.login;
+  const totalPages = Math.max(1, Math.ceil(total / q.pageSize));
+  const page = Math.min(q.page, totalPages);
+  const rows = total ? await queryLogPage(f, (page - 1) * q.pageSize, q.pageSize) : [];
+  return { range: { from: f.from, to: f.to }, page, pageSize: q.pageSize, total, totalPages, jumlah, items: await perkaya(rows, f) };
+}
+
+export type LogSemua = { range: { from: string; to: string }; jumlah: { rme: number; login: number }; items: LogBaris[] };
+
+/**
+ * SEMUA baris log cocok filter (bahan ekspor), urutan sama dengan tabel.
+ * Ditolak bila melebihi `LOG_EKSPOR_CAP` — ekspor tidak pernah terpotong diam-diam.
+ */
+export async function semuaLog(q: Omit<LogQuery, "page" | "pageSize">): Promise<LogSemua> {
+  const f = toLogFilter(q);
+  const jumlah = await queryLogCount(f);
+  const total = jumlah.rme + jumlah.login;
+  if (total > LOG_EKSPOR_CAP) {
+    throw new BusinessRuleError(
+      `Terlalu banyak baris log (${total.toLocaleString("id-ID")}) untuk satu ekspor — maksimal ${LOG_EKSPOR_CAP.toLocaleString("id-ID")}. Persempit rentang atau filter.`,
+    );
+  }
+  const rows = total ? await queryLogPage(f, 0, total) : [];
+  return { range: { from: f.from, to: f.to }, jumlah, items: await perkaya(rows, f) };
 }
