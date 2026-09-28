@@ -213,6 +213,15 @@ export async function queryKunjunganByNomor(nomor: string): Promise<KunjunganRow
   return rows[0] ? toKunjunganRow(rows[0]) : null;
 }
 
+/** Banyak kunjungan by NOMOR (PK) — termasuk yang batal; urutan tidak dijamin. */
+export async function queryKunjunganByNomors(nomors: string[]): Promise<KunjunganRow[]> {
+  if (nomors.length === 0) return [];
+  const sql = `SELECT ${CAP} ${SELECT_KUNJUNGAN} FROM ${FROM_KUNJUNGAN}
+    WHERE k.NOMOR IN (${nomors.map(() => "?").join(",")})`;
+  const rows = await getSimgos().$queryRawUnsafe<KunjunganRaw[]>(sql, ...nomors);
+  return rows.map(toKunjunganRow);
+}
+
 export type KunjunganSummaryRow = { total: number; aktif: number; batal: number };
 
 /** Total kunjungan cocok filter (+ yang sedang dilayani & batal) — untuk paginasi. */
@@ -273,6 +282,14 @@ export async function queryRuanganMaster(): Promise<RuanganRow[]> {
     grupNama: r.grupNama?.trim() || null,
     aktif: Number(r.status) === 1,
   }));
+}
+
+/** Master tindakan (± 340 baris, jarang berubah) — dasar klasifikasi item tarif, di-cache resolver. */
+export async function queryTindakanMaster(): Promise<{ id: number; nama: string }[]> {
+  const rows = await getSimgos().$queryRawUnsafe<{ id: number; nama: string | null }[]>(
+    `SELECT ID AS id, NAMA AS nama FROM ${MS}.tindakan`,
+  );
+  return rows.map((r) => ({ id: Number(r.id), nama: r.nama?.trim() ?? "" }));
 }
 
 /* -------------------------------------------------- hitung kategori per halaman */

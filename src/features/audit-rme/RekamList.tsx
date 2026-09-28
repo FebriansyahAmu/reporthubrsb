@@ -192,6 +192,14 @@ function RekamRow({
               {r.peran && <span className="font-normal text-fg-muted"> · {r.peran}</span>}
               {r.episode && <span className="font-normal text-fg-subtle"> · episode</span>}
             </span>
+            {r.tarif && (
+              <span
+                className="rounded-full bg-surface-2 px-1.5 text-[10px] font-medium text-fg-muted ring-1 ring-border ring-inset"
+                title={`Item tarif (${r.tarif}) — tidak dihitung sebagai Tindakan pada skor petugas`}
+              >
+                item tarif
+              </span>
+            )}
             {r.edit > 0 && (
               <span className="inline-flex items-center gap-0.5 rounded-full bg-warning-soft px-1.5 text-[10px] font-medium text-warning" title={`${r.edit} kali diubah (log)`}>
                 <PencilLine className="size-2.5" /> {r.edit}×

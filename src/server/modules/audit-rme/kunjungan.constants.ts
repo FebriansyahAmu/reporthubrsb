@@ -86,6 +86,9 @@ export const JENIS_KUNJUNGAN: Record<number, { label: string; short: string; ton
   18: { label: "Bukan Ruangan Pelayanan", short: "LAIN", tone: "neutral" },
 };
 
+/** Rawat Inap — satu-satunya jenis dengan target per shift/hari (matriks & kontribusi RI). */
+export const JENIS_RAWAT_INAP = 3;
+
 /** Urutan tampil jenis kunjungan di rail/filter. */
 export const JENIS_KUNJUNGAN_ORDER = [3, 2, 1, 4, 5, 6, 11, 7, 12, 18] as const;
 
@@ -240,9 +243,40 @@ export const TTV_RENTANG_WAJAR: readonly { label: string; min: number; max: numb
   { label: "SpO₂", min: 40, max: 100 },
 ];
 
+/* ------------------------------------------------ item tarif di Tindakan (K3) */
+
+/**
+ * `layanan.tindakan_medis` sekaligus buku tarif: 69% barisnya (90 hari) adalah
+ * item tagihan/administrasi yang dientri perawat — pelayanan item obat,
+ * akomodasi & asuhan per hari, jasa pelayanan/sarana, tarif pemeriksaan/visite
+ * dokter. `master.tindakan.JENIS` tidak memisahkannya (item tarif bercampur di
+ * JENIS 0 & 5), jadi dipakai aturan nama (dicek atas 96 tindakan terpakai,
+ * 28 Sep 2026). Item tarif TIDAK dihitung sebagai Tindakan pada skor petugas —
+ * ditampilkan terpisah agar tetap dapat ditelusuri.
+ */
+export const TINDAKAN_TARIF: readonly { label: string; pola: RegExp }[] = [
+  { label: "Pelayanan item obat", pola: /^pelayanan\s*\/?\s*item obat/i },
+  { label: "Asuhan keperawatan (tarif per hari/kunjungan)", pola: /^(jasa\s+)?asuhan keperawatan/i },
+  { label: "Akomodasi", pola: /^akomodasi\b/i },
+  { label: "Jasa pelayanan, sarana & konsultasi", pola: /^jasa\b/i },
+  { label: "Tarif pemeriksaan, visite & konsultasi dokter", pola: /^(pemeriksaan dokter|visite|konsultasi|konsul)\b/i },
+  { label: "Pelayanan gizi, loket & klinik", pola: /^pelayanan (gizi|loket|klinik)\b/i },
+  { label: "Pemakaian gas medis", pola: /^pemakaian gas medis/i },
+  { label: "Administrasi & karcis", pola: /^(administrasi|karcis)\b/i },
+];
+
+/** Label aturan tarif yang cocok dengan nama tindakan, atau null bila tindakan klinis. */
+export function tarifLabel(namaTindakan: string | null | undefined): string | null {
+  const nama = namaTindakan?.trim();
+  if (!nama) return null;
+  return TINDAKAN_TARIF.find((t) => t.pola.test(nama))?.label ?? null;
+}
+
 /* ------------------------------------------------------------- batas rentang */
 
 /** RI yang masuk sebelum rentang tetap ikut bila masih dirawat — batas lookback index. */
 export const LOOKBACK_RI_HARI = 60;
-/** Rentang maksimal papan kunjungan (hari). */
+/** Rentang maksimal papan kunjungan & kepatuhan petugas (hari). */
 export const RENTANG_MAKS_HARI = 31;
+/** Rentang default kepatuhan petugas — lebih panjang dari papan agar skor stabil. */
+export const RENTANG_PETUGAS_DEFAULT_HARI = 30;

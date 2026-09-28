@@ -4,6 +4,7 @@ import type { JenisAktivitas } from "@/server/modules/audit-rme/audit.constants"
 // Hanya tipe (dihapus saat kompilasi) — tidak menarik kode server-only ke klien.
 import type { KunjunganPage, RuanganTree } from "@/server/modules/audit-rme/kunjungan.service";
 import type { KunjunganDetail, RekamIsi } from "@/server/modules/audit-rme/jejak.service";
+import type { KepatuhanPetugas, ProfilPetugas } from "@/server/modules/audit-rme/petugas.service";
 import type { SumberKey } from "@/server/modules/audit-rme/kunjungan.constants";
 
 export type { JenisAktivitas };
@@ -160,6 +161,35 @@ export const fetchKunjunganDetail = (nomor: string) =>
 
 export const fetchRekamIsi = (sumber: SumberKey, id: string) =>
   jsonCall<RekamIsi>(`/api/audit-rme/rekam/${sumber}/${encodeURIComponent(id)}`).then((j) => j.data);
+
+/* ---------------------------------------------- Fase 2: kepatuhan petugas (K3) */
+
+export type {
+  HarianPetugas,
+  KepatuhanPetugas,
+  KunjunganPetugas,
+  PetugasSkorItem,
+  ProfesiRingkas,
+  ProfilPetugas,
+  TemuanBatal,
+  TemuanTtv,
+} from "@/server/modules/audit-rme/petugas.service";
+
+export type PetugasFilter = { from: string; to: string; jenis?: number; kelompok?: "KLINIS"; ruangan?: string };
+
+function petugasParams(f: PetugasFilter): string {
+  const sp = new URLSearchParams({ from: f.from, to: f.to });
+  if (f.jenis != null) sp.set("jenis", String(f.jenis));
+  else if (f.kelompok) sp.set("kelompok", f.kelompok);
+  if (f.ruangan) sp.set("ruangan", f.ruangan);
+  return sp.toString();
+}
+
+export const fetchKepatuhanPetugas = (f: PetugasFilter) =>
+  jsonCall<KepatuhanPetugas>(`/api/audit-rme/petugas?${petugasParams(f)}`).then((j) => j.data);
+
+export const fetchProfilPetugas = (id: string, f: PetugasFilter) =>
+  jsonCall<ProfilPetugas>(`/api/audit-rme/petugas/${encodeURIComponent(id)}?${petugasParams(f)}`).then((j) => j.data);
 
 /** Pohon ruangan memakai filter yang sama KECUALI lokasi & halaman (rail tetap utuh). */
 export const fetchRuanganTree = (f: KunjunganFilter) =>

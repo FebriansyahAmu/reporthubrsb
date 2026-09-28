@@ -285,6 +285,15 @@ Timeline panjang diganti **tabel ringkas berpaginasi bernomor** (kepadatan tingg
 
 ### Stage K3 — Kepatuhan Petugas
 - Skor per petugas per profesi, papan Teladan ↔ Perlu Pembinaan, profil petugas (heatmap kalender, TTV terlambat, pembatalan) dengan drill-down.
+- ✅ **SELESAI (28 Sep 2026)** — E2E 40/40 (16 metrik × 98 petugas dihitung ulang independen dari baris mentah SIMGOS 1.666/1.666, skor 98/98, filter lokasi, 3 profil, pelaku pembatalan 25/25 vs log tanpa jendela, RBAC, UI nyata + HP 390 px) + regresi K2 27/27, K1 21/21, K0 32/32, Stage 2 14/14.
+  - **Satu query agregat** `UNION ALL` 7 sumber (index waktu tiap tabel) → metrik per `OLEH`; 31 hari ± 20 rb baris ± 300 ms warm; profil ± 160–430 ms.
+  - **Rentang = hari dinas** (07.00–07.00), default 30 hari, maks 31. Lokasi = ruangan kunjungan tempat input.
+  - **Diagnosis → leg klinis:** diagnosis (per NOPEN) dipetakan ke leg RJ/IGD/RI tidak batal yang terakhir masuk sebelum input. Tanpa preferensi klinis 1.151/1.308 jatuh ke leg Farmasi/Lab.
+  - **Item tarif dipisah dari Tindakan** (aturan nama `TINDAKAN_TARIF`; `master.tindakan.JENIS` tidak memisahkan): pelayanan item obat, asuhan keperawatan per hari, akomodasi, jasa, tarif pemeriksaan/visite/konsultasi dokter, pelayanan gizi/loket/klinik, gas medis. 69% baris tindakan 90 hari = tarif. Ditandai "item tarif" di data aktual drawer; tetap terhitung di pip TIN kartu (lihat keputusan terbuka).
+  - **Skor (alat bantu, rumus terbuka di UI):** Aktivitas 35% (input klinis/hari dinas, persentil seprofesi) · Kontribusi RI 30% (perawat/bidan: shift-pasien RI ber-CPPT; dokter: hari-pasien RI visite; persentil; berlaku bila ≥ 5 hari-pasien RI) · Ketepatan TTV 20% (% ≤ 60 mnt; bila ≥ 3 TTV) · Integritas 15% (pembatalan; 0 pada ≥ 15%). Komponen tak berlaku tidak menghukum (bobot dibagi ulang). Dinilai bila ≥ 3 hari dinas & ≥ 10 input klinis. Pita: Teladan ≥ 75 · Baik 60–74 · Cukup 40–59 · Perlu pembinaan < 40.
+  - **TTV tak wajar tidak dinilai:** 207/441 TTV (47%, 30 hari) bersuhu tanpa koma (362 = 36,2) → pola sistemik (form/kebiasaan input), ditampilkan sebagai temuan, bukan hukuman individu.
+  - UI: tab **Kepatuhan Petugas** — rentang & lokasi, tab profesi, ringkasan + sebaran pita, papan Teladan ↔ Perlu pembinaan, tabel peringkat (urut per kolom, cari, paginasi 12), panel "Cara skor dihitung". Profil (drawer): komponen + rumus terhitung, **kalender aktivitas** per hari dinas, per kategori & pola shift, kunjungan ditangani (→ jejak kunjungan di atasnya), temuan (batal + pelaku, TTV terlambat, TTV tak wajar).
+  - Temuan data: asesmen RI dicatat dokter dan 73% input pertamanya > 48 jam setelah masuk; 40/41 RI tanpa asesmen punya leg IGD/RJ ≤ 48 jam sebelumnya (NOPEN berbeda) yang berasesmen.
 
 ### Stage K4 — Peta Ruangan + rombak Log Aktivitas
 - Heatmap ruangan × hari; tab Log jadi tabel berpaginasi + panel detail samping.
@@ -314,6 +323,8 @@ Opsional setelahnya: Stage 5 `bridge_log`, kategori tambahan (Farmasi `layanan.f
 2. **Asesmen:** ✅ **3 tabel inti** — `anamnesis` + `keluhan_utama` + `pemeriksaan_fisik`.
 3. **Farmasi & Lab:** ✅ **lewat kategori Tindakan dulu**; kategori Farmasi (`layanan.farmasi`) jadi stage opsional.
 4. **Urutan:** ✅ **K0 → K1 Papan Kunjungan** → K2 Drawer → K3 Kepatuhan Petugas → K4 → K5.
+5. **Item tarif pada Tindakan (K3):** ✅ dipisah dari skor petugas (aturan `TINDAKAN_TARIF`). Terbuka: apakah pip/kelengkapan TIN di kartu juga mengecualikan tarif (usulan K4).
+6. **Asesmen RI (K3):** tetap per kunjungan. Terbuka untuk K4: terima asesmen leg IGD/RJ ≤ 48 jam sebelum masuk RI (pasien sama, NOPEN berbeda) sebagai pemenuhan.
 
 ---
 

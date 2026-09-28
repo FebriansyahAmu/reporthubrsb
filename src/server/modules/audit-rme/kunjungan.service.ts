@@ -75,10 +75,10 @@ export type RuanganTree = { range: { from: string; to: string }; total: number; 
 
 /* ----------------------------------------------------------------- helper */
 
-/** Rentang default 7 hari terakhir (WITA); validasi urutan & panjang. */
-function resolveRange(q: { from?: string; to?: string }): { from: string; to: string } {
+/** Rentang default N hari terakhir (WITA); validasi urutan & panjang maksimal. */
+export function resolveRange(q: { from?: string; to?: string }, defaultHari = 7): { from: string; to: string } {
   const to = q.to ?? todayWitaIso();
-  const from = q.from ?? addDaysIso(to, -6);
+  const from = q.from ?? addDaysIso(to, -(defaultHari - 1));
   if (from > to) throw new ValidationError({ from: "Tanggal awal melewati tanggal akhir" });
   if (from < addDaysIso(to, -(RENTANG_MAKS_HARI - 1))) {
     throw new ValidationError({ from: `Rentang maksimal ${RENTANG_MAKS_HARI} hari` });

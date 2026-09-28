@@ -25,8 +25,8 @@ const baseFilter = {
   q: z.preprocess(blankToUndef, z.string().trim().min(2).max(60).optional()),
 };
 
-export const kunjunganQuerySchema = z.object({
-  ...baseFilter,
+/** Filter lokasi bersama papan kunjungan & kepatuhan petugas. */
+const lokasiFilter = {
   /** `master.ruangan.JENIS_KUNJUNGAN`. */
   jenis: z.preprocess(
     blankToUndef,
@@ -40,10 +40,26 @@ export const kunjunganQuerySchema = z.object({
   kelompok: z.preprocess(blankToUndef, z.enum(["KLINIS"]).optional()),
   /** Prefiks ID ruangan: 7 digit = bangsal/grup, 9 digit = ruang. */
   ruangan: z.preprocess(blankToUndef, z.string().regex(/^\d{7}(\d{2})?$/, "ID ruangan tidak valid").optional()),
+};
+
+export const kunjunganQuerySchema = z.object({
+  ...baseFilter,
+  ...lokasiFilter,
   page: z.coerce.number().int().min(1).max(1000).default(1),
   pageSize: z.coerce.number().int().min(6).max(48).default(24),
 });
 export type KunjunganQuery = z.infer<typeof kunjunganQuerySchema>;
+
+/** Kepatuhan petugas (K3): rentang hari dinas + lokasi input. */
+export const petugasQuerySchema = z.object({
+  from: baseFilter.from,
+  to: baseFilter.to,
+  ...lokasiFilter,
+});
+export type PetugasQuery = z.infer<typeof petugasQuerySchema>;
+
+/** `aplikasi.pengguna.ID` (smallint). */
+export const petugasIdSchema = z.string().regex(/^\d{1,6}$/, "ID petugas tidak valid");
 
 export const ruanganTreeQuerySchema = z.object(baseFilter);
 export type RuanganTreeQuery = z.infer<typeof ruanganTreeQuerySchema>;

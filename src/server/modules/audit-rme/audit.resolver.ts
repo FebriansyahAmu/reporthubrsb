@@ -1,6 +1,7 @@
 import "server-only";
 import { queryAllUsers } from "./audit.dal";
-import { queryRuanganMaster, type RuanganRow } from "./kunjungan.dal";
+import { tarifLabel } from "./kunjungan.constants";
+import { queryRuanganMaster, queryTindakanMaster, type RuanganRow } from "./kunjungan.dal";
 
 /**
  * Resolver pengguna (PENGGUNA id → nama/login) dengan cache in-process TTL pendek.
@@ -17,9 +18,25 @@ export type UserMini = {
 
 type Cache = { at: number; map: Map<string, UserMini>; list: UserMini[] };
 type RuanganCache = { at: number; map: Map<string, RuanganRow> };
+/** `tarifIds` = ID master.tindakan yang tergolong item tarif (`TINDAKAN_TARIF`). */
+type TindakanCache = { at: number; tarifIds: number[] };
 const TTL_MS = 5 * 60_000;
 
-const globalForResolver = globalThis as unknown as { auditUserCache?: Cache; auditRuanganCache?: RuanganCache };
+const globalForResolver = globalThis as unknown as {
+  auditUserCache?: Cache;
+  auditRuanganCache?: RuanganCache;
+  auditTindakanCache?: TindakanCache;
+};
+
+/** Klasifikasi master tindakan → daftar ID item tarif (± 340 baris, cache TTL sama). */
+export async function getTindakanResolver(): Promise<TindakanCache> {
+  const hit = globalForResolver.auditTindakanCache;
+  if (hit && Date.now() - hit.at < TTL_MS) return hit;
+  const rows = await queryTindakanMaster();
+  const cache: TindakanCache = { at: Date.now(), tarifIds: rows.filter((r) => tarifLabel(r.nama)).map((r) => r.id) };
+  globalForResolver.auditTindakanCache = cache;
+  return cache;
+}
 
 /** Resolver ruang leaf → nama/jenis/bangsal induk (± 40 baris, cache TTL sama). */
 export async function getRuanganResolver(): Promise<RuanganCache> {

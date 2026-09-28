@@ -1,19 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { LayoutGrid, LineChart, ListFilter } from "lucide-react";
+import { Award, LayoutGrid, LineChart, ListFilter } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { AuditTimelineView } from "./AuditTimelineView";
 import { AuditDashboardView } from "./AuditDashboardView";
+import { KepatuhanPetugasView } from "./KepatuhanPetugasView";
 import { PapanKunjunganView } from "./PapanKunjunganView";
 
-type Tab = "papan" | "log" | "tren";
+type Tab = "papan" | "petugas" | "log" | "tren";
 
 const TABS: { key: Tab; label: string; icon: typeof ListFilter }[] = [
   { key: "papan", label: "Papan Kunjungan", icon: LayoutGrid },
+  { key: "petugas", label: "Kepatuhan Petugas", icon: Award },
   { key: "log", label: "Log Aktivitas", icon: ListFilter },
   { key: "tren", label: "Tren Log", icon: LineChart },
 ];
+
+const VIEW: Record<Tab, () => React.ReactNode> = {
+  papan: () => <PapanKunjunganView />,
+  petugas: () => <KepatuhanPetugasView />,
+  log: () => <AuditTimelineView />,
+  tren: () => <AuditDashboardView />,
+};
 
 export function AuditRmeView() {
   const [tab, setTab] = useState<Tab>("papan");
@@ -43,7 +52,7 @@ export function AuditRmeView() {
         })}
       </div>
 
-      {tab === "papan" ? <PapanKunjunganView /> : tab === "log" ? <AuditTimelineView /> : <AuditDashboardView />}
+      {VIEW[tab]()}
     </div>
   );
 }

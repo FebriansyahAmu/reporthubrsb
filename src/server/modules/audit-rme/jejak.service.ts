@@ -11,6 +11,7 @@ import {
   profesiLabel,
   PROFESI_ORDER,
   SUMBER,
+  tarifLabel,
   TTV_RENTANG_WAJAR,
   TTV_TERLAMBAT_MENIT,
   type KategoriKey,
@@ -55,7 +56,9 @@ export type RekamItem = {
   oleh: string | null;
   batal: boolean;
   /** Pelaku pembatalan dari log (STATUS level atas → 0); null bila tak tercatat. */
-  batalOleh: { oleh: string; ts: string; logId: string } | null;
+  batalOleh: Pembatalan | null;
+  /** Label aturan item tarif (Tindakan) — null bila tindakan klinis/bukan Tindakan. */
+  tarif: string | null;
   /** Peran penulis (CPPT) mis. "Dokter" / "Paramedis". */
   peran: string | null;
   ringkasan: string | null;
@@ -105,13 +108,13 @@ export type RekamIsi = {
 
 /* ----------------------------------------------------------------- helper */
 
-const toPetugas = (id: string, users: UserResolver): Petugas => {
+export const toPetugas = (id: string, users: UserResolver): Petugas => {
   const u = users.map.get(id);
   const profesi = u?.profesi ?? null;
   return { id, nama: u?.nama ?? null, login: u?.login ?? null, profesi, profesiLabel: profesiLabel(profesi) };
 };
 
-function petugasMap(ids: Iterable<string | null>, users: UserResolver): Record<string, Petugas> {
+export function petugasMap(ids: Iterable<string | null>, users: UserResolver): Record<string, Petugas> {
   const out: Record<string, Petugas> = {};
   for (const id of ids) if (id && !out[id]) out[id] = toPetugas(id, users);
   return out;
@@ -120,8 +123,10 @@ function petugasMap(ids: Iterable<string | null>, users: UserResolver): Record<s
 /** 150.00 → "150", 37.40 → "37,4" (format Indonesia, tanpa nol ekor). */
 const angka = (n: number) => String(Number(n.toFixed(2))).replace(".", ",");
 
+type RingkasanInput = Pick<RecordRow, "sumber" | "teks" | "angka">;
+
 /** Ringkasan satu baris per sumber — tanpa teks klinis berat. */
-function ringkasan(r: RecordRow): string | null {
+export function ringkasan(r: RingkasanInput): string | null {
   const [a, b, c, d, e, f] = r.angka;
   switch (r.sumber) {
     case "tanda_vital": {
@@ -144,7 +149,7 @@ function ringkasan(r: RecordRow): string | null {
 }
 
 /** Nilai TTV di luar rentang fisiologis ekstrem (0/kosong = tidak diisi, diabaikan). */
-function peringatanTtv(r: RecordRow): string | null {
+export function peringatanTtv(r: RingkasanInput): string | null {
   if (r.sumber !== "tanda_vital") return null;
   const salah = TTV_RENTANG_WAJAR.flatMap((w, i) => {
     const v = r.angka[i];
@@ -178,8 +183,13 @@ function jendelaLog(tglDaftar: string | null): LogJendela {
   };
 }
 
+export type Pembatalan = { oleh: string; ts: string; logId: string };
+
 /** Pelaku pembatalan per `objek:ref` — log TERBARU yang menyetel STATUS level atas → 0. */
-async function lacakPembatalan(batal: { sumber: SumberKey; id: string }[], jendela: LogJendela) {
+export async function lacakPembatalan(
+  batal: { sumber: SumberKey; id: string }[],
+  jendela: LogJendela,
+): Promise<Map<string, Pembatalan>> {
   const out = new Map<string, { oleh: string; ts: string; logId: string }>();
   if (batal.length === 0) return out;
   const snaps = await queryPembatalanSnapshots(refGroups(batal), jendela); // urut ID desc
@@ -241,6 +251,7 @@ export async function getKunjunganDetail(nomor: string): Promise<KunjunganDetail
         oleh: r.oleh,
         batal: r.status === 0,
         batalOleh: r.status === 0 ? (pembatalan.get(key) ?? null) : null,
+        tarif: r.sumber === "tindakan_medis" ? tarifLabel(r.teks) : null,
         peran: r.sumber === "cppt" && r.peran != null ? (CPPT_PERAN[r.peran] ?? `Peran #${r.peran}`) : null,
         ringkasan: ringkasan(r),
         peringatan: peringatanTtv(r),
@@ -369,7 +380,7 @@ export async function getRekamIsi(sumber: SumberKey, id: string): Promise<RekamI
   const jendela = jendelaLog(row.tglDaftar);
   const [logRows, pembatalan, users] = await Promise.all([
     queryRecordLogs([{ objek, refs: [row.id] }], jendela),
-    batal ? lacakPembatalan([{ sumber, id: row.id }], jendela) : Promise.resolve(new Map<string, { oleh: string; ts: string; logId: string }>()),
+    batal ? lacakPembatalan([{ sumber, id: row.id }], jendela) : Promise.resolve(new Map<string, Pembatalan>()),
     getUserResolver(),
   ]);
   const logs = toLogItems(logRows.slice(0, LOG_CAP), new Set([...pembatalan.values()].map((p) => p.logId)));
