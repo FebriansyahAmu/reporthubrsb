@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { JENIS_KUNJUNGAN_IDS, SUMBER_KEYS } from "./kunjungan.constants";
+import { JENIS_DINILAI, JENIS_KUNJUNGAN_IDS, JENIS_RAWAT_INAP, SUMBER_KEYS } from "./kunjungan.constants";
 
 /**
  * Skema query papan kunjungan (Fase 2). Semua nilai di-bind sebagai parameter
@@ -57,6 +57,21 @@ export const petugasQuerySchema = z.object({
   ...lokasiFilter,
 });
 export type PetugasQuery = z.infer<typeof petugasQuerySchema>;
+
+/** Peta Ruangan (K4): rentang + satu jenis kunjungan yang punya kategori wajib (default Rawat Inap). */
+export const petaQuerySchema = z.object({
+  from: baseFilter.from,
+  to: baseFilter.to,
+  jenis: z.preprocess(
+    blankToUndef,
+    z.coerce
+      .number()
+      .int()
+      .refine((n) => JENIS_DINILAI.includes(n), "Jenis kunjungan tidak dinilai di peta")
+      .default(JENIS_RAWAT_INAP),
+  ),
+});
+export type PetaQuery = z.infer<typeof petaQuerySchema>;
 
 /** `aplikasi.pengguna.ID` (smallint). */
 export const petugasIdSchema = z.string().regex(/^\d{1,6}$/, "ID petugas tidak valid");

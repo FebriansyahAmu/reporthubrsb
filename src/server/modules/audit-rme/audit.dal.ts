@@ -1,7 +1,7 @@
 import "server-only";
 import { getSimgos } from "@/server/db/simgos.client";
 import { SIMGOS_DB } from "@/server/db/simgos-databases";
-import { AUDIT_OBJEK_IDS, idBounds } from "./audit.constants";
+import { addDaysIso, AUDIT_OBJEK_IDS, idBounds } from "./audit.constants";
 import { SUMBER_OBJEK_IDS } from "./kunjungan.constants";
 import type { UserMini } from "./audit.resolver";
 
@@ -256,6 +256,147 @@ export async function queryLoginEvents(f: LoginFilter, cursorId: string | null, 
     { id: number | bigint; ts: string; pengguna: number | bigint; ip: string | null }[]
   >(sql, ...params);
   return rows.map((r) => ({ id: String(r.id), ts: r.ts, pengguna: String(r.pengguna), ip: r.ip ?? null }));
+}
+
+/* ------------------------------------------ log aktivitas berpaginasi (Fase 2 · K4) */
+
+export type LogFilter = {
+  from: string;
+  to: string;
+  /** Objek log yang dicakup (allow-list sumber Fase 2). */
+  objek: readonly string[];
+  aksi?: "C" | "U";
+  pengguna?: string;
+  /** Awalan REF (ID record). */
+  q?: string;
+  rme: boolean;
+  login: boolean;
+};
+
+export type LogPageRow = {
+  sumber: "RME" | "LOGIN";
+  id: string;
+  ts: string;
+  aksi: "C" | "U" | null;
+  pengguna: string;
+  objek: string | null;
+  ref: string | null;
+  ip: string | null;
+};
+
+/**
+ * WHERE log CRUD: `TANGGAL` memangkas partisi bulanan (140 partisi) + prefix
+ * `ID` memakai index lokal. ID ↔ TANGGAL searah (0 inversi, 7 hari).
+ */
+function rmeLogWhere(f: LogFilter): { sql: string; params: unknown[] } {
+  const { lo, hi } = idBounds(f.from, f.to);
+  const cond = [
+    `OBJEK IN (${f.objek.map(() => "?").join(",")})`,
+    "TANGGAL >= ?",
+    "TANGGAL < ?",
+    "ID >= ?",
+    "ID <= ?",
+  ];
+  const params: unknown[] = [...f.objek, `${f.from} 00:00:00`, `${addDaysIso(f.to, 1)} 00:00:00`, lo, hi];
+  if (f.aksi) {
+    cond.push("AKSI = ?");
+    params.push(f.aksi);
+  }
+  if (f.pengguna) {
+    cond.push("PENGGUNA = ?");
+    params.push(Number(f.pengguna));
+  }
+  if (f.q) {
+    cond.push("REF LIKE ?");
+    params.push(`${f.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+  }
+  return { sql: cond.join(" AND "), params };
+}
+
+function loginWhere(f: LogFilter): { sql: string; params: unknown[] } {
+  const cond = ["TANGGAL_AKSES >= ?", "TANGGAL_AKSES < ?"];
+  const params: unknown[] = [`${f.from} 00:00:00`, `${addDaysIso(f.to, 1)} 00:00:00`];
+  if (f.pengguna) {
+    cond.push("PENGGUNA = ?");
+    params.push(Number(f.pengguna));
+  }
+  return { sql: cond.join(" AND "), params };
+}
+
+/** Jumlah baris log per sumber (dasar paginasi bernomor). */
+export async function queryLogCount(f: LogFilter): Promise<{ rme: number; login: number }> {
+  const r = rmeLogWhere(f);
+  const l = loginWhere(f);
+  const [rme, login] = await Promise.all([
+    f.rme
+      ? getSimgos().$queryRawUnsafe<{ n: number | bigint }[]>(`SELECT ${CAP} COUNT(*) AS n FROM ${L}.pengguna_akses_log WHERE ${r.sql}`, ...r.params)
+      : Promise.resolve([{ n: 0 }]),
+    f.login
+      ? getSimgos().$queryRawUnsafe<{ n: number | bigint }[]>(`SELECT ${CAP} COUNT(*) AS n FROM ${A}.pengguna_log WHERE ${l.sql}`, ...l.params)
+      : Promise.resolve([{ n: 0 }]),
+  ]);
+  return { rme: Number(rme[0]?.n ?? 0), login: Number(login[0]?.n ?? 0) };
+}
+
+/**
+ * Satu halaman log gabungan (CRUD + login), TERBARU dulu. Tiap sumber dibatasi
+ * `offset + limit` baris lalu digabung `UNION ALL` & diurutkan → offset global
+ * benar tanpa memuat seluruh rentang. ID login di-LPAD agar urut numerik.
+ */
+export async function queryLogPage(f: LogFilter, offset: number, limit: number): Promise<LogPageRow[]> {
+  const n = Math.trunc(offset + limit);
+  const parts: string[] = [];
+  const params: unknown[] = [];
+  if (f.rme) {
+    const r = rmeLogWhere(f);
+    // CAST: ID latin1 vs LPAD utf8mb4 (koneksi) di UNION → cegah error 1270 (illegal mix of collations).
+    parts.push(`(SELECT 'RME' AS sumber, CAST(ID AS CHAR) AS id, DATE_FORMAT(TANGGAL, '%Y-%m-%dT%H:%i:%s') AS ts, AKSI AS aksi,
+        PENGGUNA AS pengguna, OBJEK AS objek, REF AS ref, NULL AS ip
+      FROM ${L}.pengguna_akses_log WHERE ${r.sql} ORDER BY ID DESC LIMIT ${n})`);
+    params.push(...r.params);
+  }
+  if (f.login) {
+    const l = loginWhere(f);
+    parts.push(`(SELECT 'LOGIN' AS sumber, LPAD(ID, 15, '0') AS id, DATE_FORMAT(TANGGAL_AKSES, '%Y-%m-%dT%H:%i:%s') AS ts,
+        NULL AS aksi, PENGGUNA AS pengguna, NULL AS objek, NULL AS ref, LOKASI_AKSES AS ip
+      FROM ${A}.pengguna_log WHERE ${l.sql} ORDER BY ID DESC LIMIT ${n})`);
+    params.push(...l.params);
+  }
+  if (parts.length === 0) return [];
+  const sql = `SELECT ${CAP} * FROM (${parts.join("\nUNION ALL\n")}) x
+    ORDER BY ts DESC, sumber DESC, id DESC
+    LIMIT ${Math.trunc(limit)} OFFSET ${Math.trunc(offset)}`;
+  const rows = await getSimgos().$queryRawUnsafe<
+    { sumber: "RME" | "LOGIN"; id: string; ts: string; aksi: "C" | "U" | null; pengguna: number | bigint; objek: string | null; ref: string | null; ip: string | null }[]
+  >(sql, ...params);
+  return rows.map((r) => ({
+    sumber: r.sumber,
+    id: r.sumber === "LOGIN" ? String(Number(r.id)) : String(r.id),
+    ts: r.ts,
+    aksi: r.aksi ?? null,
+    pengguna: String(r.pengguna),
+    objek: r.objek == null ? null : String(r.objek),
+    ref: r.ref ?? null,
+    ip: r.ip ?? null,
+  }));
+}
+
+/**
+ * Snapshot SEBELUM/SESUDAH untuk baris perubahan di SATU halaman (≤ 50, PK) yang
+ * menyentuh STATUS — dasar label "Pembatalan" yang sama dengan panel diff.
+ */
+export async function queryLogSnapshots(ids: string[], f: Pick<LogFilter, "from" | "to">): Promise<{ id: string; sebelum: string | null; sesudah: string | null }[]> {
+  if (ids.length === 0) return [];
+  const sql = `SELECT ${CAP} ID AS id, SEBELUM AS sebelum, SESUDAH AS sesudah
+    FROM ${L}.pengguna_akses_log
+    WHERE ID IN (${ids.map(() => "?").join(",")}) AND TANGGAL >= ? AND TANGGAL < ? AND SESUDAH LIKE '%STATUS%'`;
+  const rows = await getSimgos().$queryRawUnsafe<{ id: string; sebelum: string | null; sesudah: string | null }[]>(
+    sql,
+    ...ids,
+    `${f.from} 00:00:00`,
+    `${addDaysIso(f.to, 1)} 00:00:00`,
+  );
+  return rows.map((r) => ({ id: String(r.id), sebelum: r.sebelum ?? null, sesudah: r.sesudah ?? null }));
 }
 
 /* ------------------------------------------------------------- agregasi (dashboard) */

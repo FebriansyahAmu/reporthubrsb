@@ -11,14 +11,14 @@ import {
 } from "@/server/modules/audit-rme/kunjungan.constants";
 import type { HariDinas, Matriks, Petugas, SelStatus, ShiftCell } from "./audit.client";
 
-const SEL_STYLE: Record<SelStatus, string> = {
+export const SEL_STYLE: Record<SelStatus, string> = {
   OK: "border-success/30 bg-success-soft",
   KURANG: "border-danger/35 bg-danger-soft",
   PARSIAL: "border-dashed border-border-strong bg-surface",
   NANTI: "border-dashed border-border bg-surface-2/40",
   LUAR: "border-transparent bg-surface-2/40",
 };
-const SEL_LABEL: Record<SelStatus, string> = {
+export const SEL_LABEL: Record<SelStatus, string> = {
   OK: "Terpenuhi",
   KURANG: "Tidak terpenuhi",
   PARSIAL: "Sebagian dalam masa rawat — tidak dinilai",
@@ -26,7 +26,7 @@ const SEL_LABEL: Record<SelStatus, string> = {
   LUAR: "Di luar masa rawat",
 };
 
-function StatusIcon({ s, className }: { s: SelStatus; className?: string }) {
+export function StatusIcon({ s, className }: { s: SelStatus; className?: string }) {
   const cls = cn("size-3.5 shrink-0", className);
   if (s === "OK") return <Check className={cn(cls, "text-success")} aria-hidden />;
   if (s === "KURANG") return <TriangleAlert className={cn(cls, "text-danger")} aria-hidden />;

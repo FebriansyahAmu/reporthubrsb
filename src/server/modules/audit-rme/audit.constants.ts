@@ -63,7 +63,8 @@ export const AKSI_JENIS: Record<Aksi, JenisAktivitas> = {
 export const JENIS_LABEL: Record<JenisAktivitas, string> = {
   PENAMBAHAN: "Penambahan",
   PERUBAHAN: "Perubahan",
-  PENGHAPUSAN: "Penghapusan",
+  // Soft-delete SIMGOS (STATUS → 0) = batal/hapus — istilah Fase 2: "Pembatalan".
+  PENGHAPUSAN: "Pembatalan",
   AKSES: "Akses Data",
   LOGIN: "Login",
   LOGOUT: "Logout",

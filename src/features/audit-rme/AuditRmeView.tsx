@@ -1,18 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { Award, LayoutGrid, LineChart, ListFilter } from "lucide-react";
+import { Award, LayoutGrid, LineChart, ListFilter, MapPinned } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { AuditTimelineView } from "./AuditTimelineView";
 import { AuditDashboardView } from "./AuditDashboardView";
 import { KepatuhanPetugasView } from "./KepatuhanPetugasView";
+import { LogAktivitasView } from "./LogAktivitasView";
 import { PapanKunjunganView } from "./PapanKunjunganView";
+import { PetaRuanganView } from "./PetaRuanganView";
 
-type Tab = "papan" | "petugas" | "log" | "tren";
+type Tab = "papan" | "petugas" | "peta" | "log" | "tren";
 
 const TABS: { key: Tab; label: string; icon: typeof ListFilter }[] = [
   { key: "papan", label: "Papan Kunjungan", icon: LayoutGrid },
   { key: "petugas", label: "Kepatuhan Petugas", icon: Award },
+  { key: "peta", label: "Peta Ruangan", icon: MapPinned },
   { key: "log", label: "Log Aktivitas", icon: ListFilter },
   { key: "tren", label: "Tren Log", icon: LineChart },
 ];
@@ -20,7 +22,8 @@ const TABS: { key: Tab; label: string; icon: typeof ListFilter }[] = [
 const VIEW: Record<Tab, () => React.ReactNode> = {
   papan: () => <PapanKunjunganView />,
   petugas: () => <KepatuhanPetugasView />,
-  log: () => <AuditTimelineView />,
+  peta: () => <PetaRuanganView />,
+  log: () => <LogAktivitasView />,
   tren: () => <AuditDashboardView />,
 };
 

@@ -6,7 +6,6 @@ import {
   CPPT_PERAN_KEPERAWATAN,
   HARI_DINAS_MULAI_JAM,
   JENIS_RAWAT_INAP,
-  KELOMPOK_JENIS,
   SHIFTS,
   SUMBER,
   SUMBER_KEYS,
@@ -15,7 +14,7 @@ import {
   type KategoriKey,
   type SumberKey,
 } from "./kunjungan.constants";
-import { SUMBER_SQL } from "./kunjungan.dal";
+import { legKlinisSql, SUMBER_SQL } from "./kunjungan.dal";
 
 /**
  * DAL Fase 2 · K3 — input aktual per PETUGAS (`OLEH`) dalam rentang hari dinas.
@@ -47,18 +46,6 @@ function sqlNums(xs: readonly number[]): string {
   if (!xs.every(Number.isFinite)) throw new Error("sqlNums: nilai bukan bilangan");
   return xs.join(", ");
 }
-
-/**
- * Leg kunjungan bagi sumber per-episode (Diagnosis, kunci NOPEN): leg KLINIS
- * (RJ/IGD/RI) tidak batal yang terakhir masuk sebelum input. Tanpa preferensi
- * klinis, 1.151/1.308 diagnosis (31 hari) jatuh ke leg Farmasi/Lab episode
- * yang sama (diverifikasi 28 Sep 2026).
- */
-const legKlinis = (waktu: string) => `(SELECT kx.NOMOR FROM ${PD}.kunjungan kx JOIN ${MS}.ruangan rx ON rx.ID = kx.RUANGAN
-      WHERE kx.NOPEN = t.NOPEN
-      ORDER BY (rx.JENIS_KUNJUNGAN IN (${sqlNums(KELOMPOK_JENIS.KLINIS)})) DESC, (kx.STATUS <> 0) DESC,
-        (kx.MASUK <= ${waktu}) DESC, kx.MASUK DESC
-      LIMIT 1)`;
 
 /** Nilai TTV di luar rentang fisiologis ekstrem (0/NULL = tidak diisi) — sama dengan `peringatanTtv`. */
 const TTV_TAK_WAJAR = (SUMBER_SQL.tanda_vital.angka ?? [])
@@ -133,7 +120,7 @@ function bagianSumber(
   const from =
     s.kunci === "KUNJUNGAN"
       ? `${s.tabel} t ${join}`
-      : `(SELECT t.*, ${legKlinis(w)} AS KUNJUNGAN FROM ${s.tabel} t WHERE ${cond.join(" AND ")}) t ${join}`;
+      : `(SELECT t.*, ${legKlinisSql(w)} AS KUNJUNGAN FROM ${s.tabel} t WHERE ${cond.join(" AND ")}) t ${join}`;
   const sql = `SELECT ${cols.join(", ")}
     FROM ${from}
     LEFT JOIN ${PD}.kunjungan k ON k.NOMOR = t.KUNJUNGAN

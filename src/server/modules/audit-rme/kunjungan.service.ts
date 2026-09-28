@@ -1,9 +1,11 @@
 import "server-only";
 import { ValidationError } from "@/server/lib/errors";
 import { addDaysIso, todayWitaIso } from "./audit.constants";
-import { getRuanganResolver, getUserResolver } from "./audit.resolver";
+import { getRuanganResolver, getTindakanResolver, getUserResolver } from "./audit.resolver";
 import {
+  ASESMEN_RUJUKAN,
   JENIS_KUNJUNGAN,
+  JENIS_RAWAT_INAP,
   JENIS_KUNJUNGAN_ORDER,
   KATEGORI_KEYS,
   kategoriWajib,
@@ -18,6 +20,7 @@ import {
 import {
   queryKategoriCounts,
   queryKunjunganPage,
+  queryLegBerasesmen,
   queryKunjunganPerRuangan,
   queryKunjunganSummary,
   type KategoriCountRow,
@@ -28,7 +31,16 @@ import type { KunjunganQuery, RuanganTreeQuery } from "./kunjungan.schema";
 
 /* ------------------------------------------------------------------- tipe */
 
-export type KategoriStat = { aktif: number; batal: number; petugas: number };
+/** Asesmen IGD/RJ ≤ 48 jam sebelum masuk RI yang memenuhi kategori Asesmen leg RI. */
+export type AsesmenRujukan = { nomor: string; ruangan: string; jenisShort: string; masuk: string; jamSebelum: number };
+
+export type KategoriStat = {
+  aktif: number;
+  batal: number;
+  petugas: number;
+  /** Hanya Asesmen RI tanpa input sendiri: dipenuhi dari leg IGD/RJ (`ASESMEN_RUJUKAN`). */
+  rujukan?: AsesmenRujukan | null;
+};
 export type PetugasProfesi = { profesi: number | null; label: string; n: number };
 
 export type KunjunganCard = {
@@ -132,6 +144,7 @@ export function buildCard(
   users: UserResolver,
   ruangan: RuanganResolver,
   today: string,
+  rujukan: AsesmenRujukan | null = null,
 ): KunjunganCard {
   const kategori = emptyKategori();
   const petugasKat = new Map<KategoriKey, Set<string>>();
@@ -148,6 +161,7 @@ export function buildCard(
     }
   }
   for (const [k, set] of petugasKat) kategori[k].petugas = set.size;
+  if (rujukan && kategori.ASESMEN.aktif === 0) kategori.ASESMEN.rujukan = rujukan;
 
   const perProfesi = new Map<number | null, number>();
   for (const id of semuaPetugas) {
@@ -159,7 +173,7 @@ export function buildCard(
     .sort((a, b) => profesiRank(a.profesi) - profesiRank(b.profesi));
 
   const wajib = [...kategoriWajib(r.jenis)];
-  const terpenuhi = wajib.filter((k) => kategori[k].aktif > 0);
+  const terpenuhi = wajib.filter((k) => kategori[k].aktif > 0 || !!kategori[k].rujukan);
   const rg = ruangan.map.get(r.ruanganId);
   const jm = r.jenis != null ? JENIS_KUNJUNGAN[r.jenis] : undefined;
   const status: StatusKunjungan = r.statusDaftar === 0 ? "BATAL" : statusKunjungan(r.status);
@@ -192,21 +206,63 @@ export function buildCard(
   };
 }
 
+const JAM = 3_600_000;
+const waktuMs = (s: string) => Date.parse(`${s.slice(0, 19)}Z`);
+const keSql = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
+
+/**
+ * Asesmen RI "dipenuhi dari IGD/RJ": untuk kunjungan RI tanpa asesmen sendiri,
+ * cari leg IGD/RJ berasesmen milik pasien yang sama yang masuk ≤ 48 jam
+ * sebelum masuk RI (yang terakhir). Satu query untuk semua target.
+ */
+export async function cariAsesmenRujukan(
+  targets: KunjunganRow[],
+  ruangan: RuanganResolver,
+): Promise<Map<string, AsesmenRujukan>> {
+  const out = new Map<string, AsesmenRujukan>();
+  if (targets.length === 0) return out;
+  const masuk = targets.map((t) => waktuMs(t.masuk));
+  const legs = await queryLegBerasesmen(
+    [...new Set(targets.map((t) => t.norm))],
+    keSql(Math.min(...masuk) - ASESMEN_RUJUKAN.jam * JAM),
+    keSql(Math.max(...masuk)),
+  );
+  for (const t of targets) {
+    const tMs = waktuMs(t.masuk);
+    const leg = legs
+      .filter((l) => l.norm === t.norm && l.nomor !== t.nomor)
+      .map((l) => ({ l, ms: waktuMs(l.masuk) }))
+      .filter((x) => x.ms <= tMs && x.ms >= tMs - ASESMEN_RUJUKAN.jam * JAM)
+      .sort((a, b) => b.ms - a.ms)[0];
+    if (!leg) continue;
+    out.set(t.nomor, {
+      nomor: leg.l.nomor,
+      ruangan: ruangan.map.get(leg.l.ruanganId)?.nama ?? leg.l.ruanganId,
+      jenisShort: JENIS_KUNJUNGAN[leg.l.jenis]?.short ?? "—",
+      masuk: leg.l.masuk,
+      jamSebelum: Math.floor((tMs - leg.ms) / JAM),
+    });
+  }
+  return out;
+}
+
 /**
  * Satu halaman papan kunjungan + ringkasan per kategori. Biaya SIMGOS tetap:
- * ringkasan + halaman (paralel), lalu 1 query kategori `IN (<halaman>)`.
+ * ringkasan + halaman (paralel), lalu 1 query kategori `IN (<halaman>)` (+ 1
+ * query asesmen rujukan bila ada RI tanpa asesmen).
  */
 export async function listKunjungan(q: KunjunganQuery): Promise<KunjunganPage> {
   const f = toFilter(q);
-  const [summary, rows] = await Promise.all([
+  const [summary, rows, tindakan] = await Promise.all([
     queryKunjunganSummary(f),
     queryKunjunganPage(f, (q.page - 1) * q.pageSize, q.pageSize),
+    getTindakanResolver(),
   ]);
 
   const nomors = rows.map((r) => r.nomor);
   const nopens = [...new Set(rows.map((r) => r.nopen))];
   const [counts, users, ruangan] = await Promise.all([
-    queryKategoriCounts(nomors, nopens),
+    queryKategoriCounts(nomors, nopens, tindakan.tarifIds),
     getUserResolver(),
     getRuanganResolver(),
   ]);
@@ -220,9 +276,21 @@ export async function listKunjungan(q: KunjunganQuery): Promise<KunjunganPage> {
     else byRef.set(key, [c]);
   }
 
+  const tanpaAsesmen = rows.filter(
+    (r) => r.jenis === JENIS_RAWAT_INAP && !(byRef.get(`K:${r.nomor}`) ?? []).some((c) => c.kategori === "ASESMEN" && c.aktif > 0),
+  );
+  const rujukan = await cariAsesmenRujukan(tanpaAsesmen, ruangan);
+
   const today = todayWitaIso();
   const items = rows.map((r) =>
-    buildCard(r, [...(byRef.get(`K:${r.nomor}`) ?? []), ...(byRef.get(`E:${r.nopen}`) ?? [])], users, ruangan, today),
+    buildCard(
+      r,
+      [...(byRef.get(`K:${r.nomor}`) ?? []), ...(byRef.get(`E:${r.nopen}`) ?? [])],
+      users,
+      ruangan,
+      today,
+      rujukan.get(r.nomor) ?? null,
+    ),
   );
 
   return {

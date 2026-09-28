@@ -126,9 +126,19 @@ export const KATEGORI_WAJIB: Record<number, readonly KategoriKey[]> = {
   6: ["TINDAKAN"],
 };
 
+/** Jenis kunjungan yang punya kategori wajib (dapat dinilai di Peta Ruangan), urut tampil. */
+export const JENIS_DINILAI: readonly number[] = JENIS_KUNJUNGAN_ORDER.filter((j) => j in KATEGORI_WAJIB);
+
 export function kategoriWajib(jenis: number | null | undefined): readonly KategoriKey[] {
   return jenis == null ? [] : (KATEGORI_WAJIB[jenis] ?? []);
 }
+
+/**
+ * Asesmen Rawat Inap dianggap terpenuhi bila pasien yang sama sudah diasesmen di
+ * IGD/RJ ≤ 48 jam sebelum masuk RI (keputusan K4). Leg itu umumnya ber-NOPEN
+ * berbeda dari leg RI — 40/41 RI tanpa asesmen sendiri (30 hari, 28 Sep 2026).
+ */
+export const ASESMEN_RUJUKAN = { jenis: [1, 2] as readonly number[], jam: 48 } as const;
 
 /* ------------------------------------------ status kunjungan (kunjungan.STATUS) */
 
@@ -280,3 +290,5 @@ export const LOOKBACK_RI_HARI = 60;
 export const RENTANG_MAKS_HARI = 31;
 /** Rentang default kepatuhan petugas — lebih panjang dari papan agar skor stabil. */
 export const RENTANG_PETUGAS_DEFAULT_HARI = 30;
+/** Rentang default Peta Ruangan (kolom hari tetap terbaca di layar laptop). */
+export const RENTANG_PETA_DEFAULT_HARI = 14;

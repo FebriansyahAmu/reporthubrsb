@@ -3,6 +3,8 @@ import { getSimgos } from "@/server/db/simgos.client";
 import { SIMGOS_DB } from "@/server/db/simgos-databases";
 import { addDaysIso } from "./audit.constants";
 import {
+  ASESMEN_RUJUKAN,
+  KELOMPOK_JENIS,
   LOOKBACK_RI_HARI,
   SUMBER,
   SUMBER_KEYS,
@@ -86,6 +88,18 @@ export const SUMBER_SQL: Record<SumberKey, SumberSql> = {
 };
 
 const ANGKA_MAKS = 6;
+
+/**
+ * Subquery leg kunjungan bagi sumber per-episode (Diagnosis, kunci NOPEN;
+ * alias tabel `t`): leg KLINIS (RJ/IGD/RI) tidak batal yang terakhir masuk
+ * sebelum `waktu`. Tanpa preferensi klinis, 1.151/1.308 diagnosis (31 hari)
+ * jatuh ke leg Farmasi/Lab episode yang sama (diverifikasi 28 Sep 2026).
+ */
+export const legKlinisSql = (waktu: string) => `(SELECT kx.NOMOR FROM ${PD}.kunjungan kx JOIN ${MS}.ruangan rx ON rx.ID = kx.RUANGAN
+      WHERE kx.NOPEN = t.NOPEN
+      ORDER BY (rx.JENIS_KUNJUNGAN IN (${KELOMPOK_JENIS.KLINIS.join(", ")})) DESC, (kx.STATUS <> 0) DESC,
+        (kx.MASUK <= ${waktu}) DESC, kx.MASUK DESC
+      LIMIT 1)`;
 
 /* ------------------------------------------------------------ filter kunjungan */
 
@@ -213,6 +227,21 @@ export async function queryKunjunganByNomor(nomor: string): Promise<KunjunganRow
   return rows[0] ? toKunjunganRow(rows[0]) : null;
 }
 
+/** Batas kunjungan satu peta (31 hari: RI 227 · IGD 246 · Lab 489 — 28 Sep 2026). */
+export const PETA_KUNJUNGAN_CAP = 3000;
+
+/** SEMUA kunjungan cocok filter (tanpa halaman, dibatasi `PETA_KUNJUNGAN_CAP`) — untuk Peta Ruangan. */
+export async function queryKunjunganSemua(f: KunjunganFilter): Promise<KunjunganRow[]> {
+  const w = kunjunganWhere(f, { withLokasi: true });
+  const sql = `SELECT ${CAP} ${SELECT_KUNJUNGAN}
+    FROM ${FROM_KUNJUNGAN}
+    WHERE ${w.sql}
+    ORDER BY k.MASUK, k.NOMOR
+    LIMIT ${PETA_KUNJUNGAN_CAP}`;
+  const rows = await getSimgos().$queryRawUnsafe<KunjunganRaw[]>(sql, ...w.params);
+  return rows.map(toKunjunganRow);
+}
+
 /** Banyak kunjungan by NOMOR (PK) — termasuk yang batal; urutan tidak dijamin. */
 export async function queryKunjunganByNomors(nomors: string[]): Promise<KunjunganRow[]> {
   if (nomors.length === 0) return [];
@@ -284,6 +313,39 @@ export async function queryRuanganMaster(): Promise<RuanganRow[]> {
   }));
 }
 
+export type LegAsesmenRow = { nomor: string; norm: string; masuk: string; ruanganId: string; jenis: number };
+
+/**
+ * Leg IGD/RJ tidak batal yang punya asesmen aktif, milik pasien `norms`, masuk
+ * dalam `[sejak, sampai]` — dasar asesmen RI "dipenuhi dari IGD/RJ"
+ * (`ASESMEN_RUJUKAN`). Index `pendaftaran.NORM` → `kunjungan.NOPEN`.
+ */
+export async function queryLegBerasesmen(norms: string[], sejak: string, sampai: string): Promise<LegAsesmenRow[]> {
+  if (norms.length === 0) return [];
+  const ada = SUMBER_KEYS.filter((k) => SUMBER[k].kategori === "ASESMEN")
+    .map((k) => `EXISTS (SELECT 1 FROM ${SUMBER_SQL[k].tabel} a WHERE a.KUNJUNGAN = k.NOMOR AND a.STATUS <> 0)`)
+    .join(" OR ");
+  const sql = `SELECT ${CAP} k.NOMOR AS nomor, pp.NORM AS norm, DATE_FORMAT(k.MASUK, '%Y-%m-%dT%H:%i:%s') AS masuk,
+      k.RUANGAN AS ruanganId, r.JENIS_KUNJUNGAN AS jenis
+    FROM ${PD}.pendaftaran pp
+    JOIN ${PD}.kunjungan k ON k.NOPEN = pp.NOMOR
+    JOIN ${MS}.ruangan r ON r.ID = k.RUANGAN
+    WHERE pp.NORM IN (${norms.map(() => "?").join(",")})
+      AND r.JENIS_KUNJUNGAN IN (${ASESMEN_RUJUKAN.jenis.map(() => "?").join(",")})
+      AND k.STATUS <> 0 AND k.MASUK >= ? AND k.MASUK <= ?
+      AND (${ada})`;
+  const rows = await getSimgos().$queryRawUnsafe<
+    { nomor: string; norm: number | bigint; masuk: string; ruanganId: string; jenis: number }[]
+  >(sql, ...norms.map(Number), ...ASESMEN_RUJUKAN.jenis, sejak, sampai);
+  return rows.map((r) => ({
+    nomor: String(r.nomor),
+    norm: String(r.norm),
+    masuk: r.masuk,
+    ruanganId: String(r.ruanganId),
+    jenis: Number(r.jenis),
+  }));
+}
+
 /** Master tindakan (± 340 baris, jarang berubah) — dasar klasifikasi item tarif, di-cache resolver. */
 export async function queryTindakanMaster(): Promise<{ id: number; nama: string }[]> {
   const rows = await getSimgos().$queryRawUnsafe<{ id: number; nama: string | null }[]>(
@@ -306,9 +368,14 @@ export type KategoriCountRow = {
 /**
  * Jumlah input aktual per (kunjungan|episode) × penginput, untuk SATU halaman.
  * Satu round-trip `UNION ALL`; tiap bagian memakai index kolom kunci
- * (`KUNJUNGAN`/`NOPEN`). STATUS 0 = batal/dihapus, selain itu aktif.
+ * (`KUNJUNGAN`/`NOPEN`). STATUS 0 = batal/dihapus, selain itu aktif. Item
+ * tarif (`tarifIds`) tidak dihitung sebagai Tindakan (keputusan K3/K4).
  */
-export async function queryKategoriCounts(nomors: string[], nopens: string[]): Promise<KategoriCountRow[]> {
+export async function queryKategoriCounts(
+  nomors: string[],
+  nopens: string[],
+  tarifIds: readonly number[],
+): Promise<KategoriCountRow[]> {
   if (nomors.length === 0) return [];
   const parts: string[] = [];
   const params: unknown[] = [];
@@ -317,12 +384,13 @@ export async function queryKategoriCounts(nomors: string[], nopens: string[]): P
     const keys = s.kunci === "KUNJUNGAN" ? nomors : nopens;
     if (keys.length === 0) continue;
     const ph = keys.map(() => "?").join(",");
+    const tanpaTarif = key === "tindakan_medis" && tarifIds.length > 0;
     parts.push(`SELECT '${SUMBER[key].kategori}' AS kategori, ${s.kunci} AS ref, OLEH AS oleh,
         SUM(STATUS <> 0) AS aktif, SUM(STATUS = 0) AS batal
       FROM ${s.tabel}
-      WHERE ${s.kunci} IN (${ph})
+      WHERE ${s.kunci} IN (${ph})${tanpaTarif ? ` AND TINDAKAN NOT IN (${tarifIds.map(() => "?").join(",")})` : ""}
       GROUP BY ${s.kunci}, OLEH`);
-    params.push(...keys);
+    params.push(...keys, ...(tanpaTarif ? tarifIds : []));
   }
   const sql = `SELECT ${CAP} * FROM (${parts.join("\nUNION ALL\n")}) x`;
   const rows = await getSimgos().$queryRawUnsafe<
@@ -392,6 +460,79 @@ export async function queryKunjunganRecords(nomor: string): Promise<RecordRow[]>
     teks: typeof r.teks === "string" ? r.teks.trim() || null : null,
     angka: Array.from({ length: ANGKA_MAKS }, (_, i) => num(r[`n${i}`])),
   }));
+}
+
+export type RecordRingkasRow = {
+  kunjungan: string;
+  kategori: KategoriKey;
+  /** Waktu klinis `YYYY-MM-DDTHH:mm:ss`. */
+  waktu: string | null;
+  oleh: string | null;
+  status: number;
+  peran: number | null;
+};
+
+const RECORD_CHUNK = 400;
+
+/**
+ * Record ringkas BANYAK kunjungan (sumber per-kunjungan saja; Diagnosis per
+ * episode tak masuk matriks) — bahan matriks RI Peta Ruangan. Item tarif tidak
+ * diambil. `KUNJUNGAN IN (…)` per potongan 400, dijalankan berurutan.
+ */
+export async function queryRecordsKunjungan(nomors: string[], tarifIds: readonly number[]): Promise<RecordRingkasRow[]> {
+  const out: RecordRingkasRow[] = [];
+  for (let i = 0; i < nomors.length; i += RECORD_CHUNK) {
+    const chunk = nomors.slice(i, i + RECORD_CHUNK);
+    const ph = chunk.map(() => "?").join(",");
+    const parts: string[] = [];
+    const params: unknown[] = [];
+    for (const key of SUMBER_KEYS) {
+      const s = SUMBER_SQL[key];
+      if (s.kunci !== "KUNJUNGAN") continue;
+      const tanpaTarif = key === "tindakan_medis" && tarifIds.length > 0;
+      parts.push(`(SELECT t.KUNJUNGAN AS kj, '${SUMBER[key].kategori}' AS kat,
+          DATE_FORMAT(${s.waktu}, '%Y-%m-%dT%H:%i:%s') AS waktu, t.OLEH AS oleh, t.STATUS AS st, ${s.peran ?? "NULL"} AS peran
+        FROM ${s.tabel} t
+        WHERE t.KUNJUNGAN IN (${ph})${tanpaTarif ? ` AND t.TINDAKAN NOT IN (${tarifIds.map(() => "?").join(",")})` : ""})`);
+      params.push(...chunk, ...(tanpaTarif ? tarifIds : []));
+    }
+    const rows = await getSimgos().$queryRawUnsafe<
+      { kj: string; kat: KategoriKey; waktu: string | null; oleh: number | bigint | null; st: number; peran: number | null }[]
+    >(`SELECT ${CAP} * FROM (${parts.join("\nUNION ALL\n")}) x`, ...params);
+    for (const r of rows) {
+      out.push({
+        kunjungan: String(r.kj),
+        kategori: r.kat,
+        waktu: r.waktu ?? null,
+        oleh: r.oleh == null || Number(r.oleh) === 0 ? null : String(r.oleh),
+        status: Number(r.st),
+        peran: r.peran == null ? null : Number(r.peran),
+      });
+    }
+  }
+  return out;
+}
+
+export type RefKunjunganRow = { sumber: SumberKey; id: string; kunjungan: string | null };
+
+/**
+ * Record (REF log) → kunjungan, per sumber lewat PK `ID IN (…)`. Diagnosis
+ * (per episode) → leg klinis episodenya. Untuk kolom pasien/ruangan tabel Log.
+ */
+export async function queryRefKunjungan(groups: { sumber: SumberKey; ids: string[] }[]): Promise<RefKunjunganRow[]> {
+  const g = groups.filter((x) => x.ids.length > 0);
+  if (g.length === 0) return [];
+  const parts = g.map((x) => {
+    const s = SUMBER_SQL[x.sumber];
+    const kj = s.kunci === "KUNJUNGAN" ? "t.KUNJUNGAN" : legKlinisSql(s.waktu);
+    return `(SELECT '${x.sumber}' AS sumber, CAST(t.ID AS CHAR) AS id, ${kj} AS kj
+      FROM ${s.tabel} t WHERE t.ID IN (${x.ids.map(() => "?").join(",")}))`;
+  });
+  const rows = await getSimgos().$queryRawUnsafe<{ sumber: SumberKey; id: string; kj: string | null }[]>(
+    `SELECT ${CAP} * FROM (${parts.join("\nUNION ALL\n")}) x`,
+    ...g.flatMap((x) => x.ids),
+  );
+  return rows.map((r) => ({ sumber: r.sumber, id: String(r.id), kunjungan: r.kj == null ? null : String(r.kj) }));
 }
 
 /* --------------------------------------------------------- log per record (K2) */

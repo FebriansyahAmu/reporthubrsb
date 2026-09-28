@@ -222,6 +222,9 @@ function PetugasRekapList({ rekap, petugas }: { rekap: PetugasRekap[]; petugas: 
                         <Ban className="size-2.5" /> {r.batal} batal
                       </span>
                     )}
+                    {r.tarif > 0 && (
+                      <span className="text-[10px] text-fg-subtle" title="Item tarif — tidak dihitung sebagai Tindakan">+{r.tarif} item tarif</span>
+                    )}
                   </div>
                   <span className="w-10 text-right text-sm font-semibold tabular text-fg" title="Input aktif">{r.total}</span>
                 </li>

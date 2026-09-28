@@ -5,6 +5,8 @@ import type { JenisAktivitas } from "@/server/modules/audit-rme/audit.constants"
 import type { KunjunganPage, RuanganTree } from "@/server/modules/audit-rme/kunjungan.service";
 import type { KunjunganDetail, RekamIsi } from "@/server/modules/audit-rme/jejak.service";
 import type { KepatuhanPetugas, ProfilPetugas } from "@/server/modules/audit-rme/petugas.service";
+import type { PetaRuangan } from "@/server/modules/audit-rme/peta.service";
+import type { LogPage } from "@/server/modules/audit-rme/log.service";
 import type { SumberKey } from "@/server/modules/audit-rme/kunjungan.constants";
 
 export type { JenisAktivitas };
@@ -15,33 +17,6 @@ export type AuditRefs = {
   scope: { objek: string; label: string; tabel: string }[];
   users: AuditUser[];
   coverage: { minDate: string | null; maxDate: string | null };
-};
-
-export type AuditEvent = {
-  id: string;
-  sumber: "RME" | "LOGIN";
-  ts: string;
-  jenis: JenisAktivitas;
-  aksi: "C" | "U" | null;
-  logId: string | null;
-  pengguna: AuditUser;
-  objek: { id: string; label: string; tabel: string } | null;
-  ref: string | null;
-  ip: string | null;
-};
-
-export type EventsPage = { items: AuditEvent[]; nextCursor: string | null; hasMore: boolean };
-
-export type EventsFilter = {
-  from?: string;
-  to?: string;
-  sumber?: "SEMUA" | "RME" | "LOGIN";
-  aksi?: "C" | "U";
-  objek?: string;
-  pengguna?: string;
-  q?: string;
-  cursor?: string;
-  limit?: number;
 };
 
 async function jsonCall<T>(url: string): Promise<{ data: T }> {
@@ -191,20 +166,51 @@ export const fetchKepatuhanPetugas = (f: PetugasFilter) =>
 export const fetchProfilPetugas = (id: string, f: PetugasFilter) =>
   jsonCall<ProfilPetugas>(`/api/audit-rme/petugas/${encodeURIComponent(id)}?${petugasParams(f)}`).then((j) => j.data);
 
+/* ------------------------------------------------ Fase 2: peta ruangan (K4) */
+
+export type {
+  PetaBaris,
+  PetaItem,
+  PetaItemKel,
+  PetaItemRi,
+  PetaPasien,
+  PetaRingkas,
+  PetaRuangan,
+  PetaSel,
+} from "@/server/modules/audit-rme/peta.service";
+
+export type PetaFilter = { from: string; to: string; jenis: number };
+
+export const fetchPetaRuangan = (f: PetaFilter) =>
+  jsonCall<PetaRuangan>(`/api/audit-rme/peta?${new URLSearchParams({ from: f.from, to: f.to, jenis: String(f.jenis) })}`).then(
+    (j) => j.data,
+  );
+
+/* ----------------------------------------- Fase 2: log aktivitas tabel (K4) */
+
+export type { LogBaris, LogKunjungan, LogPage } from "@/server/modules/audit-rme/log.service";
+
+export type LogFilter = {
+  from: string;
+  to: string;
+  sumber: "SEMUA" | "RME" | "LOGIN";
+  objek?: string;
+  aksi?: "C" | "U";
+  pengguna?: string;
+  q?: string;
+  page: number;
+  pageSize: number;
+};
+
+export function fetchLog(f: LogFilter): Promise<LogPage> {
+  const sp = new URLSearchParams({ from: f.from, to: f.to, sumber: f.sumber, page: String(f.page), pageSize: String(f.pageSize) });
+  if (f.objek) sp.set("objek", f.objek);
+  if (f.aksi) sp.set("aksi", f.aksi);
+  if (f.pengguna) sp.set("pengguna", f.pengguna);
+  if (f.q) sp.set("q", f.q);
+  return jsonCall<LogPage>(`/api/audit-rme/log?${sp}`).then((j) => j.data);
+}
+
 /** Pohon ruangan memakai filter yang sama KECUALI lokasi & halaman (rail tetap utuh). */
 export const fetchRuanganTree = (f: KunjunganFilter) =>
   jsonCall<RuanganTree>(`/api/audit-rme/ruangan?${kunjunganParams(f, false)}`).then((j) => j.data);
-
-export function fetchAuditEvents(f: EventsFilter): Promise<EventsPage> {
-  const sp = new URLSearchParams();
-  if (f.from) sp.set("from", f.from);
-  if (f.to) sp.set("to", f.to);
-  if (f.sumber && f.sumber !== "SEMUA") sp.set("sumber", f.sumber);
-  if (f.aksi) sp.set("aksi", f.aksi);
-  if (f.objek) sp.set("objek", f.objek);
-  if (f.pengguna) sp.set("pengguna", f.pengguna);
-  if (f.q) sp.set("q", f.q);
-  if (f.cursor) sp.set("cursor", f.cursor);
-  if (f.limit) sp.set("limit", String(f.limit));
-  return jsonCall<EventsPage>(`/api/audit-rme/events?${sp.toString()}`).then((j) => j.data);
-}

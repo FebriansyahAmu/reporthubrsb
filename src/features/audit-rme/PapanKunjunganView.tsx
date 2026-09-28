@@ -310,9 +310,10 @@ function PipLegend() {
       <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded-sm border border-success/25 bg-success-soft" /> terisi (angka = input aktif)</span>
       <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded-sm border border-danger/30 bg-danger-soft" /> wajib, belum diisi (0)</span>
       <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded-sm border border-border bg-surface-2" /> tidak wajib (–)</span>
+      <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded-sm border border-dashed border-success/50 bg-success-soft/50" /> IGD/RJ = asesmen RI dipenuhi dari IGD/RJ ≤ 48 jam sebelum masuk</span>
       <span className="inline-flex items-center gap-1"><Ban className="size-3 text-danger" /> batal/dihapus (STATUS 0)</span>
       <span>
-        <b className="text-fg">ASM</b> Asesmen · <b className="text-fg">CPPT</b> · <b className="text-fg">TTV</b> Tanda vital · <b className="text-fg">DX<sup>e</sup></b> Diagnosis (per episode) · <b className="text-fg">TIN</b> Tindakan
+        <b className="text-fg">ASM</b> Asesmen · <b className="text-fg">CPPT</b> · <b className="text-fg">TTV</b> Tanda vital · <b className="text-fg">DX<sup>e</sup></b> Diagnosis (per episode) · <b className="text-fg">TIN</b> Tindakan (tanpa item tarif)
       </span>
     </div>
   );

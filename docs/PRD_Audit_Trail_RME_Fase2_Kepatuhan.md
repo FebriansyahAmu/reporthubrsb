@@ -297,6 +297,12 @@ Timeline panjang diganti **tabel ringkas berpaginasi bernomor** (kepadatan tingg
 
 ### Stage K4 — Peta Ruangan + rombak Log Aktivitas
 - Heatmap ruangan × hari; tab Log jadi tabel berpaginasi + panel detail samping.
+- ✅ **SELESAI (28 Sep 2026)** — E2E 41/41 (API vs SIMGOS independen + UI nyata + HP 390 px) + regresi K3 40/40, K2 27/27, K1 21/21, K0 32/32 (ground truth diperbarui: Tindakan tanpa tarif, asesmen rujukan), Stage 1 17/17, Stage 2 14/14, Stage 3 22/22.
+  - **Keputusan §10.5–6 diterapkan:** Tindakan di kartu/kelengkapan/drawer/matriks **tanpa item tarif** (`queryKategoriCounts(…, tarifIds)`; drawer menandai "item tarif", rekap petugas memisahkan `tarif`). **Asesmen RI dipenuhi dari IGD/RJ** pasien sama yang masuk ≤ 48 jam sebelum masuk RI (`ASESMEN_RUJUKAN`, `cariAsesmenRujukan`) — pip Asesmen tampil "IGD/RJ" bergaris putus; 18/18 RI tanpa asesmen (30 hari) terpenuhi.
+  - **Peta Ruangan** (`/api/audit-rme/peta`, default 14 hari, maks 31): RI = kepatuhan target harian per hari dinas memakai `hitungMatriksRi` yang sama dengan drawer (sel = target OK ÷ dinilai, Σ pasien); jenis lain = kelengkapan kunjungan per tanggal masuk (logika kartu). Sel → drawer daftar pasien (status shift/visite/TTV atau kategori kurang) → jejak kunjungan. Ringkasan per ruang: kepatuhan, pasien-hari, petugas unik, **perawat per pasien per hari**, batal. RI 31 hari ± 220 ms.
+  - **Log Aktivitas** (`/api/audit-rme/log`): tabel 25 baris, **paginasi bernomor** (hitung + `UNION ALL` CRUD+login dengan batas per sumber `offset+limit`, pruning partisi `TANGGAL` + prefix ID), kolom **pasien · ruangan** (REF → record → kunjungan; Diagnosis → leg klinis), label **Pembatalan** (diff SEBELUM/SESUDAH hanya untuk baris halaman yang menyentuh STATUS — sama dengan panel diff). Cakupan objek = 7 sumber Fase 2. Detail diff di **panel samping** (layar lebar) / drawer (HP), navigasi ↑/↓, tombol ke jejak kunjungan. Halaman dalam 31 hari ≤ ~160 ms. Timeline Fase 1 (`AuditTimelineView`) dihapus; API `/events` tetap.
+  - Label `PENGHAPUSAN` kini "Pembatalan" (istilah Fase 2). `legKlinisSql` dipindah ke `kunjungan.dal` (dipakai skor petugas & Log).
+  - Temuan data: kelengkapan **Rawat Jalan 32%** (Klinik Interna ± 20% — umumnya hanya 1 dari 5 kategori), IGD 96%, Lab 100%; kepatuhan harian RI 62% (ruang terendah ± 57%); rata-rata ± 3 perawat/bidan berbeda menginput per pasien per hari.
 
 ### Stage K5 — Ekspor (menggantikan Stage 4 Fase 1)
 - Excel/PDF: rekap kepatuhan per petugas, per ruangan, dan rincian per kunjungan (bukti pembinaan/penghargaan). Meta-audit ekspor.
@@ -323,8 +329,8 @@ Opsional setelahnya: Stage 5 `bridge_log`, kategori tambahan (Farmasi `layanan.f
 2. **Asesmen:** ✅ **3 tabel inti** — `anamnesis` + `keluhan_utama` + `pemeriksaan_fisik`.
 3. **Farmasi & Lab:** ✅ **lewat kategori Tindakan dulu**; kategori Farmasi (`layanan.farmasi`) jadi stage opsional.
 4. **Urutan:** ✅ **K0 → K1 Papan Kunjungan** → K2 Drawer → K3 Kepatuhan Petugas → K4 → K5.
-5. **Item tarif pada Tindakan (K3):** ✅ dipisah dari skor petugas (aturan `TINDAKAN_TARIF`). Terbuka: apakah pip/kelengkapan TIN di kartu juga mengecualikan tarif (usulan K4).
-6. **Asesmen RI (K3):** tetap per kunjungan. Terbuka untuk K4: terima asesmen leg IGD/RJ ≤ 48 jam sebelum masuk RI (pasien sama, NOPEN berbeda) sebagai pemenuhan.
+5. **Item tarif pada Tindakan:** ✅ dipisah dari skor petugas (K3) **dan** dari kartu/kelengkapan/drawer/matriks (K4) — aturan `TINDAKAN_TARIF`.
+6. **Asesmen RI:** ✅ (K4) dipenuhi bila asesmen di leg IGD/RJ pasien sama ≤ 48 jam sebelum masuk RI (NOPEN boleh berbeda).
 
 ---
 

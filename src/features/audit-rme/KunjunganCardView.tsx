@@ -123,10 +123,12 @@ export function KunjunganCardView({ k, onOpen }: { k: KunjunganCard; onOpen?: ()
 /** Status & teks aksesibel satu pip kategori (dipakai kartu & baris ringkas). */
 function pipInfo(kategori: KategoriKey, stat: KategoriStat, wajib: boolean) {
   const meta = KATEGORI[kategori];
-  const terisi = stat.aktif > 0;
+  const rujukan = stat.aktif === 0 ? stat.rujukan : null;
+  const terisi = stat.aktif > 0 || !!rujukan;
   const kurang = wajib && !terisi;
   const detail = [
     `${meta.label}: ${stat.aktif} input aktif`,
+    rujukan ? `dipenuhi asesmen ${rujukan.jenisShort} ${rujukan.ruangan} (${rujukan.jamSebelum} jam sebelum masuk)` : null,
     stat.batal ? `${stat.batal} batal/dihapus` : null,
     stat.petugas ? `${stat.petugas} petugas` : null,
     meta.perEpisode ? "dihitung per episode (NOPEN)" : null,
@@ -135,12 +137,14 @@ function pipInfo(kategori: KategoriKey, stat: KategoriStat, wajib: boolean) {
     .filter(Boolean)
     .join(" · ");
   const box = cn(
-    terisi && "border-success/25 bg-success-soft",
+    terisi && !rujukan && "border-success/25 bg-success-soft",
+    rujukan && "border-dashed border-success/50 bg-success-soft/50",
     kurang && "border-danger/30 bg-danger-soft",
     !terisi && !kurang && "border-border bg-surface-2/60",
   );
-  const value = terisi ? stat.aktif : kurang ? 0 : "–";
-  const valueTone = terisi ? "text-fg" : kurang ? "text-danger" : "text-fg-subtle";
+  // Dipenuhi dari leg lain → tampil asal (mis. "IGD"), bukan angka input ruangan ini.
+  const value = rujukan ? rujukan.jenisShort : terisi ? stat.aktif : kurang ? 0 : "–";
+  const valueTone = rujukan ? "text-success text-xs" : terisi ? "text-fg" : kurang ? "text-danger" : "text-fg-subtle";
   return { meta, terisi, kurang, detail, box, value, valueTone };
 }
 

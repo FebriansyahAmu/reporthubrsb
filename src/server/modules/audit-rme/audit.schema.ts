@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { AUDIT_OBJEK_IDS } from "./audit.constants";
+import { SUMBER_OBJEK_IDS } from "./kunjungan.constants";
 
 /**
  * Skema query timeline Audit Trail RME. Nilai di-bind sebagai parameter (`?`) di
@@ -35,6 +36,28 @@ export const eventsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(30),
 });
 export type EventsQuery = z.infer<typeof eventsQuerySchema>;
+
+const optDate = z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), isoDate.optional());
+
+/**
+ * Log Aktivitas berpaginasi bernomor (Fase 2 · K4). Cakupan objek = 7 sumber
+ * data aktual (Asesmen ×3, CPPT, TTV, Diagnosis, Tindakan).
+ */
+export const logQuerySchema = z.object({
+  from: optDate,
+  to: optDate,
+  sumber: z.enum(["SEMUA", "RME", "LOGIN"]).default("SEMUA"),
+  objek: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.enum(SUMBER_OBJEK_IDS as unknown as [string, ...string[]]).optional(),
+  ),
+  aksi: z.preprocess((v) => (v === "" ? undefined : v), z.enum(["C", "U"]).optional()),
+  pengguna: optNum,
+  q: optText(60),
+  page: z.coerce.number().int().min(1).max(100_000).default(1),
+  pageSize: z.coerce.number().int().min(10).max(50).default(25),
+});
+export type LogQuery = z.infer<typeof logQuerySchema>;
 
 /** Query dashboard: rentang tanggal (default 30 hari terakhir di service). */
 export const dashboardQuerySchema = z.object({

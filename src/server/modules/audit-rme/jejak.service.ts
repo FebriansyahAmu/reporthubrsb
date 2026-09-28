@@ -7,6 +7,7 @@ import { hitungMatriksRi, type Matriks } from "./kepatuhan";
 import {
   CPPT_PERAN,
   getSumberByObjek,
+  JENIS_RAWAT_INAP,
   KATEGORI_KEYS,
   profesiLabel,
   PROFESI_ORDER,
@@ -30,7 +31,7 @@ import {
   type RecordRow,
   type RefGroup,
 } from "./kunjungan.dal";
-import { buildCard, type KunjunganCard, type UserResolver } from "./kunjungan.service";
+import { buildCard, cariAsesmenRujukan, type KunjunganCard, type UserResolver } from "./kunjungan.service";
 
 /**
  * Jejak satu kunjungan (Fase 2 · K2): data AKTUAL per record (aktif & batal),
@@ -72,9 +73,12 @@ export type RekamItem = {
 
 export type PetugasRekap = {
   id: string;
+  /** Input aktif klinis (Tindakan tanpa item tarif). */
   perKategori: Record<KategoriKey, number>;
   total: number;
   batal: number;
+  /** Item tarif aktif (tidak masuk `total`). */
+  tarif: number;
   pertama: string | null;
   terakhir: string | null;
 };
@@ -261,18 +265,22 @@ export async function getKunjunganDetail(nomor: string): Promise<KunjunganDetail
     })
     .sort(cmpWaktu);
 
-  // Kartu dari record yang sama → angka identik dgn papan (K1).
+  // Kartu, rekap & matriks memakai record KLINIS (item tarif hanya ditandai di daftar)
+  // → angka identik dgn papan (K1) & skor petugas (K3).
+  const klinis = records.filter((r) => !r.tarif);
   const counts = new Map<string, KategoriCountRow>();
-  for (const r of records) {
+  for (const r of klinis) {
     const key = `${r.kategori}:${r.oleh ?? ""}`;
     const c = counts.get(key) ?? { kategori: r.kategori, ref: r.episode ? k.nopen : k.nomor, oleh: r.oleh, aktif: 0, batal: 0 };
     if (r.batal) c.batal++;
     else c.aktif++;
     counts.set(key, c);
   }
-  const card = buildCard(k, [...counts.values()], users, ruangan, todayWitaIso());
+  const tanpaAsesmen = k.jenis === JENIS_RAWAT_INAP && !klinis.some((r) => r.kategori === "ASESMEN" && !r.batal);
+  const rujukan = tanpaAsesmen ? (await cariAsesmenRujukan([k], ruangan)).get(k.nomor) ?? null : null;
+  const card = buildCard(k, [...counts.values()], users, ruangan, todayWitaIso(), rujukan);
 
-  // Rekap per petugas (input aktif per kategori + batal + rentang waktu).
+  // Rekap per petugas (input aktif per kategori + batal + rentang waktu; item tarif terpisah).
   const rekap = new Map<string, PetugasRekap>();
   for (const r of records) {
     if (!r.oleh) continue;
@@ -283,10 +291,13 @@ export async function getKunjunganDetail(nomor: string): Promise<KunjunganDetail
         perKategori: Object.fromEntries(KATEGORI_KEYS.map((x) => [x, 0])) as Record<KategoriKey, number>,
         total: 0,
         batal: 0,
+        tarif: 0,
         pertama: null,
         terakhir: null,
       } satisfies PetugasRekap);
-    if (r.batal) p.batal++;
+    if (r.tarif) {
+      if (!r.batal) p.tarif++;
+    } else if (r.batal) p.batal++;
     else {
       p.perKategori[r.kategori]++;
       p.total++;
@@ -303,9 +314,9 @@ export async function getKunjunganDetail(nomor: string): Promise<KunjunganDetail
 
   const peranById = new Map(rows.map((r) => [`${r.sumber}:${r.id}`, r.peran]));
   const matriks =
-    k.jenis === 3
+    k.jenis === JENIS_RAWAT_INAP
       ? hitungMatriksRi({
-          records: records.map((r) => ({
+          records: klinis.map((r) => ({
             kategori: r.kategori,
             waktu: r.waktu,
             oleh: r.oleh,

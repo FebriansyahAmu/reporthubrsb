@@ -29,12 +29,13 @@ const STATUS_TONE: Record<DiffStatus, BadgeTone> = {
 export function AuditDetailModal({ logId, onClose }: { logId: string | null; onClose: () => void }) {
   return (
     <Modal open={!!logId} onClose={onClose} title="Detail Aktivitas" description="Perubahan data terekam (read-only)" size="lg">
-      {logId ? <DetailBody key={logId} logId={logId} /> : null}
+      {logId ? <AuditDetailBody key={logId} logId={logId} /> : null}
     </Modal>
   );
 }
 
-function DetailBody({ logId }: { logId: string }) {
+/** Isi detail diff — dipakai modal (drawer jejak) & panel samping tabel Log. Beri `key={logId}`. */
+export function AuditDetailBody({ logId }: { logId: string }) {
   const { result, loading, error, reload } = useAsyncData<EventDetail>(() => fetchEventDetail(logId), [logId]);
   const [showAll, setShowAll] = useState(false);
 
