@@ -32,6 +32,44 @@ export const KATEGORI: Record<KategoriKey, KategoriMeta> = {
   TINDAKAN: { key: "TINDAKAN", label: "Tindakan", short: "TIN", perEpisode: false },
 };
 
+/* ------------------------------------------------ sumber data aktual (7 tabel) */
+
+/** Tabel sumber per kategori — kunci registri (SQL spesifiknya di `kunjungan.dal.ts`). */
+export const SUMBER_KEYS = [
+  "anamnesis",
+  "keluhan_utama",
+  "pemeriksaan_fisik",
+  "cppt",
+  "tanda_vital",
+  "diagnosa",
+  "tindakan_medis",
+] as const;
+export type SumberKey = (typeof SUMBER_KEYS)[number];
+
+export type SumberMeta = {
+  key: SumberKey;
+  kategori: KategoriKey;
+  label: string;
+  /** Nama tabel SIMGOS (tampilan). */
+  tabel: string;
+  /** `aplikasi.objek.ID` — di log, `REF` = ID record tabel ini (diverifikasi 40/40 per tabel). */
+  objek: string;
+};
+
+export const SUMBER: Record<SumberKey, SumberMeta> = {
+  anamnesis: { key: "anamnesis", kategori: "ASESMEN", label: "Anamnesis", tabel: "medicalrecord.anamnesis", objek: "21001" },
+  keluhan_utama: { key: "keluhan_utama", kategori: "ASESMEN", label: "Keluhan utama", tabel: "medicalrecord.keluhan_utama", objek: "21009" },
+  pemeriksaan_fisik: { key: "pemeriksaan_fisik", kategori: "ASESMEN", label: "Pemeriksaan fisik", tabel: "medicalrecord.pemeriksaan_fisik", objek: "21014" },
+  cppt: { key: "cppt", kategori: "CPPT", label: "CPPT", tabel: "medicalrecord.cppt", objek: "21002" },
+  tanda_vital: { key: "tanda_vital", kategori: "TTV", label: "Tanda vital", tabel: "medicalrecord.tanda_vital", objek: "21032" },
+  diagnosa: { key: "diagnosa", kategori: "DIAGNOSIS", label: "Diagnosis (ICD-10)", tabel: "medicalrecord.diagnosa", objek: "21003" },
+  tindakan_medis: { key: "tindakan_medis", kategori: "TINDAKAN", label: "Tindakan", tabel: "layanan.tindakan_medis", objek: "18020" },
+};
+
+const SUMBER_BY_OBJEK = new Map(SUMBER_KEYS.map((k) => [SUMBER[k].objek, SUMBER[k]]));
+export const getSumberByObjek = (objek: string): SumberMeta | undefined => SUMBER_BY_OBJEK.get(objek);
+export const SUMBER_OBJEK_IDS: readonly string[] = SUMBER_KEYS.map((k) => SUMBER[k].objek);
+
 /* --------------------------------------------- jenis kunjungan (referensi 15) */
 
 /** `master.ruangan.JENIS_KUNJUNGAN` → `master.referensi JENIS=15` (diverifikasi 26 Sep 2026). */
@@ -150,10 +188,18 @@ export const CPPT_PERAN: Record<number, string> = {
 };
 export const CPPT_PERAN_DOKTER = 1;
 export const CPPT_PERAN_PARAMEDIS = 3;
+/** Peran CPPT yang dihitung sebagai asuhan keperawatan/kebidanan per shift (Paramedis + Bidan). */
+export const CPPT_PERAN_KEPERAWATAN: readonly number[] = [3, 5];
 
 /* ------------------------------------------------------- shift & target (RI) */
 
 export type ShiftKey = "PAGI" | "SIANG" | "MALAM";
+
+/**
+ * "Hari dinas" dimulai 07:00 (Pagi → Siang → Malam s/d 07:00 esok) agar satu
+ * shift Malam tidak terbelah dua tanggal kalender.
+ */
+export const HARI_DINAS_MULAI_JAM = 7;
 
 /** Jam shift WITA (PRD §10.1). `end` eksklusif; Malam melintasi tengah malam. */
 export const SHIFTS: readonly { key: ShiftKey; label: string; start: number; end: number }[] = [
@@ -180,6 +226,19 @@ export const TARGET_RI = {
 
 /** Ambang keterlambatan input TTV (menit) — `TANGGAL − WAKTU_PEMERIKSAAN`. */
 export const TTV_TERLAMBAT_MENIT = 60;
+
+/**
+ * Rentang fisiologis EKSTREM (bukan rentang normal) — nilai di luar ini hampir
+ * pasti salah input (mis. suhu "374" untuk 37,4). Urutan = kolom angka TTV di DAL.
+ */
+export const TTV_RENTANG_WAJAR: readonly { label: string; min: number; max: number }[] = [
+  { label: "Sistolik", min: 40, max: 300 },
+  { label: "Diastolik", min: 20, max: 200 },
+  { label: "Nadi", min: 20, max: 250 },
+  { label: "Napas", min: 4, max: 80 },
+  { label: "Suhu", min: 30, max: 45 },
+  { label: "SpO₂", min: 40, max: 100 },
+];
 
 /* ------------------------------------------------------------- batas rentang */
 

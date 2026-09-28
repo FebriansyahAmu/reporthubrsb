@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { JENIS_KUNJUNGAN_IDS } from "./kunjungan.constants";
+import { JENIS_KUNJUNGAN_IDS, SUMBER_KEYS } from "./kunjungan.constants";
 
 /**
  * Skema query papan kunjungan (Fase 2). Semua nilai di-bind sebagai parameter
@@ -47,3 +47,12 @@ export type KunjunganQuery = z.infer<typeof kunjunganQuerySchema>;
 
 export const ruanganTreeQuerySchema = z.object(baseFilter);
 export type RuanganTreeQuery = z.infer<typeof ruanganTreeQuerySchema>;
+
+/** `pendaftaran.kunjungan.NOMOR` (char 19, angka). */
+export const nomorKunjunganSchema = z.string().regex(/^\d{10,19}$/, "Nomor kunjungan tidak valid");
+
+/** Satu record aktual: sumber (allow-list) + ID (angka). */
+export const rekamParamSchema = z.object({
+  sumber: z.enum(SUMBER_KEYS),
+  id: z.string().regex(/^\d{1,20}$/, "ID record tidak valid"),
+});

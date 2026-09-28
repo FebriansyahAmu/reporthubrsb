@@ -2,6 +2,7 @@ import "server-only";
 import { getSimgos } from "@/server/db/simgos.client";
 import { SIMGOS_DB } from "@/server/db/simgos-databases";
 import { AUDIT_OBJEK_IDS, idBounds } from "./audit.constants";
+import { SUMBER_OBJEK_IDS } from "./kunjungan.constants";
 import type { UserMini } from "./audit.resolver";
 
 /**
@@ -18,6 +19,13 @@ const A = SIMGOS_DB.APLIKASI; // "aplikasi"
 const CAP = "/*+ MAX_EXECUTION_TIME(8000) */";
 
 const objekPlaceholders = AUDIT_OBJEK_IDS.map(() => "?").join(",");
+
+/**
+ * Cakupan DETAIL diff = objek timeline (Fase 1) ∪ 7 sumber data aktual (Fase 2),
+ * agar riwayat edit record Asesmen/Tindakan di papan kunjungan juga bisa dibuka.
+ */
+const DETAIL_OBJEK_IDS: readonly string[] = [...new Set([...AUDIT_OBJEK_IDS, ...SUMBER_OBJEK_IDS])];
+const detailPlaceholders = DETAIL_OBJEK_IDS.map(() => "?").join(",");
 
 /** Jumlah baris audit (CRUD) per objek dalam scope. Index `OBJEK`. */
 export async function queryScopeCounts(): Promise<{ objek: string; n: number }[]> {
@@ -196,14 +204,14 @@ export async function queryEventDetail(logId: string): Promise<RmeDetailRow | nu
   const sql = `SELECT ID AS id, DATE_FORMAT(TANGGAL, '%Y-%m-%dT%H:%i:%s') AS ts,
       AKSI AS aksi, PENGGUNA AS pengguna, OBJEK AS objek, REF AS ref, SEBELUM AS sebelum, SESUDAH AS sesudah
     FROM ${L}.pengguna_akses_log
-    WHERE ID = ? AND OBJEK IN (${objekPlaceholders})
+    WHERE ID = ? AND OBJEK IN (${detailPlaceholders})
     LIMIT 1`;
   const rows = await getSimgos().$queryRawUnsafe<
     {
       id: string; ts: string; aksi: "C" | "U"; pengguna: number | bigint; objek: string;
       ref: string | null; sebelum: string | null; sesudah: string | null;
     }[]
-  >(sql, logId, ...AUDIT_OBJEK_IDS);
+  >(sql, logId, ...DETAIL_OBJEK_IDS);
   const r = rows[0];
   if (!r) return null;
   return {

@@ -28,6 +28,7 @@ import {
   queryScopeIdRange,
 } from "./audit.dal";
 import { computeDiff, detectSoftDelete, type DiffField } from "./audit.diff";
+import { getSumberByObjek, type SumberMeta } from "./kunjungan.constants";
 import { getUserResolver, type UserMini } from "./audit.resolver";
 import { decodeCursor, encodeCursor, type DashboardQuery, type EventsQuery } from "./audit.schema";
 
@@ -257,6 +258,10 @@ export type EventDetail = {
   hasSnapshot: boolean;
 };
 
+/** Sumber data aktual Fase 2 → bentuk objek audit (label & tabel untuk tampilan). */
+const toAuditObjek = (s: SumberMeta | undefined) =>
+  s ? { objek: s.objek, label: s.label, tabel: s.tabel } : undefined;
+
 /**
  * Detail satu event RME + diff SEBELUM→SESUDAH. Dibatasi objek scope (di luar
  * scope → NotFound). Mengambil kolom berat hanya untuk baris ini.
@@ -267,7 +272,7 @@ export async function getEventDetail(logId: string): Promise<EventDetail> {
 
   const resolver = await getUserResolver();
   const u = resolver.map.get(row.pengguna);
-  const o = getAuditObjek(row.objek);
+  const o = getAuditObjek(row.objek) ?? toAuditObjek(getSumberByObjek(row.objek));
   const fields = computeDiff(row.sebelum, row.sesudah);
   const softDelete = detectSoftDelete(fields);
   const changedCount = fields.filter((f) => f.status !== "unchanged").length;

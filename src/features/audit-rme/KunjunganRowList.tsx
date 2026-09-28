@@ -17,7 +17,7 @@ import { KelengkapanMeter, MiniPip, fmtWaktu } from "./KunjunganCardView";
  * Mode ringkas papan kunjungan: satu baris per kunjungan (± 1 layar per
  * halaman). Informasi sama dengan kartu, dipadatkan ke tabel.
  */
-export function KunjunganRowList({ items }: { items: KunjunganCard[] }) {
+export function KunjunganRowList({ items, onOpen }: { items: KunjunganCard[]; onOpen?: (nomor: string) => void }) {
   return (
     <Card className="overflow-hidden">
       <div className="overflow-x-auto">
@@ -41,11 +41,28 @@ export function KunjunganRowList({ items }: { items: KunjunganCard[] }) {
               const wajib = new Set(k.kelengkapan.wajib);
               const batal = k.status === "BATAL";
               return (
-                <tr key={k.nomor} className={cn("transition-colors hover:bg-surface-2/50", batal && "bg-danger-soft/20")}>
+                <tr
+                  key={k.nomor}
+                  onClick={onOpen ? () => onOpen(k.nomor) : undefined}
+                  className={cn("transition-colors hover:bg-surface-2/50", onOpen && "cursor-pointer", batal && "bg-danger-soft/20")}
+                >
                   <td className="py-2.5 pr-2 pl-4">
-                    <p className={cn("max-w-48 truncate font-medium text-fg", batal && "line-through decoration-danger/60")} title={k.pasien.nama ?? undefined}>
+                    {/* Tombol di sel nama = jalur keyboard; klik baris = pintasan mouse. */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpen?.(k.nomor);
+                      }}
+                      disabled={!onOpen}
+                      className={cn(
+                        "block max-w-48 truncate rounded text-left font-medium text-fg hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring disabled:hover:text-fg",
+                        batal && "line-through decoration-danger/60",
+                      )}
+                      title={k.pasien.nama ?? undefined}
+                    >
                       {k.pasien.nama ?? "Tanpa nama"}
-                    </p>
+                    </button>
                     <p className="text-[11px] text-fg-muted">
                       <span className="font-mono">RM {k.norm}</span>
                       {k.pasien.jenisKelamin && <> · {k.pasien.jenisKelamin}</>}

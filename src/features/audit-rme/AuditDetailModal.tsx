@@ -10,7 +10,7 @@ import { useAsyncData } from "@/lib/useAsyncData";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { JENIS_LABEL, JENIS_TONE, type BadgeTone } from "@/server/modules/audit-rme/audit.constants";
-import { fetchEventDetail, type AuditEvent, type DiffField, type DiffStatus, type EventDetail } from "./audit.client";
+import { fetchEventDetail, type DiffField, type DiffStatus, type EventDetail } from "./audit.client";
 
 const STATUS_LABEL: Record<DiffStatus, string> = {
   added: "Ditambahkan",
@@ -25,11 +25,11 @@ const STATUS_TONE: Record<DiffStatus, BadgeTone> = {
   unchanged: "neutral",
 };
 
-export function AuditDetailModal({ event, onClose }: { event: AuditEvent | null; onClose: () => void }) {
-  const open = !!event && !!event.logId;
+/** Detail satu baris log (diff SEBELUM→SESUDAH). `logId` null = tertutup. */
+export function AuditDetailModal({ logId, onClose }: { logId: string | null; onClose: () => void }) {
   return (
-    <Modal open={open} onClose={onClose} title="Detail Aktivitas" description="Perubahan data terekam (read-only)" size="lg">
-      {event?.logId ? <DetailBody key={event.logId} logId={event.logId} /> : null}
+    <Modal open={!!logId} onClose={onClose} title="Detail Aktivitas" description="Perubahan data terekam (read-only)" size="lg">
+      {logId ? <DetailBody key={logId} logId={logId} /> : null}
     </Modal>
   );
 }

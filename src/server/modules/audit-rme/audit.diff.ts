@@ -73,6 +73,20 @@ function eq(a: unknown, b: unknown): boolean {
   }
 }
 
+/**
+ * True bila snapshot SESUDAH menyetel `STATUS` LEVEL ATAS → 0 (pembatalan/hapus
+ * lunak record itu sendiri). Sengaja tidak memakai regex teks: snapshot tindakan
+ * memuat `STATUS` bersarang milik petugas yang bukan status record.
+ */
+export function setsStatusNonaktif(sesudah: string | null): boolean {
+  const { obj } = parseSnapshot(sesudah);
+  if (!obj) return false;
+  const key = Object.keys(obj).find((k) => k.toUpperCase() === "STATUS");
+  if (!key) return false;
+  const v = obj[key];
+  return v === 0 || v === "0" || v === false;
+}
+
 /** Diff field-per-field (union kunci: SESUDAH dulu, lalu kunci khusus SEBELUM). */
 export function computeDiff(sebelum: string | null, sesudah: string | null): DiffField[] {
   const a = parseSnapshot(sebelum);

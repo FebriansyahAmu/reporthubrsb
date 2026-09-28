@@ -275,6 +275,13 @@ Timeline panjang diganti **tabel ringkas berpaginasi bernomor** (kepadatan tingg
 
 ### Stage K2 — Drawer Jejak Kunjungan
 - Data aktual per kategori (aktif + batal), pelaku pembatalan dari log, petugas per profesi, **matriks 24 jam × shift** (RI), isi klinis per record + riwayat edit (reuse diff Fase 1).
+- ✅ **SELESAI (28 Sep 2026)** — E2E 27/27 (API vs SIMGOS independen + UI nyata) + regresi Stage 2 14/14, K0 32/32, K1 21/21.
+  - **Hari dinas** dimulai 07.00 (Pagi 07–14 · Siang 14–21 · Malam 21–07) agar shift Malam tak terbelah tanggal. Target dinilai hanya pada shift/hari yang **utuh** dalam masa rawat & sudah lewat; sebagian → "tidak dinilai", belum berjalan → "belum".
+  - CPPT keperawatan = peran Paramedis + Bidan (`cppt.JENIS` 3, 5); dokter = 1. Diagnosis (per episode) tidak masuk matriks.
+  - **Pelaku pembatalan** = log `U` terbaru yang menyetel `STATUS` **level atas** → 0 (parse JSON; snapshot tindakan memuat `STATUS` bersarang milik petugas → regex teks akan salah).
+  - Tanda **nilai TTV tak wajar** (rentang fisiologis ekstrem, mis. suhu "374") & **keterlambatan input TTV** (semantik `TIMESTAMPDIFF`).
+  - **Optimasi partisi log:** `logs.pengguna_akses_log` dipartisi `RANGE COLUMNS(TANGGAL)` per bulan (140 partisi); index `(OBJEK, REF)` lokal per partisi → lookup log per record diberi jendela `TANGGAL` (H-1 tanggal daftar episode s/d besok). Aman: 0 log sebelum tanggal daftar (0/5000 cppt, 0/5000 tindakan, 0/1191 diagnosa). Detail kunjungan warm 1.773 → ~66–190 ms (median).
+  - Cakupan **detail diff** diperluas ke 7 sumber (timeline/dashboard Fase 1 tetap 3 objek).
 
 ### Stage K3 — Kepatuhan Petugas
 - Skor per petugas per profesi, papan Teladan ↔ Perlu Pembinaan, profil petugas (heatmap kalender, TTV terlambat, pembatalan) dengan drill-down.

@@ -125,6 +125,11 @@ export function addDaysIso(iso: string, n: number): string {
   return `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}`;
 }
 
+/** Saat ini sebagai jam dinding WITA `YYYY-MM-DDTHH:mm:ss` (sebanding dgn DATE_FORMAT SIMGOS). */
+export function nowWitaIso(now: Date = new Date()): string {
+  return new Date(now.getTime() + 8 * 3600 * 1000).toISOString().slice(0, 19);
+}
+
 /** WITA (UTC+8) `YYYY-MM-DD` hari ini — untuk default rentang / prefix ID. */
 export function todayWitaIso(now: Date = new Date()): string {
   const w = new Date(now.getTime() + 8 * 3600 * 1000);

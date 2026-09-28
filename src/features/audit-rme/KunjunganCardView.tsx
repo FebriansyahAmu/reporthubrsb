@@ -31,7 +31,7 @@ function initials(nama: string | null): string {
   return ((parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")).toUpperCase();
 }
 
-export function KunjunganCardView({ k }: { k: KunjunganCard }) {
+export function KunjunganCardView({ k, onOpen }: { k: KunjunganCard; onOpen?: () => void }) {
   const tone = (k.jenis.id != null ? JENIS_KUNJUNGAN[k.jenis.id]?.tone : undefined) ?? "neutral";
   const wajib = new Set(k.kelengkapan.wajib);
   const batal = k.status === "BATAL";
@@ -39,10 +39,19 @@ export function KunjunganCardView({ k }: { k: KunjunganCard }) {
   return (
     <article
       className={cn(
-        "flex h-full flex-col rounded-[var(--radius-lg)] border border-border bg-surface p-4 shadow-xs transition-shadow hover:shadow-md",
+        "relative flex h-full flex-col rounded-[var(--radius-lg)] border border-border bg-surface p-4 shadow-xs transition-shadow hover:shadow-md",
+        onOpen && "cursor-pointer hover:border-brand/40",
         batal && "border-danger/30 bg-danger-soft/20",
       )}
     >
+      {onOpen && (
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={`Buka jejak kunjungan ${k.pasien.nama ?? ""} — ${k.ruangan.nama}`}
+          className="absolute inset-0 z-1 rounded-[var(--radius-lg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+        />
+      )}
       {/* Identitas pasien */}
       <header className="flex items-start gap-3">
         <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold", AVATAR_TONE[tone])} aria-hidden>

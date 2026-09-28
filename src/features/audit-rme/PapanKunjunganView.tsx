@@ -21,6 +21,7 @@ import {
   type RuanganTree,
 } from "./audit.client";
 import { KunjunganCardView } from "./KunjunganCardView";
+import { JejakKunjunganDrawer } from "./JejakKunjunganDrawer";
 import { KunjunganRowList } from "./KunjunganRowList";
 import { LOKASI_DEFAULT, RuanganChips, RuanganRail, type LokasiSel } from "./RuanganRail";
 
@@ -50,6 +51,7 @@ export function PapanKunjunganView() {
   const q = useDebounce(qInput.trim(), 350);
   const [sel, setSel] = useState<LokasiSel>(LOKASI_DEFAULT);
   const [mode, setMode] = useState<"kartu" | "ringkas">("kartu");
+  const [jejak, setJejak] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const topRef = useRef<HTMLDivElement>(null);
 
@@ -233,10 +235,10 @@ export function PapanKunjunganView() {
               <div className={cn("relative transition-opacity", board.loading && "pointer-events-none opacity-60")}>
                 {board.loading && <div className="absolute inset-x-0 -top-2 h-0.5 animate-pulse rounded-full bg-brand" aria-hidden />}
                 {mode === "ringkas" ? (
-                  <KunjunganRowList items={data.items} />
+                  <KunjunganRowList items={data.items} onOpen={setJejak} />
                 ) : (
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {data.items.map((k) => <KunjunganCardView key={k.nomor} k={k} />)}
+                    {data.items.map((k) => <KunjunganCardView key={k.nomor} k={k} onOpen={() => setJejak(k.nomor)} />)}
                   </div>
                 )}
               </div>
@@ -256,6 +258,8 @@ export function PapanKunjunganView() {
           )}
         </section>
       </div>
+
+      <JejakKunjunganDrawer nomor={jejak} onClose={() => setJejak(null)} />
     </div>
   );
 }

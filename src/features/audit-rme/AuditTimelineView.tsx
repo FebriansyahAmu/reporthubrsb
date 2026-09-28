@@ -289,7 +289,7 @@ export function AuditTimelineView() {
         </div>
       )}
 
-      <AuditDetailModal event={detailEvent} onClose={() => setDetailEvent(null)} />
+      <AuditDetailModal logId={detailEvent?.logId ?? null} onClose={() => setDetailEvent(null)} />
     </div>
   );
 }

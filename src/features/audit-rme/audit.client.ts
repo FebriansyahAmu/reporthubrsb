@@ -3,6 +3,8 @@
 import type { JenisAktivitas } from "@/server/modules/audit-rme/audit.constants";
 // Hanya tipe (dihapus saat kompilasi) — tidak menarik kode server-only ke klien.
 import type { KunjunganPage, RuanganTree } from "@/server/modules/audit-rme/kunjungan.service";
+import type { KunjunganDetail, RekamIsi } from "@/server/modules/audit-rme/jejak.service";
+import type { SumberKey } from "@/server/modules/audit-rme/kunjungan.constants";
 
 export type { JenisAktivitas };
 
@@ -140,6 +142,24 @@ function kunjunganParams(f: KunjunganFilter, withLokasi: boolean): string {
 
 export const fetchKunjungan = (f: KunjunganFilter) =>
   jsonCall<KunjunganPage>(`/api/audit-rme/kunjungan?${kunjunganParams(f, true)}`).then((j) => j.data);
+
+export type {
+  KunjunganDetail,
+  LogItem,
+  LogJenis,
+  Petugas,
+  PetugasRekap,
+  RekamField,
+  RekamIsi,
+  RekamItem,
+} from "@/server/modules/audit-rme/jejak.service";
+export type { HariDinas, Matriks, SelStatus, ShiftCell } from "@/server/modules/audit-rme/kepatuhan";
+
+export const fetchKunjunganDetail = (nomor: string) =>
+  jsonCall<KunjunganDetail>(`/api/audit-rme/kunjungan/${encodeURIComponent(nomor)}`).then((j) => j.data);
+
+export const fetchRekamIsi = (sumber: SumberKey, id: string) =>
+  jsonCall<RekamIsi>(`/api/audit-rme/rekam/${sumber}/${encodeURIComponent(id)}`).then((j) => j.data);
 
 /** Pohon ruangan memakai filter yang sama KECUALI lokasi & halaman (rail tetap utuh). */
 export const fetchRuanganTree = (f: KunjunganFilter) =>

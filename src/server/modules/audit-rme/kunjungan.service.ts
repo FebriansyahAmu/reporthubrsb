@@ -22,6 +22,7 @@ import {
   queryKunjunganSummary,
   type KategoriCountRow,
   type KunjunganFilter,
+  type KunjunganRow,
 } from "./kunjungan.dal";
 import type { KunjunganQuery, RuanganTreeQuery } from "./kunjungan.schema";
 
@@ -117,6 +118,80 @@ const profesiRank = (p: number | null) => {
 
 /* ------------------------------------------------------------ papan kunjungan */
 
+export type UserResolver = Awaited<ReturnType<typeof getUserResolver>>;
+export type RuanganResolver = Awaited<ReturnType<typeof getRuanganResolver>>;
+
+/**
+ * Kartu kunjungan dari baris kunjungan + hitungan (kategori × penginput) yang
+ * relevan (per kunjungan + per episode). Dipakai papan (K1) & drawer (K2) agar
+ * angka keduanya identik.
+ */
+export function buildCard(
+  r: KunjunganRow,
+  rel: KategoriCountRow[],
+  users: UserResolver,
+  ruangan: RuanganResolver,
+  today: string,
+): KunjunganCard {
+  const kategori = emptyKategori();
+  const petugasKat = new Map<KategoriKey, Set<string>>();
+  const semuaPetugas = new Set<string>();
+  for (const c of rel) {
+    const s = kategori[c.kategori];
+    s.aktif += c.aktif;
+    s.batal += c.batal;
+    if (c.oleh) {
+      semuaPetugas.add(c.oleh);
+      const set = petugasKat.get(c.kategori) ?? new Set<string>();
+      set.add(c.oleh);
+      petugasKat.set(c.kategori, set);
+    }
+  }
+  for (const [k, set] of petugasKat) kategori[k].petugas = set.size;
+
+  const perProfesi = new Map<number | null, number>();
+  for (const id of semuaPetugas) {
+    const p = users.map.get(id)?.profesi ?? null;
+    perProfesi.set(p, (perProfesi.get(p) ?? 0) + 1);
+  }
+  const profesi = [...perProfesi.entries()]
+    .map(([p, n]) => ({ profesi: p, label: profesiLabel(p), n }))
+    .sort((a, b) => profesiRank(a.profesi) - profesiRank(b.profesi));
+
+  const wajib = [...kategoriWajib(r.jenis)];
+  const terpenuhi = wajib.filter((k) => kategori[k].aktif > 0);
+  const rg = ruangan.map.get(r.ruanganId);
+  const jm = r.jenis != null ? JENIS_KUNJUNGAN[r.jenis] : undefined;
+  const status: StatusKunjungan = r.statusDaftar === 0 ? "BATAL" : statusKunjungan(r.status);
+  const akhir = (r.keluar ?? `${today}T00:00:00`).slice(0, 10);
+
+  return {
+    nomor: r.nomor,
+    nopen: r.nopen,
+    norm: r.norm,
+    pasien: {
+      nama: r.nama,
+      jenisKelamin: r.jenisKelamin === 1 ? "L" : r.jenisKelamin === 2 ? "P" : null,
+      umur: r.umur,
+    },
+    ruangan: { id: r.ruanganId, nama: rg?.nama ?? r.ruanganId, grupId: rg?.grupId ?? null, grupNama: rg?.grupNama ?? null },
+    jenis: { id: r.jenis, label: jm?.label ?? "Lainnya", short: jm?.short ?? "—" },
+    masuk: r.masuk,
+    keluar: r.keluar,
+    status,
+    hariRawat: Math.max(1, dayDiff(r.masuk.slice(0, 10), akhir) + 1),
+    kategori,
+    totalInput: KATEGORI_KEYS.reduce((s, k) => s + kategori[k].aktif, 0),
+    totalBatal: KATEGORI_KEYS.reduce((s, k) => s + kategori[k].batal, 0),
+    petugas: { total: semuaPetugas.size, profesi },
+    kelengkapan: {
+      wajib,
+      terpenuhi,
+      persen: wajib.length ? Math.round((terpenuhi.length / wajib.length) * 100) : null,
+    },
+  };
+}
+
 /**
  * Satu halaman papan kunjungan + ringkasan per kategori. Biaya SIMGOS tetap:
  * ringkasan + halaman (paralel), lalu 1 query kategori `IN (<halaman>)`.
@@ -146,66 +221,9 @@ export async function listKunjungan(q: KunjunganQuery): Promise<KunjunganPage> {
   }
 
   const today = todayWitaIso();
-  const items = rows.map<KunjunganCard>((r) => {
-    const kategori = emptyKategori();
-    const petugasKat = new Map<KategoriKey, Set<string>>();
-    const semuaPetugas = new Set<string>();
-    const rel = [...(byRef.get(`K:${r.nomor}`) ?? []), ...(byRef.get(`E:${r.nopen}`) ?? [])];
-    for (const c of rel) {
-      const s = kategori[c.kategori];
-      s.aktif += c.aktif;
-      s.batal += c.batal;
-      if (c.oleh) {
-        semuaPetugas.add(c.oleh);
-        const set = petugasKat.get(c.kategori) ?? new Set<string>();
-        set.add(c.oleh);
-        petugasKat.set(c.kategori, set);
-      }
-    }
-    for (const [k, set] of petugasKat) kategori[k].petugas = set.size;
-
-    const perProfesi = new Map<number | null, number>();
-    for (const id of semuaPetugas) {
-      const p = users.map.get(id)?.profesi ?? null;
-      perProfesi.set(p, (perProfesi.get(p) ?? 0) + 1);
-    }
-    const profesi = [...perProfesi.entries()]
-      .map(([p, n]) => ({ profesi: p, label: profesiLabel(p), n }))
-      .sort((a, b) => profesiRank(a.profesi) - profesiRank(b.profesi));
-
-    const wajib = [...kategoriWajib(r.jenis)];
-    const terpenuhi = wajib.filter((k) => kategori[k].aktif > 0);
-    const rg = ruangan.map.get(r.ruanganId);
-    const jm = r.jenis != null ? JENIS_KUNJUNGAN[r.jenis] : undefined;
-    const status: StatusKunjungan = r.statusDaftar === 0 ? "BATAL" : statusKunjungan(r.status);
-    const akhir = (r.keluar ?? `${today}T00:00:00`).slice(0, 10);
-
-    return {
-      nomor: r.nomor,
-      nopen: r.nopen,
-      norm: r.norm,
-      pasien: {
-        nama: r.nama,
-        jenisKelamin: r.jenisKelamin === 1 ? "L" : r.jenisKelamin === 2 ? "P" : null,
-        umur: r.umur,
-      },
-      ruangan: { id: r.ruanganId, nama: rg?.nama ?? r.ruanganId, grupId: rg?.grupId ?? null, grupNama: rg?.grupNama ?? null },
-      jenis: { id: r.jenis, label: jm?.label ?? "Lainnya", short: jm?.short ?? "—" },
-      masuk: r.masuk,
-      keluar: r.keluar,
-      status,
-      hariRawat: Math.max(1, dayDiff(r.masuk.slice(0, 10), akhir) + 1),
-      kategori,
-      totalInput: KATEGORI_KEYS.reduce((s, k) => s + kategori[k].aktif, 0),
-      totalBatal: KATEGORI_KEYS.reduce((s, k) => s + kategori[k].batal, 0),
-      petugas: { total: semuaPetugas.size, profesi },
-      kelengkapan: {
-        wajib,
-        terpenuhi,
-        persen: wajib.length ? Math.round((terpenuhi.length / wajib.length) * 100) : null,
-      },
-    };
-  });
+  const items = rows.map((r) =>
+    buildCard(r, [...(byRef.get(`K:${r.nomor}`) ?? []), ...(byRef.get(`E:${r.nopen}`) ?? [])], users, ruangan, today),
+  );
 
   return {
     range: { from: f.from, to: f.to },
