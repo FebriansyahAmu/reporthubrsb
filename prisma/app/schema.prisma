@@ -477,6 +477,214 @@ model KlaimPotongan {
   @@map("klaim_potongan")
 }
 
+// ============================================================================
+// VERIFIKASI KLAIM BPJS — status & jejak verifikasi berkas klaim per NOPEN.
+// SIMGOS tetap READ-ONLY; semua keputusan/koreksi/lampiran/paket disimpan di sini.
+// DDL manual: scripts/db/verifikasi-klaim.sql + migrate-verifikasi-klaim.mjs.
+// Model di sini HARUS sinkron dengan DDL tersebut. PRD: docs/PRD_Verifikasi_Klaim_BPJS.md.
+// Enum = String (divalidasi Zod / konstanta modul). *OlehId = users.id pelaku.
+// ============================================================================
+
+/// Satu baris per episode klaim (NOPEN), dibuat saat keputusan pertama (lazy):
+/// episode tanpa baris = BELUM_DIPERIKSA. `versi` = optimistic locking.
+model KlaimVerifikasi {
+  id               String    @id @default(cuid()) @db.VarChar(30)
+  nopen            String    @unique @db.VarChar(20)
+  norm             String?   @db.VarChar(20)
+  namaPasien       String?   @map("nama_pasien") @db.VarChar(191)
+  /// RI | IGD | RJ
+  kategori         String    @db.VarChar(4)
+  ruang            String?   @db.VarChar(191)
+  /// Jam dinding SIMGOS (konvensi aplikasi: dibaca sebagai UTC).
+  tglPulang        DateTime? @map("tgl_pulang") @db.DateTime(0)
+  noSep            String?   @map("no_sep") @db.VarChar(40)
+  status           String    @default("BELUM_DIPERIKSA") @db.VarChar(20)
+  versi            Int       @default(1)
+  /// Snapshot hasil cek otomatis terakhir (HasilCek).
+  cek              Json?
+  cekAt            DateTime? @map("cek_at")
+  lolosRmOlehId    String?   @map("lolos_rm_oleh_id") @db.VarChar(191)
+  lolosRmAt        DateTime? @map("lolos_rm_at")
+  lolosKlaimOlehId String?   @map("lolos_klaim_oleh_id") @db.VarChar(191)
+  lolosKlaimAt     DateTime? @map("lolos_klaim_at")
+  finalOlehId      String?   @map("final_oleh_id") @db.VarChar(191)
+  finalAt          DateTime? @map("final_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  riwayat     KlaimVerifikasiRiwayat[]
+  tindakLanjut KlaimTindakLanjut[]
+  koreksi     KlaimKoreksiKoding[]
+  lampiran    KlaimLampiran[]
+  paket       KlaimPaket?
+
+  @@index([status])
+  @@index([tglPulang])
+  @@map("klaim_verifikasi")
+}
+
+/// Linimasa transisi & aksi verifikasi (siapa, kapan, dari→ke, catatan, rincian).
+model KlaimVerifikasiRiwayat {
+  id         String   @id @default(cuid()) @db.VarChar(30)
+  nopen      String   @db.VarChar(20)
+  aksi       String   @db.VarChar(40)
+  dariStatus String?  @map("dari_status") @db.VarChar(20)
+  keStatus   String?  @map("ke_status") @db.VarChar(20)
+  /// Versi baris klaim_verifikasi SETELAH aksi.
+  versi      Int
+  catatan    String?  @db.Text
+  data       Json?
+  olehId     String?  @map("oleh_id") @db.VarChar(191)
+  olehNama   String?  @map("oleh_nama") @db.VarChar(191)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  verifikasi KlaimVerifikasi @relation(fields: [nopen], references: [nopen], onDelete: Cascade)
+
+  @@index([nopen, createdAt])
+  @@map("klaim_verifikasi_riwayat")
+}
+
+/// Item kurang per NOPEN → sasaran (DPJP/RUANGAN/PERAN). Tertutup otomatis saat
+/// data SIMRS sudah lengkap (dicek ulang read-only).
+model KlaimTindakLanjut {
+  id              String    @id @default(cuid()) @db.VarChar(30)
+  nopen           String    @db.VarChar(20)
+  /// Kunci katalog aturan / "manual" / "koding".
+  aturan          String    @db.VarChar(40)
+  tahap           Int       @default(1) @db.TinyInt
+  pesan           String    @db.VarChar(500)
+  /// DPJP | RUANGAN | PERAN
+  sasaranJenis    String    @map("sasaran_jenis") @db.VarChar(10)
+  /// NIP / master.ruangan.ID / roles.key
+  sasaranRef      String    @map("sasaran_ref") @db.VarChar(60)
+  sasaranNama     String?   @map("sasaran_nama") @db.VarChar(191)
+  /// OPEN | SELESAI | BATAL
+  status          String    @default("OPEN") @db.VarChar(10)
+  catatan         String?   @db.Text
+  dibuatOlehId    String?   @map("dibuat_oleh_id") @db.VarChar(191)
+  dibuatOlehNama  String?   @map("dibuat_oleh_nama") @db.VarChar(191)
+  selesaiAt       DateTime? @map("selesai_at")
+  /// OTOMATIS | MANUAL | BATAL
+  selesaiCara     String?   @map("selesai_cara") @db.VarChar(10)
+  selesaiOlehId   String?   @map("selesai_oleh_id") @db.VarChar(191)
+  selesaiOlehNama String?   @map("selesai_oleh_nama") @db.VarChar(191)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  verifikasi KlaimVerifikasi @relation(fields: [nopen], references: [nopen], onDelete: Cascade)
+
+  @@index([nopen])
+  @@index([status, sasaranJenis, sasaranRef])
+  @@map("klaim_tindak_lanjut")
+}
+
+/// Usulan koreksi koding oleh coder (TIDAK ditulis ke SIMGOS). SESUAI terdeteksi
+/// otomatis saat diagnosa/prosedur SIMGOS sudah sama dengan usulan.
+model KlaimKoreksiKoding {
+  id             String    @id @default(cuid()) @db.VarChar(30)
+  nopen          String    @db.VarChar(20)
+  /// MENUNGGU_SIMRS | SESUAI | BATAL
+  status         String    @default("MENUNGGU_SIMRS") @db.VarChar(16)
+  usulan         Json
+  simrsAwal      Json      @map("simrs_awal")
+  catatan        String?   @db.Text
+  /// Bukti log SIMGOS (OBJEK 21003) saat terdeteksi sesuai.
+  bukti          Json?
+  dibuatOlehId   String?   @map("dibuat_oleh_id") @db.VarChar(191)
+  dibuatOlehNama String?   @map("dibuat_oleh_nama") @db.VarChar(191)
+  sesuaiAt       DateTime? @map("sesuai_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  verifikasi KlaimVerifikasi @relation(fields: [nopen], references: [nopen], onDelete: Cascade)
+
+  @@index([nopen])
+  @@index([status])
+  @@map("klaim_koreksi_koding")
+}
+
+/// Dokumen sisipan paket klaim (berkas fisik di volume storage, bukan BLOB DB).
+model KlaimLampiran {
+  id               String    @id @default(cuid()) @db.VarChar(30)
+  nopen            String    @db.VarChar(20)
+  namaBerkas       String    @map("nama_berkas") @db.VarChar(255)
+  mime             String    @db.VarChar(100)
+  ukuran           Int
+  sha256           String    @db.Char(64)
+  lokasi           String    @db.VarChar(500)
+  halaman          Int?
+  urutan           Int       @default(0)
+  keterangan       String?   @db.VarChar(255)
+  diunggahOlehId   String?   @map("diunggah_oleh_id") @db.VarChar(191)
+  diunggahOlehNama String?   @map("diunggah_oleh_nama") @db.VarChar(191)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  dihapusAt        DateTime? @map("dihapus_at")
+  dihapusOlehId    String?   @map("dihapus_oleh_id") @db.VarChar(191)
+
+  verifikasi KlaimVerifikasi @relation(fields: [nopen], references: [nopen], onDelete: Cascade)
+
+  @@index([nopen])
+  @@index([sha256])
+  @@map("klaim_lampiran")
+}
+
+/// Paket klaim gabungan — satu per NOPEN (versi lama diganti; hash tiap versi di riwayat).
+model KlaimPaket {
+  id             String   @id @default(cuid()) @db.VarChar(30)
+  nopen          String   @unique @db.VarChar(20)
+  versi          Int      @default(1)
+  /// DRAF | FINAL
+  status         String   @default("DRAF") @db.VarChar(10)
+  manifest       Json
+  hash           String   @db.Char(64)
+  halaman        Int      @default(0)
+  ukuran         Int      @default(0)
+  lokasi         String?  @db.VarChar(500)
+  dibuatOlehId   String?  @map("dibuat_oleh_id") @db.VarChar(191)
+  dibuatOlehNama String?  @map("dibuat_oleh_nama") @db.VarChar(191)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  verifikasi KlaimVerifikasi @relation(fields: [nopen], references: [nopen], onDelete: Cascade)
+
+  @@map("klaim_paket")
+}
+
+/// Notifikasi dalam aplikasi (GENERIK). Sasaran: USER (users.id) / NIP (users.nip) /
+/// RUANGAN (akses ruangan SIMGOS) / PERAN (roles.key).
+model Notifikasi {
+  id           String   @id @default(cuid()) @db.VarChar(30)
+  jenis        String   @db.VarChar(40)
+  judul        String   @db.VarChar(191)
+  pesan        String?  @db.VarChar(500)
+  tautan       String?  @db.VarChar(500)
+  sasaranJenis String   @map("sasaran_jenis") @db.VarChar(10)
+  sasaranRef   String   @map("sasaran_ref") @db.VarChar(191)
+  refTipe      String?  @map("ref_tipe") @db.VarChar(40)
+  refId        String?  @map("ref_id") @db.VarChar(60)
+  dibuatOlehId String?  @map("dibuat_oleh_id") @db.VarChar(191)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  baca NotifikasiBaca[]
+
+  @@index([sasaranJenis, sasaranRef, createdAt])
+  @@index([refTipe, refId])
+  @@map("notifikasi")
+}
+
+/// Status baca notifikasi per pengguna (baris ada = sudah dibaca).
+model NotifikasiBaca {
+  notifikasiId String   @map("notifikasi_id") @db.VarChar(30)
+  userId       String   @map("user_id") @db.VarChar(191)
+  dibacaAt     DateTime @default(now()) @map("dibaca_at")
+
+  notifikasi Notifikasi @relation(fields: [notifikasiId], references: [id], onDelete: Cascade)
+
+  @@id([notifikasiId, userId])
+  @@index([userId])
+  @@map("notifikasi_baca")
+}
+
 /// Refresh token (rotasi). Yang disimpan HANYA hash token-nya, bukan token asli,
 /// sehingga bocornya DB tidak langsung memberi token yang bisa dipakai.
 model RefreshToken {

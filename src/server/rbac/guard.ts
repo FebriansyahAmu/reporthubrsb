@@ -21,6 +21,37 @@ export async function requireModule(
   return user;
 }
 
+/** Punya izin `action` pada SALAH SATU modul `moduleKeys`? */
+async function canAny(role: string, moduleKeys: readonly string[], action: ModuleAction): Promise<boolean> {
+  for (const key of moduleKeys) if (await can(role, key, action)) return true;
+  return false;
+}
+
+/**
+ * Guard HALAMAN untuk fitur yang dibagi beberapa modul (mis. antrean Verifikasi
+ * Klaim: Tahap 1 / Tahap 2 / Paket) — lolos bila berizin pada SALAH SATU modul.
+ */
+export async function requireAnyModule(
+  moduleKeys: readonly string[],
+  action: ModuleAction = "view",
+): Promise<SessionUser> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/");
+  if (!(await canAny(user.role, moduleKeys, action))) redirect("/403");
+  return user;
+}
+
+/** Guard API inline versi "salah satu modul" (lihat `requireAnyModule`). */
+export async function authorizeAny(
+  moduleKeys: readonly string[],
+  action: ModuleAction = "view",
+): Promise<SessionUser> {
+  const user = await getCurrentUser();
+  if (!user) throw new UnauthorizedError();
+  if (!(await canAny(user.role, moduleKeys, action))) throw new ForbiddenError();
+  return user;
+}
+
 /**
  * Guard API inline — dipakai di dalam `try { ... } catch (err) { return fail(err) }`
  * yang sudah ada. Melempar UnauthorizedError/ForbiddenError yang diterjemahkan

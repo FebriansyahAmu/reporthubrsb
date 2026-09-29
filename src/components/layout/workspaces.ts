@@ -1,6 +1,8 @@
 import {
   Activity,
+  BellRing,
   Boxes,
+  ClipboardCheck,
   ClipboardList,
   DoorOpen,
   FileBarChart,
@@ -42,6 +44,8 @@ export type WorkspaceItem = {
   description?: string;
   /** Kunci modul RBAC yang mengatur akses item ini (lihat src/server/rbac/modules.ts). */
   moduleKey: string;
+  /** Modul alternatif: item tampil bila SALAH SATU (termasuk `moduleKey`) diizinkan. */
+  anyOf?: readonly string[];
 };
 
 export type Workspace = {
@@ -126,7 +130,7 @@ export const WORKSPACES: Workspace[] = [
     key: "berkas-klaim",
     label: "Berkas & Klaim",
     icon: FolderCheck,
-    description: "Berkas pasien final untuk klaim",
+    description: "Berkas pasien final, verifikasi & paket klaim BPJS",
     items: [
       {
         href: "/berkas-klaim/rm",
@@ -134,6 +138,21 @@ export const WORKSPACES: Workspace[] = [
         icon: FolderCheck,
         description: "Berkas pasien final untuk klaim",
         moduleKey: "berkas-klaim",
+      },
+      {
+        href: "/berkas-klaim/verifikasi",
+        label: "Verifikasi Klaim",
+        icon: ClipboardCheck,
+        description: "Antrean verifikasi berkas RM, koding & paket klaim BPJS",
+        moduleKey: "berkas-klaim.verifikasi-rm",
+        anyOf: ["berkas-klaim.verifikasi-klaim", "berkas-klaim.paket"],
+      },
+      {
+        href: "/berkas-klaim/tindak-lanjut",
+        label: "Tindak Lanjut Berkas",
+        icon: BellRing,
+        description: "Item berkas yang harus dilengkapi DPJP / unit",
+        moduleKey: "berkas-klaim.tindak-lanjut",
       },
     ],
   },
@@ -295,7 +314,7 @@ export const WORKSPACES: Workspace[] = [
 
 /** Item yang boleh dilihat dalam sebuah workspace, berdasarkan modul yang diizinkan. */
 export function allowedItems(ws: Workspace, allowed: ReadonlySet<string>): WorkspaceItem[] {
-  return ws.items.filter((i) => allowed.has(i.moduleKey));
+  return ws.items.filter((i) => allowed.has(i.moduleKey) || (i.anyOf?.some((k) => allowed.has(k)) ?? false));
 }
 
 /** Workspace yang punya minimal satu item yang boleh diakses (item sudah terfilter). */

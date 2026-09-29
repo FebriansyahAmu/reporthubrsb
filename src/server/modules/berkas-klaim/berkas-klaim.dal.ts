@@ -19,7 +19,10 @@ export type BerkasDetailRow = {
 /**
  * Header episode + agregat keberadaan dokumen klaim (READ-ONLY, lintas-DB).
  * Dokumen dideteksi via kunci masing-masing:
- *   triase/resume → `medicalrecord.*` per NOPEN (STATUS=1)
+ *   triase        → `medicalrecord.triage` per NOPEN, STATUS <> 0 (1 = belum final,
+ *                   2 = final — 4.025/4.030 baris; dulu `STATUS = 1` membuat triase
+ *                   final tampil "belum diinput", PRD Verifikasi Klaim §3.4)
+ *   resume        → `medicalrecord.resume` per NOPEN (STATUS=1)
  *   SPRI          → `medicalrecord.perencanaan_rawat_inap.PENDAFTARAN_RI_NOMOR`
  *   CPPT          → `medicalrecord.cppt.KUNJUNGAN` (join ke leg kunjungan NOPEN)
  *   diagnosa      → penanda kelengkapan rekam medis
@@ -30,7 +33,7 @@ export async function queryBerkasDetail(nopen: string): Promise<BerkasDetailRow 
     SELECT pp.NOMOR AS NOPEN,
            ps.NORM, ps.NAMA, ps.JENIS_KELAMIN, ps.TANGGAL_LAHIR,
            (SELECT COUNT(*) FROM ${SIMGOS_DB.MEDICALRECORD}.triage t
-              WHERE t.NOPEN = pp.NOMOR AND t.STATUS = 1) AS TRIAGE_N,
+              WHERE t.NOPEN = pp.NOMOR AND t.STATUS <> 0) AS TRIAGE_N,
            (SELECT COUNT(*) FROM ${SIMGOS_DB.MEDICALRECORD}.resume rs
               WHERE rs.NOPEN = pp.NOMOR AND rs.STATUS = 1) AS RESUME_N,
            (SELECT COUNT(*) FROM ${SIMGOS_DB.MEDICALRECORD}.perencanaan_rawat_inap s
