@@ -274,6 +274,7 @@ function PatientCard({ item }: { item: FormRmPatient }) {
           <KelengkapanBadge k={item.kelengkapan} />
         </div>
         <div className="flex flex-wrap gap-1.5">
+          <FormChip kode="RM.04" nama="Triase" filled={item.kelengkapan.triase} />
           <FormChip kode="RM.01" nama="Ringkasan" filled={item.kelengkapan.ringkasan} />
           <FormChip kode="RM.21" nama="Edukasi" filled={item.kelengkapan.edukasi} />
           <FormChip kode="RM.03" nama="Consent" filled={item.kelengkapan.consent} />

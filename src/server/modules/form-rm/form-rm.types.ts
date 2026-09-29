@@ -5,16 +5,17 @@
 import type { PageMeta } from "@/lib/types";
 import type { KategoriKunjungan } from "@/server/modules/pelayanan/pelayanan.types";
 
-/** Kelengkapan 3 form RM wajib (RM.01 Ringkasan, RM.21 Edukasi, RM.03 Consent). */
+/** Kelengkapan 4 form RM wajib (RM.04 Triase, RM.01 Ringkasan, RM.21 Edukasi, RM.03 Consent). */
 export type FormRmKelengkapan = {
+  triase: boolean;
   ringkasan: boolean;
   edukasi: boolean;
   consent: boolean;
-  /** Jumlah form yang sudah terisi (0..3). */
+  /** Jumlah form yang sudah terisi (0..4). */
   terisi: number;
-  /** Total form wajib (3). */
+  /** Total form wajib (4). */
   total: number;
-  /** true bila ketiga form sudah terisi. */
+  /** true bila semua form wajib sudah terisi. */
   lengkap: boolean;
 };
 
@@ -282,4 +283,87 @@ export type RingkasanContext = {
   saved: FormRmSaved<RingkasanForm> | null;
   header: FormRmHeader;
   prefill: RingkasanPrefill;
+};
+
+// ---------------------------------------------------------------------------
+// Triase IGD (RM.04)
+// ---------------------------------------------------------------------------
+
+/** Data isian Triase (RM.04). Kriteria disimpan sebagai ID stabil dari `TRIASE_KRITERIA`. */
+export type TriaseForm = {
+  // Kedatangan
+  /** ISO lokal "YYYY-MM-DDTHH:mm". */
+  kedatanganWaktu: string;
+  caraDatang: "" | "Sendiri" | "Ambulans" | "Diantar" | "Lain-lain";
+  caraDatangLain: string;
+  // Jenis kasus
+  kasus: "" | "Non Trauma" | "Trauma";
+  /** Jenis kecelakaan (boleh lebih dari satu) — hanya bermakna bila Trauma. */
+  kecelakaan: string[];
+  /** Death on Arrival. */
+  doa: boolean;
+  /** ISO lokal "YYYY-MM-DDTHH:mm" (dicetak jam-nya saja). */
+  doaWaktu: string;
+  // Tanda-tanda vital (teks, seperti di formulir kertas)
+  tdSistolik: string;
+  tdDiastolik: string;
+  nadi: string;
+  suhu: string;
+  saturasi: string;
+  pernapasan: string;
+  // Pemeriksaan (matriks kategori I–V)
+  /** ID kriteria yang dicentang. */
+  kriteria: string[];
+  /** Kolom kesadaran (GCS) yang dilingkari: "" atau "1".."5". */
+  kesadaran: string;
+  /** Catatan per kategori (indeks 0 = Kategori I … 4 = Kategori V). */
+  catatan: string[];
+  emergency: "" | "True Emergency" | "False Emergency";
+  // Penutup
+  /** Tanggal & pukul triase — ISO lokal "YYYY-MM-DDTHH:mm". */
+  waktuTriase: string;
+  petugasNama: string;
+  /** PNG data-URL. */
+  petugasTtd: string;
+};
+
+/** Nilai prefill RM.04 dari triase SIMGOS (`medicalrecord.triage`), hanya untuk form baru. */
+export type TriasePrefill = Pick<
+  TriaseForm,
+  | "kedatanganWaktu"
+  | "caraDatang"
+  | "caraDatangLain"
+  | "kasus"
+  | "kecelakaan"
+  | "doa"
+  | "doaWaktu"
+  | "tdSistolik"
+  | "tdDiastolik"
+  | "nadi"
+  | "suhu"
+  | "saturasi"
+  | "pernapasan"
+  | "waktuTriase"
+  | "petugasNama"
+>;
+
+/** Ringkasan triase yang tercatat di SIMRS — rujukan baca-saja di form. */
+export type TriaseSimrs = {
+  /** ISO lokal "YYYY-MM-DDTHH:mm". */
+  waktu: string;
+  /** Kategori yang dicentang di SIMRS (1..5), null bila tak ada. */
+  kategori: number | null;
+  doa: boolean;
+  /** Zona rencana (Zona Merah/Kuning/Hijau/Hitam) bila ada. */
+  zona: string;
+  keluhan: string;
+  petugas: string;
+};
+
+/** Respons GET form Triase (RM.04): rekaman tersimpan + header + prefill & rujukan SIMRS. */
+export type TriaseContext = {
+  saved: FormRmSaved<TriaseForm> | null;
+  header: FormRmHeader;
+  prefill: TriasePrefill | null;
+  simrs: TriaseSimrs | null;
 };

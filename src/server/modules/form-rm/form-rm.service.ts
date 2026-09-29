@@ -8,10 +8,13 @@ import {
   queryFormRmHeader,
   queryRingkasanHeader,
   queryDiagnosaByNopen,
+  queryTriaseSimgos,
   type DiagnosaRow,
+  type TriaseSimgosRow,
 } from "./form-rm.dal";
 import { EDUKASI_JENIS } from "@/features/form-rm/edukasi.constants";
 import { CONSENT_JENIS } from "@/features/form-rm/consent.constants";
+import { TRIASE_JENIS } from "@/features/form-rm/triase.constants";
 import {
   RINGKASAN_JENIS,
   matchAgama,
@@ -32,14 +35,19 @@ import type {
   RingkasanContext,
   RingkasanForm,
   RingkasanPrefill,
+  TriaseContext,
+  TriaseForm,
+  TriasePrefill,
+  TriaseSimrs,
 } from "./form-rm.types";
 
 const PAGE_SIZE = 12;
 
-/** Tiga jenis form RM wajib yang dihitung untuk "lengkap". */
-const FORM_RM_JENIS = [RINGKASAN_JENIS, EDUKASI_JENIS, CONSENT_JENIS] as const;
+/** Jenis form RM wajib yang dihitung untuk "lengkap". */
+const FORM_RM_JENIS = [TRIASE_JENIS, RINGKASAN_JENIS, EDUKASI_JENIS, CONSENT_JENIS] as const;
 
 const EMPTY_KELENGKAPAN: FormRmKelengkapan = {
+  triase: false,
   ringkasan: false,
   edukasi: false,
   consent: false,
@@ -76,11 +84,13 @@ async function getKelengkapanMap(
       map.set(nopen, EMPTY_KELENGKAPAN);
       continue;
     }
+    const triase = set.has(TRIASE_JENIS);
     const ringkasan = set.has(RINGKASAN_JENIS);
     const edukasi = set.has(EDUKASI_JENIS);
     const consent = set.has(CONSENT_JENIS);
-    const terisi = (ringkasan ? 1 : 0) + (edukasi ? 1 : 0) + (consent ? 1 : 0);
+    const terisi = [triase, ringkasan, edukasi, consent].filter(Boolean).length;
     map.set(nopen, {
+      triase,
       ringkasan,
       edukasi,
       consent,
@@ -376,6 +386,114 @@ export async function getRingkasanContext(nopen: string): Promise<RingkasanConte
   }
 
   return { saved, header, prefill };
+}
+
+// --- RM.04 Triase IGD ------------------------------------------------------
+
+const bersih = (s: string | null | undefined) => (s ?? "").trim();
+
+/** "2026-09-29 08:04:21" / "2026-09-29T08:04" → "2026-09-29T08:04" (jam dinding). "" bila tak valid. */
+function keWaktuLokal(s: string | null): string {
+  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})/.exec(bersih(s));
+  return m ? `${m[1]}T${m[2]}:${m[3]}` : "";
+}
+
+/** Angka TTV SIMGOS → teks rapi ("97.00" → "97"); 0 = tidak diukur → "". Non-angka dibiarkan. */
+function angkaRapi(s: string | null): string {
+  const t = bersih(s);
+  if (!t) return "";
+  const n = Number(t.replace(",", "."));
+  if (!Number.isFinite(n)) return t;
+  return n > 0 ? String(n) : "";
+}
+
+/** Cara datang SIMGOS (jenis + alat transportasi + pengantar) → pilihan formulir. */
+function petaCaraDatang(r: TriaseSimgosRow): Pick<TriasePrefill, "caraDatang" | "caraDatangLain"> {
+  const alat = bersih(r.DATANG_ALAT).toLowerCase();
+  const pengantar = bersih(r.DATANG_PENGANTAR).toLowerCase();
+  const jenis = Number(bersih(r.DATANG_JENIS));
+  if (/ambulan/.test(alat)) return { caraDatang: "Ambulans", caraDatangLain: "" };
+  if (jenis === 2) return { caraDatang: "Lain-lain", caraDatangLain: "Rujukan" };
+  if (jenis === 3) return { caraDatang: "Lain-lain", caraDatangLain: "Dikirim polisi" };
+  if (jenis !== 1 && !pengantar) return { caraDatang: "", caraDatangLain: "" };
+  if (!pengantar || /^((datang|os) )?sendiri$|^pribadi$/.test(pengantar)) {
+    return { caraDatang: "Sendiri", caraDatangLain: "" };
+  }
+  return { caraDatang: "Diantar", caraDatangLain: "" };
+}
+
+/** Baris triase SIMGOS → prefill form RM.04 + ringkasan rujukan SIMRS. */
+function petaTriaseSimgos(r: TriaseSimgosRow): { prefill: TriasePrefill; simrs: TriaseSimrs } {
+  const waktu = keWaktuLokal(r.WAKTU);
+  const datang = keWaktuLokal(r.DATANG_TGL) || waktu;
+  const kasusJenis = bersih(r.KASUS_JENIS);
+  const kasus: TriasePrefill["kasus"] =
+    kasusJenis === "1" ? "Trauma" : kasusJenis === "0" ? "Non Trauma" : "";
+  const kecelakaan = [
+    bersih(r.KASUS_LL) === "1" ? "Kecelakaan Lalu Lintas" : "",
+    bersih(r.KASUS_KK) === "1" ? "Kecelakaan Kerja" : "",
+  ].filter(Boolean);
+  const doa = bersih(r.KDOA) === "1";
+  const kat = [r.K1, r.K2, r.K3, r.K4, r.K5].findIndex((v) => bersih(v) === "1");
+  const petugas = bersih(r.DOKTER) || bersih(r.PERAWAT) || bersih(r.PENGGUNA);
+  const terpimpin = bersih(r.TERPIMPIN);
+
+  return {
+    prefill: {
+      kedatanganWaktu: datang,
+      ...petaCaraDatang(r),
+      kasus,
+      kecelakaan: kasus === "Trauma" ? kecelakaan : [],
+      doa,
+      doaWaktu: doa ? datang : "",
+      tdSistolik: angkaRapi(r.SISTOLE),
+      tdDiastolik: angkaRapi(r.DIASTOLE),
+      nadi: angkaRapi(r.NADI),
+      suhu: angkaRapi(r.SUHU),
+      saturasi: angkaRapi(r.SATURASI),
+      pernapasan: angkaRapi(r.NAFAS),
+      waktuTriase: waktu,
+      petugasNama: petugas,
+    },
+    simrs: {
+      waktu,
+      kategori: kat < 0 ? null : kat + 1,
+      doa,
+      zona: bersih(r.ZONA),
+      keluhan: [bersih(r.KELUHAN), terpimpin ? `(${terpimpin})` : ""].filter(Boolean).join(" "),
+      petugas,
+    },
+  };
+}
+
+/**
+ * Konteks form Triase (RM.04): rekaman tersimpan + header pasien + prefill & rujukan
+ * dari triase SIMRS. `simrs: false` melewati query triase SIMGOS (mis. untuk cetak).
+ */
+export async function getTriaseContext(
+  nopen: string,
+  opts: { simrs?: boolean } = {},
+): Promise<TriaseContext | null> {
+  const withSimrs = opts.simrs !== false && isSimgosConfigured();
+  const [rec, header, row] = await Promise.all([
+    getAppDb().formRm.findUnique({ where: { nopen_jenis: { nopen, jenis: TRIASE_JENIS } } }),
+    getFormRmHeader(nopen),
+    withSimrs ? queryTriaseSimgos(nopen).catch(() => null) : Promise.resolve(null),
+  ]);
+  if (!header) return null;
+
+  const saved: FormRmSaved<TriaseForm> | null = rec
+    ? {
+        nopen: rec.nopen,
+        jenis: rec.jenis,
+        data: rec.data as unknown as TriaseForm,
+        updatedAt: rec.updatedAt.toISOString(),
+        updatedBy: rec.updatedBy ?? null,
+      }
+    : null;
+
+  const peta = row ? petaTriaseSimgos(row) : null;
+  return { saved, header, prefill: peta?.prefill ?? null, simrs: peta?.simrs ?? null };
 }
 
 export type FormRmHeaderInput = { norm?: string; nama?: string; ruang?: string };

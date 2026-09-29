@@ -113,6 +113,86 @@ export async function queryRingkasanHeader(nopen: string): Promise<RingkasanHead
   return rows[0] ?? null;
 }
 
+/** Baris triase SIMGOS (`medicalrecord.triage`) — field JSON sudah dipecah jadi skalar. */
+export type TriaseSimgosRow = {
+  /** "YYYY-MM-DDTHH:mm" (jam dinding). */
+  WAKTU: string | null;
+  DATANG_TGL: string | null;
+  DATANG_JENIS: string | null;
+  DATANG_ALAT: string | null;
+  DATANG_PENGANTAR: string | null;
+  KASUS_JENIS: string | null;
+  KASUS_LL: string | null;
+  KASUS_KK: string | null;
+  KELUHAN: string | null;
+  TERPIMPIN: string | null;
+  SISTOLE: string | null;
+  DIASTOLE: string | null;
+  NADI: string | null;
+  NAFAS: string | null;
+  SUHU: string | null;
+  SATURASI: string | null;
+  K1: string | null;
+  K2: string | null;
+  K3: string | null;
+  K4: string | null;
+  K5: string | null;
+  KDOA: string | null;
+  ZONA: string | null;
+  DOKTER: string | null;
+  PERAWAT: string | null;
+  PENGGUNA: string | null;
+};
+
+/**
+ * Triase terakhir satu episode dari SIMGOS (READ-ONLY) untuk prefill RM.04.
+ * JSON dipecah via `JSON_VALUE` supaya tak bergantung cara driver memetakan kolom JSON.
+ * Saturasi tak ada di triase → diambil dari `tanda_vital` pertama leg yang sama.
+ * Petugas: dokter → perawat → pengguna penginput (hanya NAMA). Null bila tak ada.
+ */
+export async function queryTriaseSimgos(nopen: string): Promise<TriaseSimgosRow | null> {
+  const MR = SIMGOS_DB.MEDICALRECORD;
+  const M = SIMGOS_DB.MASTER;
+  const sql = `
+    SELECT DATE_FORMAT(t.TANGGAL, '%Y-%m-%dT%H:%i') AS WAKTU,
+      JSON_VALUE(t.KEDATANGAN, '$.TANGGAL') AS DATANG_TGL,
+      JSON_VALUE(t.KEDATANGAN, '$.JENIS') AS DATANG_JENIS,
+      JSON_VALUE(t.KEDATANGAN, '$.ALAT_TRANSPORTASI') AS DATANG_ALAT,
+      JSON_VALUE(t.KEDATANGAN, '$.PENGANTAR') AS DATANG_PENGANTAR,
+      JSON_VALUE(t.KASUS, '$.JENIS') AS KASUS_JENIS,
+      JSON_VALUE(t.KASUS, '$.LAKA_LANTAS') AS KASUS_LL,
+      JSON_VALUE(t.KASUS, '$.KECELAKAAN_KERJA') AS KASUS_KK,
+      JSON_VALUE(t.ANAMNESE, '$.KELUHAN_UTAMA') AS KELUHAN,
+      JSON_VALUE(t.ANAMNESE, '$.TERPIMPIN') AS TERPIMPIN,
+      JSON_VALUE(t.TANDA_VITAL, '$.SISTOLE') AS SISTOLE,
+      JSON_VALUE(t.TANDA_VITAL, '$.DIASTOLE') AS DIASTOLE,
+      JSON_VALUE(t.TANDA_VITAL, '$.FREK_NADI') AS NADI,
+      JSON_VALUE(t.TANDA_VITAL, '$.FREK_NAFAS') AS NAFAS,
+      JSON_VALUE(t.TANDA_VITAL, '$.SUHU') AS SUHU,
+      (SELECT CAST(tv.SATURASI_O2 AS CHAR) FROM ${MR}.tanda_vital tv
+         WHERE tv.KUNJUNGAN = t.KUNJUNGAN AND tv.STATUS <> 0 AND tv.SATURASI_O2 > 0
+         ORDER BY tv.WAKTU_PEMERIKSAAN ASC, tv.ID ASC LIMIT 1) AS SATURASI,
+      JSON_VALUE(t.RESUSITASI, '$.CHECKED') AS K1,
+      JSON_VALUE(t.EMERGENCY, '$.CHECKED') AS K2,
+      JSON_VALUE(t.URGENT, '$.CHECKED') AS K3,
+      JSON_VALUE(t.LESS_URGENT, '$.CHECKED') AS K4,
+      JSON_VALUE(t.NON_URGENT, '$.CHECKED') AS K5,
+      JSON_VALUE(t.DOA, '$.CHECKED') AS KDOA,
+      (SELECT r.DESKRIPSI FROM ${M}.referensi r WHERE r.JENIS = 223 AND r.ID = t.PLAN LIMIT 1) AS ZONA,
+      (SELECT ${PEGAWAI_NAMA} FROM ${M}.dokter dk JOIN ${M}.pegawai pg ON pg.NIP = dk.NIP
+         WHERE dk.ID = t.DOKTER_ID LIMIT 1) AS DOKTER,
+      (SELECT ${PEGAWAI_NAMA} FROM ${M}.perawat pr JOIN ${M}.pegawai pg ON pg.NIP = pr.NIP
+         WHERE pr.ID = t.PERAWAT_ID LIMIT 1) AS PERAWAT,
+      (SELECT u.NAMA FROM ${SIMGOS_DB.APLIKASI}.pengguna u WHERE u.ID = t.OLEH LIMIT 1) AS PENGGUNA
+    FROM ${MR}.triage t
+    WHERE t.NOPEN = ? AND t.STATUS <> 0
+    ORDER BY t.TANGGAL DESC, t.ID DESC
+    LIMIT 1`;
+
+  const rows = await getSimgos().$queryRawUnsafe<TriaseSimgosRow[]>(sql, nopen);
+  return rows[0] ?? null;
+}
+
 /** Baris diagnosa akhir (medicalrecord.diagnosa). */
 export type DiagnosaRow = {
   UTAMA: number | string | null;

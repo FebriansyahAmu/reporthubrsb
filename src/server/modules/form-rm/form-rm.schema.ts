@@ -1,4 +1,11 @@
 import { z } from "zod";
+import {
+  CARA_DATANG_OPTS,
+  EMERGENCY_OPTS,
+  KASUS_OPTS,
+  KECELAKAAN_OPTS,
+  TRIASE_KRITERIA_ID,
+} from "@/features/form-rm/triase.constants";
 
 /** Query daftar Form RM (pasien IGD) — rentang tanggal + filter + paginasi. */
 export const formRmListQuerySchema = z
@@ -193,3 +200,44 @@ export const ringkasanSaveSchema = z.object({
 });
 
 export type RingkasanSaveInput = z.infer<typeof ringkasanSaveSchema>;
+
+// --- Triase IGD (RM.04) --------------------------------------------------
+
+export const triaseFormSchema = z.object({
+  kedatanganWaktu: str(30),
+  caraDatang: z.enum(["", ...CARA_DATANG_OPTS]).default(""),
+  caraDatangLain: str(80),
+  kasus: z.enum(["", ...KASUS_OPTS]).default(""),
+  kecelakaan: z.array(z.enum(KECELAKAAN_OPTS)).max(KECELAKAAN_OPTS.length).default([]),
+  doa: z.boolean().default(false),
+  doaWaktu: str(30),
+  tdSistolik: str(10),
+  tdDiastolik: str(10),
+  nadi: str(10),
+  suhu: str(10),
+  saturasi: str(10),
+  pernapasan: str(10),
+  kriteria: z
+    .array(z.string().refine((id) => TRIASE_KRITERIA_ID.has(id), "Kriteria triase tidak dikenal"))
+    .max(TRIASE_KRITERIA_ID.size)
+    .default([]),
+  kesadaran: z.enum(["", "1", "2", "3", "4", "5"]).default(""),
+  catatan: z.array(z.string().max(300)).max(5).default([]),
+  emergency: z.enum(["", ...EMERGENCY_OPTS]).default(""),
+  waktuTriase: str(30),
+  petugasNama: str(120),
+  petugasTtd: ttdSchema,
+});
+
+export const triaseSaveSchema = z.object({
+  data: triaseFormSchema,
+  header: z
+    .object({
+      norm: z.string().optional(),
+      nama: z.string().optional(),
+      ruang: z.string().optional(),
+    })
+    .default({}),
+});
+
+export type TriaseSaveInput = z.infer<typeof triaseSaveSchema>;

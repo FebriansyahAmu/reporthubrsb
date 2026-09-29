@@ -8,6 +8,7 @@ import {
   FileText,
   FileWarning,
   GraduationCap,
+  Siren,
   type LucideIcon,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -20,6 +21,7 @@ import { getFormRmHeader, formRmExists } from "@/server/modules/form-rm/form-rm.
 import { EDUKASI_JENIS } from "@/features/form-rm/edukasi.constants";
 import { CONSENT_JENIS } from "@/features/form-rm/consent.constants";
 import { RINGKASAN_JENIS } from "@/features/form-rm/ringkasan.constants";
+import { TRIASE_JENIS } from "@/features/form-rm/triase.constants";
 
 export const metadata = { title: "Detail Form RM · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
@@ -60,13 +62,23 @@ export default async function FormRmDetailPage({
     );
   }
 
-  const [edukasiTerisi, consentTerisi, ringkasanTerisi] = await Promise.all([
+  const [triaseTerisi, edukasiTerisi, consentTerisi, ringkasanTerisi] = await Promise.all([
+    formRmExists(nopen, TRIASE_JENIS).catch(() => false),
     formRmExists(nopen, EDUKASI_JENIS).catch(() => false),
     formRmExists(nopen, CONSENT_JENIS).catch(() => false),
     formRmExists(nopen, RINGKASAN_JENIS).catch(() => false),
   ]);
 
   const forms: FormCardData[] = [
+    {
+      key: "triase",
+      kode: "RM.04",
+      label: "Triase IGD",
+      icon: Siren,
+      desc: "Kedatangan, tanda vital & kategori triase I–V pasien IGD.",
+      href: `/form-rm/${nopen}/triase`,
+      terisi: triaseTerisi,
+    },
     {
       key: "edukasi",
       kode: "RM.21",
@@ -130,7 +142,7 @@ export default async function FormRmDetailPage({
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-fg-subtle">
           Formulir Rekam Medis
         </h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-4">
           {forms.map((f) => (
             <FormCard key={f.key} form={f} />
           ))}
