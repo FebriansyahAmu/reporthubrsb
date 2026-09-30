@@ -10,11 +10,14 @@ export const runtime = "nodejs";
 /**
  * GET /api/berkas-klaim/tindak-lanjut?status=OPEN|SELESAI&lingkup=saya|semua&page&pageSize[&segar=1]
  * Item berkas klaim yang harus dilengkapi penerima (DPJP/ruangan/peran); `semua`
- * khusus verifikator RM. Item yang datanya sudah lengkap ditutup otomatis.
+ * khusus verifikator RM & coder. Item yang datanya sudah lengkap ditutup otomatis.
  */
 export async function GET(req: NextRequest) {
   try {
-    const user = await authorizeAny([MODUL_VERIFIKASI.TINDAK_LANJUT, MODUL_VERIFIKASI.RM], "view");
+    const user = await authorizeAny(
+      [MODUL_VERIFIKASI.TINDAK_LANJUT, MODUL_VERIFIKASI.RM, MODUL_VERIFIKASI.KLAIM],
+      "view",
+    );
     const q = tindakLanjutQuerySchema.parse(Object.fromEntries(req.nextUrl.searchParams));
     return ok(await getTindakLanjut(user, q));
   } catch (err) {

@@ -99,8 +99,9 @@ export const TRANSISI: readonly Transisi[] = [
     izin: { modul: MODUL_VERIFIKASI.KLAIM, aksi: "update" }, alasanWajib: true,
   },
   {
+    // Dari KOREKSI_KODING = merevisi usulan (usulan lama & tindak lanjutnya dibatalkan).
     aksi: "AJUKAN_KOREKSI", label: "Ajukan koreksi koding",
-    dari: ["LOLOS_RM"], ke: "KOREKSI_KODING",
+    dari: ["LOLOS_RM", "KOREKSI_KODING"], ke: "KOREKSI_KODING",
     izin: { modul: MODUL_VERIFIKASI.KLAIM, aksi: "update" },
   },
   {
@@ -109,8 +110,10 @@ export const TRANSISI: readonly Transisi[] = [
     izin: null,
   },
   {
+    // Dari KOREKSI_KODING = coder menerima koding SIMRS apa adanya (alasan wajib,
+    // usulan yang menunggu dibatalkan) — jalan keluar bila DPJP tak menerapkan usulan.
     aksi: "LOLOSKAN_KLAIM", label: "Loloskan klaim",
-    dari: ["LOLOS_RM"], ke: "LOLOS_KLAIM",
+    dari: ["LOLOS_RM", "KOREKSI_KODING"], ke: "LOLOS_KLAIM",
     izin: { modul: MODUL_VERIFIKASI.KLAIM, aksi: "update" },
   },
   {
@@ -133,6 +136,21 @@ export function cariTransisi(dari: StatusVerifikasi, aksi: AksiVerifikasi): Tran
 /** Aksi Tahap 1 (Stage V1) yang bisa dikirim lewat API keputusan. */
 export const AKSI_TAHAP1 = ["LOLOSKAN_RM", "TANDAI_TIDAK_LENGKAP"] as const satisfies readonly AksiVerifikasi[];
 export type AksiTahap1 = (typeof AKSI_TAHAP1)[number];
+
+/** Aksi Tahap 2 — coder (Stage V2) lewat API keputusan koding. */
+export const AKSI_TAHAP2 = ["AJUKAN_KOREKSI", "LOLOSKAN_KLAIM", "KEMBALIKAN_KE_RM"] as const satisfies readonly AksiVerifikasi[];
+export type AksiTahap2 = (typeof AKSI_TAHAP2)[number];
+
+/** Status di mana koding menjadi pekerjaan coder (antrean & chip masalah koding). */
+export const STATUS_TAHAP2: readonly StatusVerifikasi[] = ["LOLOS_RM", "KOREKSI_KODING"];
+
+/** Status usulan koreksi koding (`klaim_koreksi_koding.status`). */
+export const STATUS_KOREKSI = ["MENUNGGU_SIMRS", "SESUAI", "BATAL"] as const;
+export type StatusKoreksi = (typeof STATUS_KOREKSI)[number];
+
+/** Jenis kode: ICD-10 (diagnosa) / ICD-9-CM (prosedur) — edisi INA-CBG (IM) di `master.mrconso`. */
+export const JENIS_ICD = ["10", "9"] as const;
+export type JenisIcd = (typeof JENIS_ICD)[number];
 
 /** Aksi sistem (tanpa perubahan status) yang juga tercatat di riwayat. */
 export const AKSI_SISTEM = {
@@ -207,4 +225,14 @@ export const BATAS = {
   SINKRON_MAKS: 300,
   /** Umur cache rekonsiliasi tindak lanjut per himpunan NOPEN. */
   SINKRON_TTL_MS: 30_000,
+  /** Maks kode per daftar usulan (diagnosa / prosedur). */
+  USULAN_MAKS: 30,
+  /** Hasil pencarian ICD per permintaan. */
+  ICD_HASIL: 20,
+  /** Umur cache info & hasil pencarian ICD (master jarang berubah). */
+  ICD_TTL_MS: 24 * 60 * 60_000,
+  /** Maks pencarian ICD ke SIMGOS bersamaan (sisanya menunggu giliran). */
+  ICD_PARALEL: 2,
+  /** Maks entri jejak bukti SIMGOS yang disimpan per koreksi. */
+  BUKTI_MAKS: 20,
 } as const;

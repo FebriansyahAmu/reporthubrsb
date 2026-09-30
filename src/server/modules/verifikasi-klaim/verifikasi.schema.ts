@@ -1,12 +1,15 @@
 import { z } from "zod";
 import {
   AKSI_TAHAP1,
+  AKSI_TAHAP2,
   BATAS,
   CAKUPAN_PENJAMIN,
+  JENIS_ICD,
   KATEGORI,
   LINGKUP_TINDAK_LANJUT,
   STATUS_VERIFIKASI,
 } from "./verifikasi.constants";
+import { KODE_ATURAN_TAHAP2 } from "./koding.rules";
 import { ATURAN_TAHAP1, CEK_MANUAL } from "./verifikasi.rules";
 
 /* ------------------------------------------------------------ util tanggal */
@@ -59,11 +62,13 @@ export const antreanQuerySchema = rentangSah(
   z.object({
     ...filterDasar,
     status: z.enum(STATUS_VERIFIKASI).optional(),
-    /** Kunci aturan yang GAGAL (chip masalah). */
-    masalah: z.enum(KODE_ATURAN).optional(),
+    /** Kunci aturan yang GAGAL (chip masalah) — Tahap 1, atau Tahap 2 untuk berkas pekerjaan coder. */
+    masalah: z.enum([...KODE_ATURAN, ...KODE_ATURAN_TAHAP2] as [string, ...string[]]).optional(),
     lengkap: z.enum(["ya", "tidak"]).optional(),
     /** Hanya TIDAK_LENGKAP yang seluruh tindak lanjutnya selesai. */
     siap: z.enum(["1"]).optional(),
+    /** Hanya Lolos RM tanpa aturan koding yang gagal. */
+    koding: z.enum(["bersih"]).optional(),
     page: z.coerce.number().int().min(1).max(10_000).default(1),
     pageSize: z.coerce.number().int().min(1).max(BATAS.HALAMAN_MAKS).default(25),
     segar: z.enum(["1"]).optional(),
@@ -115,6 +120,60 @@ export const massalSchema = rentangSah(
 );
 
 export type MassalInput = z.infer<typeof massalSchema>;
+
+/* ------------------------------------------------------ keputusan Tahap 2 */
+
+/** Kode ICD ketikan: huruf besar, [A-Z0-9.] — keberadaan & validitas dicek ke master di service. */
+const kodeIcd = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z0-9][A-Z0-9.]{1,9}$/, "Kode ICD tidak valid");
+
+export const usulanSchema = z
+  .object({
+    diagnosa: z
+      .array(z.object({ kode: kodeIcd, utama: z.boolean() }).strict())
+      .min(1, "Minimal satu diagnosa")
+      .max(BATAS.USULAN_MAKS),
+    prosedur: z.array(z.object({ kode: kodeIcd }).strict()).max(BATAS.USULAN_MAKS).default([]),
+  })
+  .strict()
+  .refine((u) => u.diagnosa.filter((d) => d.utama).length === 1, {
+    message: "Pilih tepat satu diagnosa utama",
+    path: ["diagnosa"],
+  })
+  .refine((u) => new Set(u.diagnosa.map((d) => d.kode)).size === u.diagnosa.length, {
+    message: "Kode diagnosa ganda",
+    path: ["diagnosa"],
+  })
+  .refine((u) => new Set(u.prosedur.map((p) => p.kode)).size === u.prosedur.length, {
+    message: "Kode prosedur ganda",
+    path: ["prosedur"],
+  });
+
+/**
+ * Keputusan coder: ajukan koreksi (dengan usulan), loloskan klaim, atau
+ * kembalikan ke Tahap 1. `versi` = versi berkas yang dilihat (optimistic locking).
+ */
+export const kodingKeputusanSchema = z
+  .object({
+    aksi: z.enum(AKSI_TAHAP2),
+    versi: z.number().int().min(1).nullable(),
+    catatan,
+    usulan: usulanSchema.optional(),
+  })
+  .strict()
+  .refine((v) => v.aksi !== "AJUKAN_KOREKSI" || !!v.usulan, { message: "Usulan koreksi wajib diisi", path: ["usulan"] })
+  .refine((v) => v.aksi === "AJUKAN_KOREKSI" || !v.usulan, { message: "Usulan hanya untuk ajukan koreksi", path: ["usulan"] });
+
+export type KodingKeputusanInput = z.infer<typeof kodingKeputusanSchema>;
+
+/** GET pencarian ICD INA-CBG: kode (awalan) atau teks nama. */
+export const icdQuerySchema = z.object({
+  jenis: z.enum(JENIS_ICD),
+  q: z.string().trim().min(1, "Ketik kode atau nama").max(60),
+});
 
 /* ------------------------------------------------------------ tindak lanjut */
 

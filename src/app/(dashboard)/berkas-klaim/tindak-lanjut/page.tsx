@@ -8,18 +8,18 @@ export const metadata = { title: "Tindak Lanjut Berkas · AuditTrail RS BOLTIM" 
 export const dynamic = "force-dynamic";
 
 /**
- * Tindak Lanjut Berkas (PRD §6.4) — item berkas klaim milik DPJP / ruangan /
- * peran pengguna; verifikator RM juga bisa melihat semua. Item otomatis tertutup
- * sendiri begitu data SIMRS lengkap.
+ * Tindak Lanjut Berkas (PRD §6.4) — item berkas klaim & koreksi koding milik
+ * DPJP / ruangan / peran pengguna; verifikator RM & coder juga bisa melihat
+ * semua. Item otomatis tertutup sendiri begitu data SIMRS lengkap / sesuai.
  */
 export default async function TindakLanjutBerkasPage() {
-  await requireAnyModule([MODUL_VERIFIKASI.TINDAK_LANJUT, MODUL_VERIFIKASI.RM]);
+  await requireAnyModule([MODUL_VERIFIKASI.TINDAK_LANJUT, MODUL_VERIFIKASI.RM, MODUL_VERIFIKASI.KLAIM]);
 
   return (
     <FadeIn className="space-y-6">
       <PageHeader
         title="Tindak Lanjut Berkas"
-        description="Item berkas klaim yang perlu dilengkapi DPJP atau unit. Item tertutup sendiri begitu datanya sudah ada di SIMRS."
+        description="Item berkas klaim & koreksi koding yang perlu dilengkapi DPJP atau unit di SIMRS. Item tertutup sendiri begitu datanya sudah ada / sesuai di SIMRS."
       />
       <TindakLanjutView />
     </FadeIn>

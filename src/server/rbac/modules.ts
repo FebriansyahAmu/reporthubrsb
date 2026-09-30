@@ -152,7 +152,7 @@ export const MODULES: readonly AppModule[] = [
     key: "berkas-klaim.tindak-lanjut",
     group: "Berkas Klaim",
     label: "Tindak Lanjut Berkas",
-    description: "Item berkas yang harus dilengkapi DPJP / unit",
+    description: "Item berkas & koreksi koding yang harus dilengkapi DPJP / unit di SIMRS",
     icon: BellRing,
     navHref: "/berkas-klaim/tindak-lanjut",
     apiPrefixes: ["/api/berkas-klaim/tindak-lanjut"],

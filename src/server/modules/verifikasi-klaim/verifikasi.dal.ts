@@ -23,16 +23,16 @@ const LY = SIMGOS_DB.LAYANAN;
 const MS = SIMGOS_DB.MASTER;
 const PB = SIMGOS_DB.PEMBAYARAN;
 const BP = SIMGOS_DB.BPJS;
-const CAP = "/*+ MAX_EXECUTION_TIME(8000) */";
-const FMT = "'%Y-%m-%dT%H:%i:%s'";
+export const CAP = "/*+ MAX_EXECUTION_TIME(8000) */";
+export const FMT = "'%Y-%m-%dT%H:%i:%s'";
 /** Leg klinis: Rawat Jalan (1), IGD (2), Rawat Inap (3). */
 const KLINIS = "r.JENIS_KUNJUNGAN IN (1, 2, 3)";
 
-type Num = number | bigint | string | null;
-const num = (v: Num): number => (v == null ? 0 : Number(v));
+export type Num = number | bigint | string | null;
+export const num = (v: Num): number => (v == null ? 0 : Number(v));
 
 /** Jalankan `run` per potongan NOPEN secara BERURUTAN (sengaja — satu koneksi). */
-async function perChunk<T>(
+export async function perChunk<T>(
   nopens: readonly string[],
   run: (chunk: string[], ph: string) => Promise<T[]>,
 ): Promise<T[]> {
@@ -44,7 +44,7 @@ async function perChunk<T>(
   return out;
 }
 
-function query<T>(sql: string, params: readonly unknown[]): Promise<T[]> {
+export function query<T>(sql: string, params: readonly unknown[]): Promise<T[]> {
   return getSimgos().$queryRawUnsafe<T[]>(sql, ...params);
 }
 

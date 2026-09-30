@@ -12,13 +12,36 @@ import { ApiError, apiGet, apiPost, pesanGalat } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 import { formatDateTime } from "@/lib/format";
 import { useAsyncData } from "@/lib/useAsyncData";
-import { KATEGORI_LABEL, STATUS_META } from "@/server/modules/verifikasi-klaim/verifikasi.constants";
+import { getAturanKoding } from "@/server/modules/verifikasi-klaim/koding.rules";
+import {
+  KATEGORI_LABEL,
+  STATUS_META,
+  type AksiTahap2,
+  type StatusVerifikasi,
+} from "@/server/modules/verifikasi-klaim/verifikasi.constants";
 import { labelAturan } from "@/server/modules/verifikasi-klaim/verifikasi.rules";
 import type { RiwayatItem, RuangKerjaKlaim } from "@/server/modules/verifikasi-klaim/verifikasi.types";
 import { PanelKelengkapan, type KirimKeputusan } from "./PanelKelengkapan";
+import { PanelKoding, type KirimKoding } from "./PanelKoding";
 import { StatusVerifikasiBadge } from "./status-ui";
 
-type Tab = "kelengkapan" | "riwayat";
+type Tab = "kelengkapan" | "koding" | "riwayat";
+
+/** Tab bawaan mengikuti tahap berkas: setelah Lolos RM pekerjaannya ada di Koding. */
+const TAB_TAHAP: Record<StatusVerifikasi, Tab> = {
+  BELUM_DIPERIKSA: "kelengkapan",
+  TIDAK_LENGKAP: "kelengkapan",
+  LOLOS_RM: "koding",
+  KOREKSI_KODING: "koding",
+  LOLOS_KLAIM: "koding",
+  FINAL: "koding",
+};
+
+const PESAN_KODING: Record<AksiTahap2, [string, string]> = {
+  AJUKAN_KOREKSI: ["Usulan koreksi terkirim", "Tindak lanjut & notifikasi dikirim ke penerap di SIMRS."],
+  LOLOSKAN_KLAIM: ["Klaim diloloskan", "Berkas siap dipaketkan (Tahap final)."],
+  KEMBALIKAN_KE_RM: ["Berkas dikembalikan ke Tahap 1", "Verifikator RM diberi tahu."],
+};
 
 /**
  * Ruang kerja satu berkas (PRD §6.3) — panel samping. Data SELALU dicek segar
@@ -36,7 +59,8 @@ export function RuangKerjaDrawer({
   onBerubah: () => void;
 }) {
   const toast = useToast();
-  const [tab, setTab] = useState<Tab>("kelengkapan");
+  // null = belum dipilih pengguna → tab bawaan menurut status berkas.
+  const [tabPilihan, setTabPilihan] = useState<Tab | null>(null);
   const [terbaru, setTerbaru] = useState<RuangKerjaKlaim | null>(null);
   const [mengirim, setMengirim] = useState(false);
   const { result, loading, error, reload } = useAsyncData<RuangKerjaKlaim | null>(
@@ -45,6 +69,7 @@ export function RuangKerjaDrawer({
   );
   // Respons keputusan menggantikan hasil muat sampai "Cek ulang" berikutnya.
   const data = terbaru && terbaru.snapshot.nopen === nopen ? terbaru : result;
+  const tab: Tab = tabPilihan ?? (data ? TAB_TAHAP[data.status] : "kelengkapan");
 
   function cekUlang() {
     setTerbaru(null);
@@ -53,22 +78,17 @@ export function RuangKerjaDrawer({
 
   function tutup() {
     setTerbaru(null);
-    setTab("kelengkapan");
+    setTabPilihan(null);
     onClose();
   }
 
-  const kirim: KirimKeputusan = async (body) => {
-    if (!nopen) return false;
+  /** Kirim keputusan (Tahap 1 / 2) dengan penanganan konflik versi yang sama. */
+  async function putuskan(url: string, body: unknown, sukses: [string, string]): Promise<boolean> {
     setMengirim(true);
     try {
-      const r = await apiPost<RuangKerjaKlaim>(`/api/berkas-klaim/verifikasi/${nopen}/keputusan`, body);
+      const r = await apiPost<RuangKerjaKlaim>(url, body);
       setTerbaru(r);
-      toast.success(
-        body.aksi === "LOLOSKAN_RM" ? "Berkas diloloskan ke Tahap 2" : "Berkas ditandai tidak lengkap",
-        body.aksi === "LOLOSKAN_RM"
-          ? "Keputusan tercatat di riwayat berkas."
-          : "Tindak lanjut & notifikasi terkirim ke penanggung jawab.",
-      );
+      toast.success(...sukses);
       onBerubah();
       return true;
     } catch (e) {
@@ -83,7 +103,20 @@ export function RuangKerjaDrawer({
     } finally {
       setMengirim(false);
     }
-  };
+  }
+
+  const kirim: KirimKeputusan = async (body) =>
+    !!nopen &&
+    putuskan(
+      `/api/berkas-klaim/verifikasi/${nopen}/keputusan`,
+      body,
+      body.aksi === "LOLOSKAN_RM"
+        ? ["Berkas diloloskan ke Tahap 2", "Keputusan tercatat di riwayat berkas."]
+        : ["Berkas ditandai tidak lengkap", "Tindak lanjut & notifikasi terkirim ke penanggung jawab."],
+    );
+
+  const kirimKoding: KirimKoding = async (body) =>
+    !!nopen && putuskan(`/api/berkas-klaim/koding/${nopen}/keputusan`, body, PESAN_KODING[body.aksi]);
 
   const s = data?.snapshot;
   return (
@@ -116,14 +149,19 @@ export function RuangKerjaDrawer({
       <div className="flex min-h-full flex-col">
         <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-bg/95 px-5 py-2 backdrop-blur">
           <div role="tablist" aria-label="Ruang kerja berkas" className="-mx-1 flex min-w-0 gap-1 overflow-x-auto px-1">
-            <TabButton aktif={tab === "kelengkapan"} onClick={() => setTab("kelengkapan")}>
+            <TabButton aktif={tab === "kelengkapan"} onClick={() => setTabPilihan("kelengkapan")}>
               Kelengkapan
             </TabButton>
-            <TabButton aktif={tab === "riwayat"} onClick={() => setTab("riwayat")}>
-              Riwayat{data ? ` (${data.riwayat.length})` : ""}
-            </TabButton>
-            <TabButton aktif={false} disabled title="Stage V2">
+            <TabButton aktif={tab === "koding"} onClick={() => setTabPilihan("koding")}>
               Koding
+              {data && data.cekKoding.gagal > 0 && (
+                <span className="ml-1.5 rounded-full bg-danger-soft px-1.5 text-[11px] text-danger" aria-label={`${data.cekKoding.gagal} aturan koding gagal`}>
+                  {data.cekKoding.gagal}
+                </span>
+              )}
+            </TabButton>
+            <TabButton aktif={tab === "riwayat"} onClick={() => setTabPilihan("riwayat")}>
+              Riwayat{data ? ` (${data.riwayat.length})` : ""}
             </TabButton>
             <TabButton aktif={false} disabled title="Stage V3">
               Paket Klaim
@@ -158,6 +196,8 @@ export function RuangKerjaDrawer({
             )}
             {tab === "kelengkapan" ? (
               <PanelKelengkapan key={`${data.snapshot.nopen}:${data.versi ?? 0}`} data={data} kirim={kirim} mengirim={mengirim} />
+            ) : tab === "koding" ? (
+              <PanelKoding key={`${data.snapshot.nopen}:${data.versi ?? 0}`} data={data} kirim={kirimKoding} mengirim={mengirim} />
             ) : (
               <PanelRiwayat items={data.riwayat} />
             )}
@@ -202,6 +242,11 @@ function MemuatRuangKerja() {
 }
 
 const DATA_LABEL: Record<string, string> = { item: "Item", gagal: "Pemeriksaan gagal", aturan: "Item" };
+/** Label kunci aturan Tahap 1 / Tahap 2 / item tindak lanjut. */
+const labelKunci = (k: string) => getAturanKoding(k)?.label ?? labelAturan(k);
+
+const buktiOleh = (b: unknown) => (b && typeof b === "object" && typeof (b as { oleh?: unknown }).oleh === "string" ? (b as { oleh: string }).oleh : null);
+const buktiPada = (b: unknown) => (b && typeof b === "object" && typeof (b as { pada?: unknown }).pada === "string" ? (b as { pada: string }).pada : null);
 
 /** Linimasa riwayat berkas (terbaru di atas). */
 function PanelRiwayat({ items }: { items: readonly RiwayatItem[] }) {
@@ -230,6 +275,7 @@ function PanelRiwayat({ items }: { items: readonly RiwayatItem[] }) {
               )}
               {d.override === true && <Badge tone="warning">Diloloskan dengan alasan</Badge>}
               {d.massal === true && <Badge tone="brand">Massal</Badge>}
+              {d.revisi === true && <Badge tone="brand">Revisi usulan</Badge>}
             </div>
             <p className="mt-0.5 text-xs text-fg-subtle">
               {r.olehNama ?? "—"} · {formatDateTime(r.createdAt)}
@@ -238,9 +284,22 @@ function PanelRiwayat({ items }: { items: readonly RiwayatItem[] }) {
             {(["item", "gagal", "aturan"] as const).map((k) =>
               Array.isArray(d[k]) && (d[k] as string[]).length > 0 ? (
                 <p key={k} className="mt-1 text-xs text-fg-muted">
-                  {DATA_LABEL[k]}: {(d[k] as string[]).map(labelAturan).join(", ")}
+                  {DATA_LABEL[k]}: {(d[k] as string[]).map(labelKunci).join(", ")}
                 </p>
               ) : null,
+            )}
+            {Array.isArray(d.perubahan) && d.perubahan.length > 0 && (
+              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-fg-muted">
+                {(d.perubahan as string[]).map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ul>
+            )}
+            {buktiOleh(d.bukti) && (
+              <p className="mt-1 text-xs text-fg-muted">
+                Diterapkan di SIMRS oleh {buktiOleh(d.bukti)}
+                {buktiPada(d.bukti) && ` pada ${formatDateTime(buktiPada(d.bukti)!)}`}
+              </p>
             )}
           </li>
         );

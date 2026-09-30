@@ -8,9 +8,9 @@ export const metadata = { title: "Verifikasi Klaim · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 /**
- * Verifikasi Klaim BPJS — antrean kerja + ruang kerja berkas (Stage V1: Tahap 1
- * Kelengkapan RM). `?nopen=` membuka ruang kerja berkas itu langsung (tautan
- * notifikasi). docs/PRD_Verifikasi_Klaim_BPJS.md §6.
+ * Verifikasi Klaim BPJS — antrean kerja + ruang kerja berkas (Tahap 1
+ * Kelengkapan RM, Tahap 2 Koding). `?nopen=` membuka ruang kerja berkas itu
+ * langsung (tautan notifikasi). docs/PRD_Verifikasi_Klaim_BPJS.md §6.
  */
 export default async function VerifikasiKlaimPage({
   searchParams,
@@ -19,6 +19,7 @@ export default async function VerifikasiKlaimPage({
 }) {
   const user = await requireAnyModule(MODUL_ANTREAN);
   const bolehRm = await hasModule(user, MODUL_VERIFIKASI.RM, "update");
+  const bolehCoder = await hasModule(user, MODUL_VERIFIKASI.KLAIM, "view");
   const { nopen } = await searchParams;
   const nopenAwal = typeof nopen === "string" && /^\d{6,20}$/.test(nopen) ? nopen : null;
 
@@ -26,9 +27,9 @@ export default async function VerifikasiKlaimPage({
     <FadeIn className="space-y-6">
       <PageHeader
         title="Verifikasi Klaim BPJS"
-        description="Antrean kerja per episode (tanggal pulang): periksa kelengkapan berkas RM dari SIMRS, loloskan ke coder, atau kirim tindak lanjut ke DPJP / unit yang harus melengkapi."
+        description="Antrean kerja per episode (tanggal pulang): periksa kelengkapan berkas RM, sesuaikan koding (coder), lalu teruskan ke paket klaim. Perubahan data dilakukan di SIMRS — aplikasi ini membaca & melacaknya."
       />
-      <VerifikasiView bolehRm={bolehRm} nopenAwal={nopenAwal} />
+      <VerifikasiView bolehRm={bolehRm} bolehCoder={bolehCoder} nopenAwal={nopenAwal} />
     </FadeIn>
   );
 }

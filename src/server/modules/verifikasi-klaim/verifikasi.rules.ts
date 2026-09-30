@@ -17,16 +17,17 @@ import type {
   SnapshotKlaim,
 } from "./verifikasi.types";
 
-type HasilMentah = { lolos: boolean; pesan: string; /** Gagal ringan → selalu peringatan. */ ringan?: boolean };
+export type HasilMentah = { lolos: boolean; pesan: string; /** Gagal ringan → selalu peringatan. */ ringan?: boolean };
 
-export type Aturan = {
+/** Satu aturan katalog; `T` = masukan evaluasi (Tahap 1: snapshot, Tahap 2: konteks koding). */
+export type Aturan<T = SnapshotKlaim> = {
   key: string;
   tahap: 1 | 2;
   label: string;
   /** Keharusan per jenis layanan; kategori yang tak tercantum = tidak berlaku. */
   berlaku: Partial<Record<Kategori, Keharusan>>;
   pj: PenanggungJawab;
-  cek: (s: SnapshotKlaim) => HasilMentah | null;
+  cek: (s: T) => HasilMentah | null;
 };
 
 const ya = (pesan: string): HasilMentah => ({ lolos: true, pesan });
@@ -162,13 +163,18 @@ export function getAturan(key: string): Aturan | undefined {
 
 /* ---------------------------------------------------------------- evaluasi */
 
-/** Jalankan katalog terhadap satu snapshot. Urutan hasil = urutan katalog. */
-export function evaluasi(s: SnapshotKlaim, katalog: readonly Aturan[] = ATURAN_TAHAP1): HasilCek {
+/** Jalankan katalog Tahap 1 terhadap satu snapshot. Urutan hasil = urutan katalog. */
+export function evaluasi(s: SnapshotKlaim): HasilCek {
+  return jalankanKatalog(s, s.kategori, ATURAN_TAHAP1);
+}
+
+/** Jalankan katalog tahap mana pun terhadap satu masukan (Tahap 2: lihat koding.rules.ts). */
+export function jalankanKatalog<T>(x: T, kategori: Kategori, katalog: readonly Aturan<T>[]): HasilCek {
   const hasil: HasilAturan[] = [];
   for (const a of katalog) {
-    const keharusan = a.berlaku[s.kategori];
+    const keharusan = a.berlaku[kategori];
     if (!keharusan) continue;
-    const r = a.cek(s);
+    const r = a.cek(x);
     if (!r) continue;
     const status = r.lolos ? "lolos" : keharusan === "W" && !r.ringan ? "gagal" : "peringatan";
     hasil.push({ key: a.key, label: a.label, status, keharusan, pesan: r.pesan, pj: a.pj });
@@ -222,11 +228,20 @@ export function cekManualUntuk(kategori: Kategori): CekManualItem[] {
 
 /* ------------------------------------------------------------- tindak lanjut */
 
-/** Sub-item penunjang: sasaran berbeda (unit Laboratorium vs Radiologi), tertutup masing-masing. */
+/**
+ * Sub-item penunjang: sasaran berbeda (unit Laboratorium vs Radiologi), tertutup
+ * masing-masing. Item koreksi koding (Tahap 2) dipecah diagnosa → DPJP dan
+ * prosedur → ruang; tertutup saat koding SIMRS = usulan (lihat koding.sinkron.ts).
+ */
 const SUB_ATURAN: Record<string, { label: string; induk: string }> = {
   "penunjang-lab": { label: "Hasil Laboratorium Final", induk: "penunjang" },
   "penunjang-rad": { label: "Hasil Radiologi Final", induk: "penunjang" },
+  "koding-dx": { label: "Koreksi Diagnosa ICD-10", induk: "koding" },
+  "koding-px": { label: "Koreksi Prosedur ICD-9-CM", induk: "koding" },
 };
+
+/** Awalan kunci item tindak lanjut koreksi koding (Tahap 2). */
+export const PREFIKS_KODING = "koding-";
 
 /** Label tampilan kunci item tindak lanjut (aturan otomatis, sub-item, atau cek manual). */
 export function labelAturan(key: string): string {
@@ -261,11 +276,12 @@ export function itemTindakLanjut(
 }
 
 /**
- * Apakah kekurangan yang dimaksud item tindak lanjut sudah terpenuhi menurut
- * data SIMGOS terbaru? Cek manual tak pernah terpenuhi otomatis.
+ * Apakah kekurangan yang dimaksud item tindak lanjut Tahap 1 sudah terpenuhi
+ * menurut data SIMGOS terbaru? Cek manual tak pernah terpenuhi otomatis; item
+ * koreksi koding ditutup oleh deteksi koding (bukan di sini).
  */
 export function tindakLanjutTerpenuhi(aturan: string, s: SnapshotKlaim, cek: HasilCek): boolean {
-  if (aturan.startsWith(PREFIKS_MANUAL)) return false;
+  if (aturan.startsWith(PREFIKS_MANUAL) || aturan.startsWith(PREFIKS_KODING)) return false;
   if (aturan === "penunjang-lab") return s.fakta.penunjang.labBelum === 0;
   if (aturan === "penunjang-rad") return s.fakta.penunjang.radBelum === 0;
   const h = cek.hasil.find((x) => x.key === (SUB_ATURAN[aturan]?.induk ?? aturan));

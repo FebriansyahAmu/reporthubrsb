@@ -9,18 +9,20 @@ import { createTtlCache } from "@/server/lib/ttl-cache";
 import { getPenerima, type Penerima } from "@/server/modules/notifikasi/penerima";
 import { can } from "@/server/rbac/permissions";
 import { BATAS, MODUL_VERIFIKASI, STATUS_AWAL, STATUS_VERIFIKASI, type StatusVerifikasi } from "./verifikasi.constants";
-import { keTindakLanjutItem } from "./verifikasi.repo";
-import { PREFIKS_MANUAL } from "./verifikasi.rules";
+import { bacaUsulan, keTindakLanjutItem } from "./verifikasi.repo";
+import { PREFIKS_KODING, PREFIKS_MANUAL } from "./verifikasi.rules";
 import type { TindakLanjutQuery } from "./verifikasi.schema";
 import { cekSegarBatch } from "./verifikasi.service";
+import { sinkronKoding } from "./koding.sinkron";
 import { catatSelesai, sinkronTindakLanjut } from "./tindak-lanjut.sinkron";
-import type { TindakLanjutDaftar } from "./verifikasi.types";
+import type { PerubahanKoding, TindakLanjutDaftar } from "./verifikasi.types";
 
 /**
  * Halaman Tindak Lanjut Berkas (PRD §6.4): item yang harus dilengkapi DPJP
  * (NIP) / ruangan (akses ruangan SIMGOS) / peran penerima. Item OTOMATIS
  * ditutup sendiri begitu data SIMRS lengkap (rekonsiliasi saat halaman dimuat);
- * item cek manual ditandai selesai oleh penerima atau verifikator.
+ * item koreksi koding ditutup begitu koding SIMRS = usulan coder; item cek
+ * manual ditandai selesai oleh penerima atau verifikator.
  */
 
 const cacheSinkron = createTtlCache<number>("tindak-lanjut-sinkron", { ttlMs: BATAS.SINKRON_TTL_MS, max: 50 });
@@ -57,7 +59,11 @@ async function rekonsiliasi(lingkup: Prisma.KlaimTindakLanjutWhereInput, segar: 
   const nopens = rows.map((r) => r.nopen);
   const { value, hit } = await cacheSinkron.get(
     nopens.join(","),
-    () => batasSinkron(async () => sinkronTindakLanjut([...(await cekSegarBatch(nopens)).values()])),
+    () =>
+      batasSinkron(async () => {
+        const berkas = [...(await cekSegarBatch(nopens)).values()];
+        return (await sinkronTindakLanjut(berkas)) + (await sinkronKoding(berkas));
+      }),
     { fresh: segar },
   );
   return hit ? 0 : value;
@@ -65,9 +71,31 @@ async function rekonsiliasi(lingkup: Prisma.KlaimTindakLanjutWhereInput, segar: 
 
 const STATUS_SET = new Set<string>(STATUS_VERIFIKASI);
 
+/**
+ * Langkah koreksi untuk item koding: dari usulan yang dibuat dalam transaksi
+ * yang sama dengan item (waktu pembuatan terdekat), sesuai jenis item.
+ */
+async function perubahanKoding(rows: readonly { nopen: string; aturan: string; createdAt: Date }[]) {
+  const nopens = [...new Set(rows.filter((r) => r.aturan.startsWith(PREFIKS_KODING)).map((r) => r.nopen))];
+  if (nopens.length === 0) return () => null;
+  const koreksi = await getAppDb().klaimKoreksiKoding.findMany({
+    where: { nopen: { in: nopens } },
+    select: { nopen: true, usulan: true, createdAt: true },
+  });
+  return (r: { nopen: string; aturan: string; createdAt: Date }): PerubahanKoding[] | null => {
+    if (!r.aturan.startsWith(PREFIKS_KODING)) return null;
+    const jarak = (d: Date) => Math.abs(d.getTime() - r.createdAt.getTime());
+    const k = koreksi.filter((x) => x.nopen === r.nopen).sort((a, b) => jarak(a.createdAt) - jarak(b.createdAt))[0];
+    const jenis = r.aturan === "koding-px" ? "px" : "dx";
+    return k ? bacaUsulan(k.usulan).perubahan.filter((x) => x.jenis === jenis) : null;
+  };
+}
+
 export async function getTindakLanjut(user: SessionUser, q: TindakLanjutQuery): Promise<TindakLanjutDaftar> {
   const p = await getPenerima(user);
-  const bolehSemua = await can(user.role, MODUL_VERIFIKASI.RM, "view");
+  // Verifikator RM & coder memantau seluruh item yang dikirim tahapnya.
+  const bolehSemua =
+    (await can(user.role, MODUL_VERIFIKASI.RM, "view")) || (await can(user.role, MODUL_VERIFIKASI.KLAIM, "view"));
   const lingkup = q.lingkup === "semua" && bolehSemua ? "semua" : "saya";
   const cakupan = lingkup === "semua" ? {} : untukPenerima(p);
 
@@ -93,6 +121,7 @@ export async function getTindakLanjut(user: SessionUser, q: TindakLanjutQuery): 
 
   const bolehTl = await can(user.role, MODUL_VERIFIKASI.TINDAK_LANJUT, "update");
   const bolehRm = await can(user.role, MODUL_VERIFIKASI.RM, "update");
+  const langkahKoding = await perubahanKoding(rows);
 
   return {
     items: rows.map((r) => {
@@ -109,6 +138,7 @@ export async function getTindakLanjut(user: SessionUser, q: TindakLanjutQuery): 
         },
         statusKlaim: STATUS_SET.has(v.status) ? (v.status as StatusVerifikasi) : STATUS_AWAL,
         bolehSelesai: it.manual && it.status === "OPEN" && ((bolehTl && ditujukanKe(p, r)) || bolehRm),
+        perubahan: langkahKoding(r),
       };
     }),
     page: q.page,

@@ -1,17 +1,27 @@
 import "server-only";
-import type { KlaimTindakLanjut } from "@/generated/app/client";
+import type { KlaimKoreksiKoding, KlaimTindakLanjut } from "@/generated/app/client";
 import { getAppDb } from "@/server/db/app.client";
 import {
   labelAksi,
   SASARAN_TINDAK_LANJUT,
+  STATUS_KOREKSI,
   STATUS_TINDAK_LANJUT,
   STATUS_VERIFIKASI,
   type SasaranTindakLanjut,
+  type StatusKoreksi,
   type StatusTindakLanjut,
   type StatusVerifikasi,
 } from "./verifikasi.constants";
-import { labelAturan, PREFIKS_MANUAL } from "./verifikasi.rules";
-import type { RiwayatItem, TindakLanjutItem } from "./verifikasi.types";
+import { labelAturan, PREFIKS_KODING, PREFIKS_MANUAL } from "./verifikasi.rules";
+import type {
+  BuktiKoding,
+  KoreksiItem,
+  PerubahanKoding,
+  RiwayatItem,
+  SetKoding,
+  TindakLanjutItem,
+  UsulanKoding,
+} from "./verifikasi.types";
 
 /**
  * Repository DB aplikasi `reporthub` (READ-WRITE) untuk modul Verifikasi Klaim.
@@ -123,13 +133,102 @@ export async function hitungTindakLanjut(nopens: readonly string[]): Promise<Map
   return out;
 }
 
-/** Item OTOMATIS (bukan cek manual) yang masih terbuka — kandidat penutupan otomatis. */
+/**
+ * Item Tahap 1 OTOMATIS (bukan cek manual, bukan koreksi koding) yang masih
+ * terbuka — kandidat penutupan otomatis `sinkronTindakLanjut`.
+ */
 export async function findTindakLanjutOtomatisOpen(nopens: readonly string[]) {
   if (nopens.length === 0) return [];
   return getAppDb().klaimTindakLanjut.findMany({
-    where: { nopen: { in: [...nopens] }, status: "OPEN", NOT: { aturan: { startsWith: PREFIKS_MANUAL } } },
+    where: {
+      nopen: { in: [...nopens] },
+      status: "OPEN",
+      NOT: [{ aturan: { startsWith: PREFIKS_MANUAL } }, { aturan: { startsWith: PREFIKS_KODING } }],
+    },
     select: { id: true, nopen: true, aturan: true },
   });
+}
+
+/* ---------------------------------------------------------- koreksi koding */
+
+/** Isi JSON `usulan` (usulan + langkah terhadap SIMRS saat dibuat). */
+export type IsiUsulan = UsulanKoding & { perubahan: PerubahanKoding[] };
+/** Isi JSON `simrs_awal`: jam dinding SIMGOS saat usulan dibuat + koding klaim saat itu. */
+export type SimrsAwal = { waktu: string; set: SetKoding };
+
+export type KoreksiAktif = {
+  id: string;
+  nopen: string;
+  usulan: IsiUsulan;
+  simrsAwal: SimrsAwal;
+  dibuatOlehId: string | null;
+  createdAt: Date;
+};
+
+const STATUS_KOREKSI_SET = new Set<string>(STATUS_KOREKSI);
+const larik = <T>(x: unknown): T[] => (Array.isArray(x) ? (x as T[]) : []);
+
+export function bacaUsulan(x: unknown): IsiUsulan {
+  const o = (x ?? {}) as Record<string, unknown>;
+  return { diagnosa: larik(o.diagnosa), prosedur: larik(o.prosedur), perubahan: larik(o.perubahan) };
+}
+
+function bacaSimrsAwal(x: unknown): SimrsAwal {
+  const o = (x ?? {}) as Record<string, unknown>;
+  const s = (o.set ?? {}) as Record<string, unknown>;
+  return {
+    waktu: typeof o.waktu === "string" ? o.waktu : "1970-01-01 00:00:00",
+    set: {
+      diagnosa: larik(s.diagnosa),
+      prosedur: larik(s.prosedur),
+      prosedurLain: larik(s.prosedurLain),
+      tanpaKode: typeof s.tanpaKode === "number" ? s.tanpaKode : 0,
+    },
+  };
+}
+
+export function keKoreksiItem(r: KlaimKoreksiKoding): KoreksiItem {
+  const u = bacaUsulan(r.usulan);
+  return {
+    id: r.id,
+    status: (STATUS_KOREKSI_SET.has(r.status) ? r.status : "BATAL") as StatusKoreksi,
+    usulan: { diagnosa: u.diagnosa, prosedur: u.prosedur },
+    perubahan: u.perubahan,
+    catatan: r.catatan,
+    dibuatOlehNama: r.dibuatOlehNama,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+    sesuaiAt: r.sesuaiAt?.toISOString() ?? null,
+    bukti: (r.bukti as BuktiKoding | null) ?? null,
+  };
+}
+
+/** Riwayat usulan satu berkas (terbaru dulu). */
+export async function findKoreksi(nopen: string, take = 10): Promise<KoreksiItem[]> {
+  const rows = await getAppDb().klaimKoreksiKoding.findMany({ where: { nopen }, orderBy: { createdAt: "desc" }, take });
+  return rows.map(keKoreksiItem);
+}
+
+/** Usulan yang masih MENUNGGU_SIMRS per NOPEN (paling banyak satu per berkas). */
+export async function findKoreksiAktif(nopens: readonly string[]): Promise<Map<string, KoreksiAktif>> {
+  if (nopens.length === 0) return new Map();
+  const rows = await getAppDb().klaimKoreksiKoding.findMany({
+    where: { nopen: { in: [...nopens] }, status: "MENUNGGU_SIMRS" },
+    orderBy: { createdAt: "asc" },
+  });
+  return new Map(
+    rows.map((r) => [
+      r.nopen,
+      {
+        id: r.id,
+        nopen: r.nopen,
+        usulan: bacaUsulan(r.usulan),
+        simrsAwal: bacaSimrsAwal(r.simrsAwal),
+        dibuatOlehId: r.dibuatOlehId,
+        createdAt: r.createdAt,
+      },
+    ]),
+  );
 }
 
 /** NOPEN (dari daftar) yang masih punya item tindak lanjut terbuka. */

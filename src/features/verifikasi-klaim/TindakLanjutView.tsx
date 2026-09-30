@@ -21,7 +21,7 @@ import { StatusVerifikasiBadge } from "./status-ui";
 type StatusTab = "OPEN" | "SELESAI";
 
 const CARA: Record<string, string> = {
-  OTOMATIS: "Selesai otomatis — data SIMRS lengkap",
+  OTOMATIS: "Selesai otomatis — data SIMRS lengkap / sesuai",
   MANUAL: "Ditandai selesai",
   BATAL: "Dibatalkan verifikator",
 };
@@ -226,7 +226,18 @@ function KartuPasien({
                   {t.label}
                   {t.manual && <Badge tone="neutral" className="px-1.5 py-0 text-[10px]">Cek manual</Badge>}
                 </p>
-                <p className="text-xs text-fg-muted">{t.pesan}</p>
+                {t.perubahan?.length ? (
+                  <ol className="list-decimal space-y-0.5 pl-5 text-xs text-fg">
+                    {t.perubahan.map((p, i) => (
+                      <li key={i}>
+                        {p.teks}
+                        {p.nama && <span className="text-fg-subtle"> — {p.nama}</span>}
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="text-xs text-fg-muted">{t.pesan}</p>
+                )}
                 <p className="flex flex-wrap items-center gap-1 text-[11px] text-fg-subtle">
                   <UserRound className="size-3" aria-hidden />
                   Untuk {t.sasaranNama ?? t.sasaranRef} · diminta {t.dibuatOlehNama ?? "—"} {formatRelatif(t.createdAt, now)}
@@ -242,7 +253,9 @@ function KartuPasien({
                   <p className="text-[11px] text-fg-subtle">
                     {t.aturan === "bukti"
                       ? "Isi Bukti Pelayanan di menu Berkas Klaim RM — item tertutup otomatis setelah diisi."
-                      : "Lengkapi di SIMRS — item tertutup otomatis saat datanya ada."}
+                      : t.perubahan
+                        ? "Terapkan di SIMRS — item tertutup otomatis begitu koding SIMRS sama dengan usulan coder."
+                        : "Lengkapi di SIMRS — item tertutup otomatis saat datanya ada."}
                   </p>
                 )}
               </div>

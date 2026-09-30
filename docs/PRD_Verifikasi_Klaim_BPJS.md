@@ -5,7 +5,7 @@
 **Project:** ReportHub (`reporthubrsb`) · Workspace **Berkas & Klaim** (`berkas-klaim`)
 **Organisasi:** UPTD RSUD Bolaang Mongondow Timur
 **Versi:** 1.0 — keputusan §11 disetujui mengikuti rekomendasi (matriks §5.1 tetap menunggu pengesahan Casemix)
-**Tanggal:** 29 September 2026 · **Status:** Stage V0 & V1 selesai (§8) — 30 September 2026
+**Tanggal:** 29 September 2026 · **Status:** Stage V0, V1 & V2 selesai (§8) — 1 Oktober 2026
 **Sifat data SIMGOS:** **FULL READ-ONLY.** Hanya `SELECT` / `information_schema`. Tidak ada DDL/DML, tidak menambah/mengubah tabel apa pun di SIMGOS. Semua status verifikasi, koreksi, lampiran, dan paket disimpan di DB aplikasi `reporthub`.
 
 ---
@@ -153,9 +153,12 @@ stateDiagram-v2
   BELUM_DIPERIKSA --> LOLOS_RM : V1 — verifikator RM setujui
   TIDAK_LENGKAP --> LOLOS_RM : semua tindak lanjut selesai + disetujui
   LOLOS_RM --> KOREKSI_KODING : V2 — coder buat usulan koreksi
+  KOREKSI_KODING --> KOREKSI_KODING : V2 — revisi usulan (usulan lama dibatalkan)
   KOREKSI_KODING --> LOLOS_KLAIM : SIMRS sudah sesuai usulan (terdeteksi otomatis)
+  KOREKSI_KODING --> LOLOS_KLAIM : V2 — coder terima koding SIMRS (alasan wajib)
   LOLOS_RM --> LOLOS_KLAIM : V2 — coder setujui tanpa koreksi
   LOLOS_RM --> TIDAK_LENGKAP : V2 — dikembalikan (berkas RM kurang)
+  KOREKSI_KODING --> TIDAK_LENGKAP : V2 — dikembalikan (alasan wajib)
   LOLOS_KLAIM --> FINAL : paket digabung & dikunci
   FINAL --> LOLOS_KLAIM : buka kunci (alasan wajib)
 ```
@@ -217,6 +220,14 @@ Ditambah **cek manual** oleh verifikator (daftar dapat dikonfigurasi), mis. "Tan
 | `px-valid` | Prosedur ICD-9-CM valid | `mrconso ICD_9CM_2010_IM` |
 | `px-operasi` | Ada tindakan bedah tapi prosedur ICD-9-CM kosong (peringatan) | `tindakan_medis` + `prosedur` |
 | `sep-jenis` | Jenis pelayanan SEP (RI/RJ) sesuai episode | `bpjs.kunjungan.jenisPelayanan` |
+
+Catatan penerapan (Stage V2, diverifikasi 1 Okt 2026):
+- **Koding klaim** = baris aktif bertanda `INACBG = 1`, digabung **per kode**. SIMGOS sering mencatat diagnosa **kembar** (`INA_GROUPER` 0 dan 1; 188 NOPEN berisi keduanya, 183 identik). Kode yang tercatat utama di satu baris dan sekunder di baris lain ditangkap `dx-konflik`.
+- **Prosedur** ber-`INACBG = 0` tidak ikut klaim. Set kodenya berbeda dari yang ber-`INACBG = 1`, jadi ditampilkan sebagai "tanpa tanda INA-CBG".
+- Aturan tambahan `dx-kosong` (baris diagnosa tanpa kode, baseline §3.3). `px-operasi` memakai `master.tindakan.JENIS = 2` (Prosedur Bedah, REF 74), karena Ruang OK tidak dipakai dalam 31 hari.
+- `sep-jenis` menjelaskan SEP berjenis lain bila SEP yang cocok tidak ada.
+- **Usulan coder wajib lolos** `pdx-tunggal`, `dx-konflik`, `dx-kosong`, `kode-valid`, `pdx-asterisk`, `pdx-boleh`, `px-valid` (kode header / tak dikenal / utama terlarang ditolak server).
+- **Diagnosa sekunder tidak punya urutan di SIMRS**, jadi yang bermakna hanya utama vs sekunder. Editor memakai pilihan Utama/Sekunder, bukan seret urutan.
 
 ---
 
@@ -280,8 +291,11 @@ src/server/modules/verifikasi-klaim/
   verifikasi.repo.ts        // akses Prisma reporthub (status, riwayat, koreksi)
   verifikasi.service.ts     // orkestrasi: episode → snapshot → evaluasi → gabung status
   verifikasi.schema.ts      // Zod input/filter
-  koding.service.ts         // usulan koreksi + deteksi sinkron SIMRS
-  icd.cache.ts              // cache ICD-10/9 IM di memori
+  koding.rules.ts           // katalog Tahap 2 + logika usulan/langkah (MURNI, aman client)
+  koding.dal.ts             // baris koding, master ICD, jejak log (read-only)
+  koding.service.ts         // keputusan coder (ajukan/revisi, loloskan klaim, kembalikan)
+  koding.sinkron.ts         // deteksi "sudah diterapkan di SIMRS" + bukti log
+  icd.cache.ts              // cache ICD-10/9 IM per kode & per pencarian (24 jam)
   paket.sources.ts          // registri komponen paket (strategy: applicable() + fetchPdf())
   paket.service.ts          // gabung PDF (pdf-lib) + sisipan + versi/hash
 src/server/modules/notifikasi/   // generik, bisa dipakai modul lain
@@ -297,7 +311,11 @@ Lapisan tetap: schema → dal → service → route (`withPermission` + `ok`/`fa
 3. **`MAX_EXECUTION_TIME`** pada setiap query; rentang dibatasi **31 hari**.
 4. **Cache hasil daftar 60 detik** per (rentang, filter) + tombol Muat ulang; status reporthub digabung di memori (1 query `IN`).
 5. **Detail satu berkas**: query per-NOPEN ringan (sudah ada di modul).
-6. **ICD**: daftar kode `ICD_10_2010_IM` & `ICD_9CM_2010_IM` yang valid (distinct, ±15 ribu) dimuat **sekali** ke memori (TTL 24 jam) → pencarian instan tanpa membebani SIMGOS.
+6. **ICD**: ~~daftar kode dimuat sekali ke memori~~.
+   - **Diukur V2:** master IM ternyata 40.807 kode ICD-10 + 5.469 ICD-9-CM (122 ribu baris). Memuat semuanya butuh **6–9 detik**, sehingga cache diisi **sesuai kebutuhan**:
+     - info per kode lewat `CODE IN (…)` (200 kode ≈ 70 ms);
+     - pencarian lewat index: awalan kode `CODE LIKE` (±50 ms) atau FULLTEXT `STR` (55–225 ms).
+   - Keduanya di-cache 24 jam (single-flight, maks 2 pencarian bersamaan). Pencarian berulang ±30 ms.
 7. **Deteksi sinkron koding**: hanya membandingkan diagnosa/prosedur NOPEN yang berstatus `KOREKSI_KODING` (sedikit), bukan seluruh daftar.
 
 ### 7.3. Paket PDF tanpa overload
@@ -415,12 +433,78 @@ Validasi E2E 59/59 + UI 17/17:
 
 Catatan operasional: peran `kasir` belum ada di aplikasi — item Tagihan tetap tercatat (tampil di lingkup "Semua" verifikator) sampai peran itu dibuat. DPJP / unit butuh izin **Tindak Lanjut Berkas**; notifikasi DPJP memerlukan NIP di data pengguna, notifikasi ruangan memerlukan login dengan akun SIMGOS.
 
-### Stage V2 — Verifikasi Kedua (Coder)
+### Stage V2 — Verifikasi Kedua (Coder) ✅ (1 Okt 2026)
 
 - Cache ICD + pencarian; aturan Tahap 2.
-- Tab **Koding**: editor usulan (seret urutan, primer, tambah/hapus/ganti kode) + peringatan aturan.
+- Tab **Koding**: editor usulan (utama/sekunder, tambah/hapus kode) + peringatan aturan.
 - Tindak lanjut koreksi ke RM/DPJP; **deteksi otomatis "sudah diterapkan di SIMRS"** + bukti dari log SIMGOS.
 - Kembalikan ke Tahap 1; Loloskan klaim.
+
+**Hasil V2:**
+
+Kode (`verifikasi-klaim/`):
+- `koding.rules` (murni, dipakai server & UI):
+  - katalog 9 aturan Tahap 2 lewat runner katalog yang sama dengan Tahap 1;
+  - set koding klaim dan usulan awal;
+  - langkah perubahan (`hitungPerubahan`), progres per langkah, validasi usulan.
+- `koding.dal`: satu query `UNION ALL` untuk diagnosa + prosedur + tindakan bedah per batch; lookup/cari ICD; jejak bukti.
+- `icd.cache`, `koding.sinkron` (deteksi & bukti), `koding.service` (keputusan coder).
+- Snapshot kini memuat koding SIMRS + SEP berjenis lain. Antrean & detail menghitung aturan Tahap 2 untuk semua berkas.
+
+API:
+- `GET /api/berkas-klaim/koding/icd?jenis=10|9&q=`.
+- `POST /api/berkas-klaim/koding/[nopen]/keputusan` (`AJUKAN_KOREKSI` / `LOLOSKAN_KLAIM` / `KEMBALIKAN_KE_RM`).
+- Detail berkas memuat `cekKoding`, info ICD, riwayat usulan & izin Tahap 2.
+- Antrean menerima `masalah=<aturan Tahap 2>` & `koding=bersih`.
+
+UI:
+- Tab **Koding**:
+  - tabel per kode *Di SIMRS sekarang* vs *Usulan coder*;
+  - pencari ICD (kode/nama, keyboard);
+  - peringatan aturan langsung & ringkasan langkah;
+  - banner "Menunggu diterapkan di SIMRS" dengan progres per langkah, banner "Sudah diterapkan" dengan jejak log.
+- Tab bawaan mengikuti tahap berkas.
+- Antrean: chip masalah **Koding**, filter "Koding sesuai aturan", kolom Masalah mengikuti tahap. Coder tanpa izin RM langsung ke "Lolos RM".
+- Halaman Tindak Lanjut menampilkan langkah koreksi sebagai daftar dan kini terbuka juga untuk coder.
+
+Keputusan desain V2:
+- **Usulan tidak ditulis ke SIMGOS.** Langkahnya dikirim sebagai tindak lanjut:
+  - `koding-dx` → DPJP (NIP): 7/7 pengubah diagnosa di log 30 hari adalah dokter;
+  - `koding-px` → ruang episode: prosedur diinput petugas non-dokter.
+- **Deteksi "sudah diterapkan"** = koding SIMRS sekarang tidak berselisih lagi dengan usulan. Berkas lalu otomatis `LOLOS_KLAIM` (atas nama coder pembuat), tindak lanjut ditutup OTOMATIS, dan coder diberi notifikasi.
+  - Jalur: detail berkas, antrean segar, halaman Tindak Lanjut. Idempoten & aman bersamaan (versi + `updateMany … MENUNGGU_SIMRS`).
+- **Bukti siapa & kapan:**
+  - Sumbernya log ubah `logs.pengguna_akses_log` (OBJEK 21003/21018, `REF` = ID baris) sejak jam dinding SIMGOS saat usulan dibuat (disimpan di `simrs_awal.waktu`), plus baris baru (`TANGGAL/OLEH`), karena SIMGOS tidak mencatat log pembuatan untuk tabel ini.
+  - Hanya **nama kolom** yang berubah yang dibaca (`JSON_KEYS`), isi SEBELUM/SESUDAH tidak.
+- **Revisi usulan** diizinkan saat `KOREKSI_KODING` (usulan lama & tindak lanjutnya BATAL).
+- **Coder boleh meloloskan dari `KOREKSI_KODING`** dengan alasan wajib, sebagai jalan keluar bila DPJP mempertahankan kodingnya. Alasan juga wajib bila koding SIMRS masih melanggar aturan.
+- **Kembalikan ke Tahap 1**: alasan wajib; verifikator RM yang meloloskan diberi notifikasi.
+
+Validasi E2E 66/66 + UI 15/15:
+- **363/363 episode (31 hari)**: hasil aturan Tahap 2 identik dengan SQL SIMGOS independen (formulasi berbeda). Temuan nyata:
+  - `pdx-tunggal` 107 (sebagian besar RJ tanpa diagnosa);
+  - `sep-jenis` 22;
+  - `dx-kosong` 2;
+  - `dx-konflik` 1;
+  - `px-operasi` 0 dari 4 episode bedah.
+- **Pencarian ICD** = SQL untuk awalan kode dan FULLTEXT; flag valid/ACCPDX/asterisk = master.
+- **Validasi server** (422): kode header, kode tak dikenal, utama terlarang, dua utama, kode ganda, usulan tanpa perubahan / sama dengan yang menunggu.
+- **Konflik & RBAC:** versi lama 409, dua revisi bersamaan → tepat satu berhasil, RBAC per aksi (403).
+- **Sasaran tindak lanjut** = SQL (NIP DPJP, ruang episode).
+- **Deteksi otomatis** lewat 3 jalur. Bukti (nama & jam perubahan terakhir, jumlah jejak) = SQL log SIMGOS independen. Idempoten, dan deteksi negatif saat SIMRS belum berubah.
+- **Audit tanpa PHI:** tanpa kode ICD / nama pasien, hanya NOPEN & jumlah.
+- **DAL** tanpa kata kunci tulis, tanpa PASSWORD / SEBELUM.
+- **Data nyata** yang sudah ada tidak berubah (dipotret sebelum/sesudah). UI 1440 px & 390 px tanpa scroll horizontal, tanpa error JS.
+
+Regresi: V1 E2E 58/59 dan UI 17/17. V0 E2E 42/49, rinciannya:
+- **Sengaja berubah:** R5/R7 (coder kini boleh membuka Tindak Lanjut).
+- **Usang:** R9 (kerangka V0) dan W2 (mengharapkan tabel kosong, padahal sudah ada data nyata).
+- **Batas waktu era V0:** A2/A4/D7 dan V1-K3. Dari mesin pengembangan, RTT ke DB saat ini 40–55 ms dan tiap query lewat adapter Prisma ±150 ms. Porsi V1 saja ±2,1–2,4 dtk untuk 31 hari; V2 menambah 1 query SIMGOS.
+
+Catatan operasional:
+- Coder butuh peran dengan **Verifikasi Klaim / Coder (Tahap 2)** (lihat + ubah).
+- DPJP butuh **Tindak Lanjut Berkas** + NIP agar menerima item koreksi diagnosa. Petugas ruang butuh login SIMGOS ber-akses ruang agar menerima item koreksi prosedur.
+- Opsi `useTextProtocol` adapter mariadb berpotensi memangkas overhead per query di seluruh aplikasi, tetapi perlu uji regresi semua modul (di luar cakupan V2).
 
 ### Stage V3 — Paket Klaim (PDF dari SIMGOS + sisipan)
 

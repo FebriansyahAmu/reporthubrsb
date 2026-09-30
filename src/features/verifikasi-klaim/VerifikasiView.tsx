@@ -24,6 +24,7 @@ import {
   type Kategori,
   type StatusVerifikasi,
 } from "@/server/modules/verifikasi-klaim/verifikasi.constants";
+import { getAturanKoding } from "@/server/modules/verifikasi-klaim/koding.rules";
 import { getAturan } from "@/server/modules/verifikasi-klaim/verifikasi.rules";
 import type { AntreanItem, AntreanResult } from "@/server/modules/verifikasi-klaim/verifikasi.types";
 import { LoloskanMassalModal } from "./LoloskanMassalModal";
@@ -59,6 +60,8 @@ type Filter = {
   masalah: string;
   lengkap: "" | "ya";
   siap: boolean;
+  /** Hanya Lolos RM tanpa aturan koding yang gagal. */
+  kodingBersih: boolean;
   page: number;
 };
 
@@ -71,13 +74,22 @@ function params(f: Filter, segar: boolean): URLSearchParams {
   if (f.masalah) p.set("masalah", f.masalah);
   if (f.lengkap) p.set("lengkap", f.lengkap);
   if (f.siap) p.set("siap", "1");
+  if (f.kodingBersih) p.set("koding", "bersih");
   if (segar) p.set("segar", "1");
   return p;
 }
 
 /* --------------------------------------------------------------------- view */
 
-export function VerifikasiView({ bolehRm, nopenAwal }: { bolehRm: boolean; nopenAwal: string | null }) {
+export function VerifikasiView({
+  bolehRm,
+  bolehCoder,
+  nopenAwal,
+}: {
+  bolehRm: boolean;
+  bolehCoder: boolean;
+  nopenAwal: string | null;
+}) {
   const [hariIni] = useState(() => toLocalDateInput(new Date()));
   const [f, setF] = useState<Filter>(() => ({
     from: mundur(hariIni, 6),
@@ -86,10 +98,12 @@ export function VerifikasiView({ bolehRm, nopenAwal }: { bolehRm: boolean; nopen
     kategori: "",
     ruangan: "",
     q: "",
-    status: "",
+    // Coder tanpa izin RM langsung melihat pekerjaannya (Lolos RM).
+    status: bolehCoder && !bolehRm ? "LOLOS_RM" : "",
     masalah: "",
     lengkap: "",
     siap: false,
+    kodingBersih: false,
     page: 1,
   }));
   const [cari, setCari] = useState("");
@@ -119,7 +133,7 @@ export function VerifikasiView({ bolehRm, nopenAwal }: { bolehRm: boolean; nopen
       segarRef.current = false;
       return apiGet<AntreanResult>(`/api/berkas-klaim/verifikasi?${params(fq, s).toString()}`);
     },
-    [f.from, f.to, f.cakupan, f.kategori, f.ruangan, q, f.status, f.masalah, f.lengkap, f.siap, f.page, segar],
+    [f.from, f.to, f.cakupan, f.kategori, f.ruangan, q, f.status, f.masalah, f.lengkap, f.siap, f.kodingBersih, f.page, segar],
   );
 
   const ubah = (patch: Partial<Filter>) => {
@@ -160,13 +174,16 @@ export function VerifikasiView({ bolehRm, nopenAwal }: { bolehRm: boolean; nopen
   }, [items, aktif, buka, massal]);
 
   const r = result?.ringkasan;
-  const masalahTeratas = r
-    ? Object.entries(r.perAturan)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 8)
-    : [];
+  const teratas = (x: Record<string, number>) =>
+    Object.entries(x)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8);
+  const masalahTeratas = r ? teratas(r.perAturan) : [];
+  const masalahKoding = r ? teratas(r.perAturanKoding) : [];
+  const adaPekerjaanCoder = !!r && r.perStatus.LOLOS_RM + r.perStatus.KOREKSI_KODING > 0;
   const bisaMassal = bolehRm && (r?.lengkapOtomatis ?? 0) > 0;
-  const ubahFilter = f.kategori || f.ruangan || cari || f.status || f.masalah || f.lengkap || f.siap || f.cakupan !== "bpjs";
+  const ubahFilter =
+    f.kategori || f.ruangan || cari || f.status || f.masalah || f.lengkap || f.siap || f.kodingBersih || f.cakupan !== "bpjs";
 
   return (
     <div className="space-y-5">
@@ -296,7 +313,7 @@ export function VerifikasiView({ bolehRm, nopenAwal }: { bolehRm: boolean; nopen
                 type="button"
                 onClick={() => {
                   setCari("");
-                  ubah({ kategori: "", ruangan: "", status: "", masalah: "", lengkap: "", siap: false, cakupan: "bpjs" });
+                  ubah({ kategori: "", ruangan: "", status: "", masalah: "", lengkap: "", siap: false, kodingBersih: false, cakupan: "bpjs" });
                 }}
                 className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
               >
@@ -319,8 +336,8 @@ export function VerifikasiView({ bolehRm, nopenAwal }: { bolehRm: boolean; nopen
 
       {/* Chip masalah */}
       {r && (masalahTeratas.length > 0 || r.lengkapOtomatis > 0) && (
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Saring berdasarkan masalah">
-          <span className="mr-1 text-xs font-medium text-fg-muted">Masalah:</span>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Saring berdasarkan masalah kelengkapan">
+          <span className="mr-1 w-20 text-xs font-medium text-fg-muted">Kelengkapan:</span>
           {masalahTeratas.map(([key, n]) => (
             <Chip key={key} aktif={f.masalah === key} onClick={() => ubah({ masalah: f.masalah === key ? "" : key })} tone="danger">
               {getAturan(key)?.label ?? key}
@@ -329,6 +346,25 @@ export function VerifikasiView({ bolehRm, nopenAwal }: { bolehRm: boolean; nopen
           ))}
           <Chip aktif={f.lengkap === "ya"} onClick={() => ubah({ lengkap: f.lengkap === "ya" ? "" : "ya" })} tone="success">
             Lengkap otomatis
+          </Chip>
+        </div>
+      )}
+      {r && adaPekerjaanCoder && (
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Saring berdasarkan masalah koding">
+          <span className="mr-1 w-20 text-xs font-medium text-fg-muted">Koding:</span>
+          {masalahKoding.map(([key, n]) => (
+            <Chip key={key} aktif={f.masalah === key} onClick={() => ubah({ masalah: f.masalah === key ? "" : key })} tone="danger">
+              {getAturanKoding(key)?.label ?? key}
+              <span className="ml-1 tabular">{n}</span>
+            </Chip>
+          ))}
+          <Chip
+            aktif={f.kodingBersih}
+            onClick={() => ubah({ kodingBersih: !f.kodingBersih, status: f.kodingBersih ? f.status : "LOLOS_RM" })}
+            tone="success"
+          >
+            Koding sesuai aturan
+            <span className="ml-1 tabular">{r.kodingBersih}</span>
           </Chip>
         </div>
       )}
@@ -428,7 +464,6 @@ function DaftarBerkas({
       </li>
       {items.map((it, i) => {
         const umur = umurAntrean(it.pulang, now);
-        const masalah = it.cek.masalah.filter((m) => m.status === "gagal");
         return (
           <li key={it.nopen}>
             <button
@@ -470,20 +505,7 @@ function DaftarBerkas({
                 {it.kategori === "RI" && <span className="block text-[11px] text-fg-subtle">{it.lamaRawat} hari rawat</span>}
               </span>
               <MeterKelengkapan lolos={it.cek.lolos} peringatan={it.cek.peringatan} gagal={it.cek.gagal} total={it.cek.total} />
-              <span className="flex min-w-0 flex-wrap gap-1">
-                {masalah.length === 0 ? (
-                  <span className="text-xs text-success">Lengkap</span>
-                ) : (
-                  <>
-                    {masalah.slice(0, 2).map((m) => (
-                      <span key={m.key} className="truncate rounded-full bg-danger-soft px-2 py-0.5 text-[11px] font-medium text-danger" title={m.pesan}>
-                        {m.label}
-                      </span>
-                    ))}
-                    {masalah.length > 2 && <span className="text-[11px] text-fg-subtle">+{masalah.length - 2}</span>}
-                  </>
-                )}
-              </span>
+              <SelMasalah it={it} />
               <span className="flex flex-wrap items-center gap-1.5">
                 <StatusVerifikasiBadge status={it.status} />
                 {it.tl.open > 0 && (
@@ -502,6 +524,35 @@ function DaftarBerkas({
         );
       })}
     </ul>
+  );
+}
+
+/** Masalah tahap berkas saat ini: kelengkapan (Tahap 1) atau koding (Tahap 2). */
+function SelMasalah({ it }: { it: AntreanItem }) {
+  if (it.status === "KOREKSI_KODING" && it.koreksi) {
+    const selesai = it.koreksi.perubahan - it.koreksi.sisa;
+    return (
+      <span className="text-xs text-warning">
+        Menunggu SIMRS · {selesai}/{it.koreksi.perubahan} langkah sesuai
+      </span>
+    );
+  }
+  if (it.status === "LOLOS_KLAIM" || it.status === "FINAL") return <span className="text-xs text-fg-subtle">Koding disetujui</span>;
+  const tahap2 = it.status === "LOLOS_RM";
+  const masalah = (tahap2 ? it.koding.masalah : it.cek.masalah).filter((m) => m.status === "gagal");
+  if (masalah.length === 0) {
+    return <span className="text-xs text-success">{tahap2 ? "Koding sesuai aturan" : "Lengkap"}</span>;
+  }
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-1">
+      {tahap2 && <span className="text-[11px] font-medium text-fg-muted">Koding:</span>}
+      {masalah.slice(0, 2).map((m) => (
+        <span key={m.key} className="truncate rounded-full bg-danger-soft px-2 py-0.5 text-[11px] font-medium text-danger" title={m.pesan}>
+          {m.label}
+        </span>
+      ))}
+      {masalah.length > 2 && <span className="text-[11px] text-fg-subtle">+{masalah.length - 2}</span>}
+    </span>
   );
 }
 

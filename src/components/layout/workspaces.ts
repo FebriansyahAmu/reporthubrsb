@@ -151,10 +151,10 @@ export const WORKSPACES: Workspace[] = [
         href: "/berkas-klaim/tindak-lanjut",
         label: "Tindak Lanjut Berkas",
         icon: BellRing,
-        description: "Item berkas yang harus dilengkapi DPJP / unit",
+        description: "Item berkas & koreksi koding yang harus dilengkapi DPJP / unit",
         moduleKey: "berkas-klaim.tindak-lanjut",
-        // Verifikator RM memantau semua tindak lanjut yang dikirimnya.
-        anyOf: ["berkas-klaim.verifikasi-rm"],
+        // Verifikator RM & coder memantau semua tindak lanjut yang dikirim tahapnya.
+        anyOf: ["berkas-klaim.verifikasi-rm", "berkas-klaim.verifikasi-klaim"],
       },
     ],
   },

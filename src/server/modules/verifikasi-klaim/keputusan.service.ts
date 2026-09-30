@@ -42,7 +42,7 @@ const AUDIT_AKSI: Record<AksiTahap1, string> = {
   TANDAI_TIDAK_LENGKAP: "klaim.verifikasi.tidak-lengkap",
 };
 
-const SASARAN_NOTIF: Record<SasaranTindakLanjut, NotifikasiBaru["sasaranJenis"]> = {
+export const SASARAN_NOTIF: Record<SasaranTindakLanjut, NotifikasiBaru["sasaranJenis"]> = {
   DPJP: "NIP",
   RUANGAN: "RUANGAN",
   PERAN: "PERAN",
@@ -64,7 +64,7 @@ function identitas(s: SnapshotKlaim) {
 }
 
 /** Berkas final & bukan episode yang digabung — syarat semua keputusan. */
-function pastikanBisaDiputuskan(b: BerkasSegar): void {
+export function pastikanBisaDiputuskan(b: BerkasSegar): void {
   if (!b.final) throw new BusinessRuleError("Episode belum final (masih ada kunjungan yang belum keluar)");
   if (b.digabungKe) {
     throw new BusinessRuleError(`Episode ini digabung ke klaim Rawat Inap ${b.digabungKe}; putuskan di berkas tersebut`);
@@ -75,7 +75,7 @@ function pastikanBisaDiputuskan(b: BerkasSegar): void {
  * Tulis status baru dengan optimistic locking. `versi` null = baris belum ada
  * (dibuat; bentrok unik → konflik). Mengembalikan versi baru.
  */
-async function tulisStatus(
+export async function tulisStatus(
   tx: Prisma.TransactionClient,
   b: BerkasSegar,
   versi: number | null,

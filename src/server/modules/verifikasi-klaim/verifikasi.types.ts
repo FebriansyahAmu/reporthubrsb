@@ -5,10 +5,12 @@
  * SnapshotKlaim → evaluasi aturan MURNI (verifikasi.rules.ts) → HasilCek.
  */
 import type {
+  JenisIcd,
   Kategori,
   LingkupTindakLanjut,
   PenanggungJawab,
   SasaranTindakLanjut,
+  StatusKoreksi,
   StatusTindakLanjut,
   StatusVerifikasi,
 } from "./verifikasi.constants";
@@ -31,10 +33,118 @@ export type EpisodeKlaim = {
   dpjpId: number | null;
 };
 
-/** Fakta kelengkapan satu episode — hasil query batch (tanpa kolom teks klinis). */
+/* ------------------------------------------------------------------ koding */
+
+/** Info satu kode ICD edisi INA-CBG (`master.mrconso` SAB `*_2010_IM`). */
+export type IcdInfo = {
+  kode: string;
+  nama: string;
+  /** `VALIDCODE = 1` — boleh dipakai untuk klaim (bukan kode kategori/header). */
+  valid: boolean;
+  /** `ACCPDX = Y` — boleh menjadi diagnosa utama (ICD-10). */
+  accpdx: boolean;
+  /** Kode asterisk (*) — manifestasi (ICD-10). */
+  asterisk: boolean;
+};
+
+/** Info ICD per jenis, kunci = kode. Kode yang tak ada di master tidak tercantum. */
+export type PetaIcd = Record<JenisIcd, Record<string, IcdInfo>>;
+
+/** Baris diagnosa SIMRS aktif (`medicalrecord.diagnosa` STATUS 1). */
+export type DxBaris = {
+  id: number;
+  /** Kosong ("") bila baris tanpa kode. */
+  kode: string;
+  utama: boolean;
+  /** Kolom `INACBG` = 1: ikut klaim INA-CBG. */
+  inacbg: boolean;
+  /** Kolom `INA_GROUPER` (SIMGOS mencatat diagnosa kembar 0/1 — tampil sebagai info). */
+  grouper: boolean;
+  /** Teks diagnosa yang ditulis di SIMRS. */
+  teks: string | null;
+};
+
+/** Baris prosedur SIMRS aktif (`medicalrecord.prosedur` STATUS 1). */
+export type PxBaris = { id: number; kode: string; inacbg: boolean; teks: string | null };
+
+export type FaktaKoding = {
+  diagnosa: DxBaris[];
+  prosedur: PxBaris[];
+  /** Tindakan medis berjenis Prosedur Bedah (`master.tindakan.JENIS` 2) pada episode. */
+  bedah: number;
+};
+
+/** Satu kode diagnosa klaim (baris ber-`INACBG` 1 digabung per kode). */
+export type DxKlaim = { kode: string; primer: boolean; sekunder: boolean };
+
+/** Koding klaim — dari SIMRS (`setKlaim`) atau dari usulan coder. */
+export type SetKoding = {
+  diagnosa: DxKlaim[];
+  /** Kode prosedur bertanda INA-CBG. */
+  prosedur: string[];
+  /** Kode prosedur yang tercatat di SIMRS tanpa tanda INA-CBG (info). */
+  prosedurLain: string[];
+  /** Baris diagnosa ber-tanda INA-CBG tanpa kode. */
+  tanpaKode: number;
+};
+
+export type UsulanDx = { kode: string; utama: boolean };
+export type UsulanKoding = { diagnosa: UsulanDx[]; prosedur: { kode: string }[] };
+
+export type AksiPerubahan =
+  | "tambah-utama"
+  | "tambah-sekunder"
+  | "jadikan-utama"
+  | "jadikan-sekunder"
+  | "hapus"
+  | "rapikan-kosong"
+  | "tambah-px"
+  | "hapus-px";
+
+/** Satu langkah yang harus diterapkan di SIMRS agar koding = usulan. */
+export type PerubahanKoding = {
+  jenis: "dx" | "px";
+  aksi: AksiPerubahan;
+  kode: string | null;
+  /** Kalimat perintah untuk DPJP / unit, mis. "Jadikan K35.8 diagnosa utama". */
+  teks: string;
+  nama?: string | null;
+};
+
+/** Jejak perubahan di SIMGOS setelah usulan dibuat (log update + baris baru). */
+export type JejakBukti = {
+  aksi: "tambah" | "ubah";
+  tabel: "diagnosa" | "prosedur";
+  kode: string | null;
+  /** Kolom yang berubah (nama saja, tanpa isi). */
+  kolom: string[];
+  oleh: string | null;
+  /** Jam dinding SIMGOS "YYYY-MM-DDTHH:mm:ss". */
+  pada: string;
+};
+
+export type BuktiKoding = { oleh: string | null; pada: string | null; jejak: JejakBukti[] };
+
+export type KoreksiItem = {
+  id: string;
+  status: StatusKoreksi;
+  usulan: UsulanKoding;
+  /** Langkah terhadap koding SIMRS saat usulan dibuat. */
+  perubahan: PerubahanKoding[];
+  catatan: string | null;
+  dibuatOlehNama: string | null;
+  createdAt: string;
+  updatedAt: string;
+  sesuaiAt: string | null;
+  bukti: BuktiKoding | null;
+};
+
+/** Fakta kelengkapan satu episode — hasil query batch. */
 export type FaktaKlaim = {
   /** SEP terpilih (jenis pelayanan cocok kategori, tglSEP terdekat). */
   sep: { nomor: string; tanggal: string } | null;
+  /** SEP terdekat berjenis pelayanan LAIN (dasar aturan `sep-jenis`) — null bila tak ada. */
+  sepLain: { nomor: string; tanggal: string; jenisPelayanan: number } | null;
   diagnosa: {
     /** Baris diagnosa aktif. */
     total: number;
@@ -62,6 +172,8 @@ export type FaktaKlaim = {
   tagihan: boolean;
   /** Bukti Pelayanan sudah diisi di aplikasi (reporthub). */
   bukti: boolean;
+  /** Diagnosa & prosedur SIMRS (Tahap 2 — koding). */
+  koding: FaktaKoding;
 };
 
 export type SnapshotKlaim = EpisodeKlaim & { fakta: FaktaKlaim };
@@ -119,6 +231,10 @@ export type AntreanItem = {
   cek: Omit<HasilCek, "hasil" | "tahap"> & { masalah: MasalahRingkas[] };
   /** Item tindak lanjut berkas ini: masih terbuka & seluruhnya. */
   tl: { open: number; total: number };
+  /** Hasil aturan Tahap 2 (koding) terhadap koding SIMRS sekarang. */
+  koding: Pick<HasilCek, "gagal" | "peringatan"> & { masalah: MasalahRingkas[] };
+  /** Usulan koreksi yang menunggu SIMRS: jumlah langkah & yang belum diterapkan. */
+  koreksi: { perubahan: number; sisa: number; sejak: string } | null;
 };
 
 export type AntreanRingkasan = {
@@ -131,6 +247,10 @@ export type AntreanRingkasan = {
   lengkapOtomatis: number;
   /** TIDAK_LENGKAP yang seluruh tindak lanjutnya sudah selesai → siap diperiksa ulang. */
   siapPeriksaUlang: number;
+  /** Berkas pekerjaan coder (Lolos RM / Koreksi Koding) yang GAGAL per aturan Tahap 2. */
+  perAturanKoding: Record<string, number>;
+  /** Berkas Lolos RM tanpa aturan koding yang gagal. */
+  kodingBersih: number;
 };
 
 export type AntreanResult = {
@@ -207,10 +327,22 @@ export type DetailKlaim = {
   cekManual: CekManualItem[];
   tindakLanjut: TindakLanjutItem[];
   riwayat: RiwayatItem[];
+  /** Aturan Tahap 2 terhadap koding SIMRS sekarang. */
+  cekKoding: HasilCek;
+  /** Info ICD untuk kode SIMRS & usulan berkas ini. */
+  icd: PetaIcd;
+  /** Usulan koreksi koding (terbaru dulu). */
+  koreksi: KoreksiItem[];
 };
 
 /** Aksi yang boleh dilakukan pengguna pada berkas ini sekarang. */
-export type IzinKlaim = { loloskan: boolean; tandai: boolean };
+export type IzinKlaim = {
+  loloskan: boolean;
+  tandai: boolean;
+  ajukanKoreksi: boolean;
+  loloskanKlaim: boolean;
+  kembalikan: boolean;
+};
 
 export type RuangKerjaKlaim = DetailKlaim & { izin: IzinKlaim };
 
@@ -226,6 +358,8 @@ export type TindakLanjutBaris = TindakLanjutItem & {
   statusKlaim: StatusVerifikasi;
   /** Penerima boleh menandai selesai (item cek manual yang ditujukan kepadanya / verifikator). */
   bolehSelesai: boolean;
+  /** Item koreksi koding: langkah yang harus diterapkan di SIMRS (sesuai jenis item). */
+  perubahan: PerubahanKoding[] | null;
 };
 
 export type TindakLanjutDaftar = {
