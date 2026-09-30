@@ -1,10 +1,14 @@
 import "server-only";
+import type { SessionUser } from "@/server/auth/session";
 import { NotFoundError } from "@/server/lib/errors";
 import { createLimiter } from "@/server/lib/limiter";
 import { createTtlCache } from "@/server/lib/ttl-cache";
+import { can } from "@/server/rbac/permissions";
 import {
   BATAS,
+  cariTransisi,
   KATEGORI,
+  MODUL_VERIFIKASI,
   PENJAMIN_BPJS,
   STATUS_AWAL,
   STATUS_VERIFIKASI,
@@ -27,15 +31,26 @@ import {
   type EpisodeRow,
   type SepKandidat,
 } from "./verifikasi.dal";
-import { findBuktiNopens, findStatusByNopens, type StatusTersimpan } from "./verifikasi.repo";
-import { evaluasi, masalahDari } from "./verifikasi.rules";
-import { selisihHari, tambahHari, type AntreanQuery } from "./verifikasi.schema";
+import {
+  findBuktiNopens,
+  findNopenDenganTlOpen,
+  findRiwayat,
+  findStatusByNopens,
+  findTindakLanjut,
+  hitungTindakLanjut,
+  type StatusTersimpan,
+} from "./verifikasi.repo";
+import { cekManualUntuk, evaluasi, masalahDari } from "./verifikasi.rules";
+import { selisihHari, tambahHari, type AntreanFilter, type AntreanQuery } from "./verifikasi.schema";
+import { sinkronTindakLanjut } from "./tindak-lanjut.sinkron";
 import type {
   AntreanItem,
   AntreanResult,
   AntreanRingkasan,
   DetailKlaim,
   HasilCek,
+  IzinKlaim,
+  RuangKerjaKlaim,
   SnapshotKlaim,
 } from "./verifikasi.types";
 
@@ -131,6 +146,34 @@ async function rakitSnapshot(episodes: readonly EpisodeRow[]): Promise<SnapshotK
   });
 }
 
+/** Berkas yang baru dicek SEGAR dari SIMGOS (tanpa cache). */
+export type BerkasSegar = {
+  snapshot: SnapshotKlaim;
+  cek: HasilCek;
+  /** Semua leg episode sudah KELUAR. */
+  final: boolean;
+  /** Episode non-RI yang digabung ke episode RI: NOPEN RI tujuan. */
+  digabungKe: string | null;
+};
+
+/**
+ * Cek SEGAR banyak berkas dalam satu batch (±12 query berurutan, berapa pun
+ * jumlahnya s.d. batas batch) — dasar keputusan, loloskan massal & rekonsiliasi
+ * tindak lanjut. NOPEN yang tak ditemukan / dibatalkan tidak ada di hasil.
+ */
+export async function cekSegarBatch(nopens: readonly string[]): Promise<Map<string, BerkasSegar>> {
+  const episodes = await queryEpisodeByNopens(unik([...nopens]));
+  const gabung = await queryGabungKeRi(episodes.filter((e) => !e.ri).map((e) => e.nopen));
+  const snapshots = await rakitSnapshot(episodes);
+  const terbuka = new Map(episodes.map((e) => [e.nopen, e.terbuka]));
+  return new Map(
+    snapshots.map((s) => [
+      s.nopen,
+      { snapshot: s, cek: evaluasi(s), final: terbuka.get(s.nopen) === 0, digabungKe: gabung.get(s.nopen) ?? null },
+    ]),
+  );
+}
+
 /** Satu komputasi rentang: episode final → buang yang digabung ke RI → snapshot → evaluasi. */
 async function hitungRentang(from: string, to: string, cakupan: CakupanPenjamin): Promise<Komputasi> {
   const t0 = Date.now();
@@ -152,7 +195,12 @@ function lamaRawat(s: SnapshotKlaim): number {
   return Math.max(1, selisihHari(s.masuk, s.pulang));
 }
 
-function keItem(s: SnapshotKlaim, cek: HasilCek, simpan: StatusTersimpan | undefined): AntreanItem {
+function keItem(
+  s: SnapshotKlaim,
+  cek: HasilCek,
+  simpan: StatusTersimpan | undefined,
+  tl: { open: number; total: number } | undefined,
+): AntreanItem {
   return {
     nopen: s.nopen,
     norm: s.norm,
@@ -176,6 +224,7 @@ function keItem(s: SnapshotKlaim, cek: HasilCek, simpan: StatusTersimpan | undef
       lengkap: cek.lengkap,
       masalah: masalahDari(cek).map(({ key, label, status, pesan, pj }) => ({ key, label, status, pesan, pj })),
     },
+    tl: tl ?? { open: 0, total: 0 },
   };
 }
 
@@ -185,18 +234,63 @@ function cocokCari(it: AntreanItem, q: string): boolean {
   return it.nama.toLowerCase().includes(t) || (it.sep?.toLowerCase().includes(t) ?? false);
 }
 
+const siapPeriksaUlang = (it: AntreanItem) => it.status === "TIDAK_LENGKAP" && it.tl.total > 0 && it.tl.open === 0;
+
 function ringkas(items: readonly AntreanItem[]): AntreanRingkasan {
   const perStatus = Object.fromEntries(STATUS_VERIFIKASI.map((s) => [s, 0])) as Record<StatusVerifikasi, number>;
   const perKategori = Object.fromEntries(KATEGORI.map((k) => [k, 0])) as Record<Kategori, number>;
   const perAturan: Record<string, number> = {};
   let lengkapOtomatis = 0;
+  let siap = 0;
   for (const it of items) {
     perStatus[it.status]++;
     perKategori[it.kategori]++;
     for (const m of it.cek.masalah) if (m.status === "gagal") perAturan[m.key] = (perAturan[m.key] ?? 0) + 1;
     if (it.status === "BELUM_DIPERIKSA" && it.cek.lengkap) lengkapOtomatis++;
+    if (siapPeriksaUlang(it)) siap++;
   }
-  return { total: items.length, perStatus, perKategori, perAturan, lengkapOtomatis };
+  return { total: items.length, perStatus, perKategori, perAturan, lengkapOtomatis, siapPeriksaUlang: siap };
+}
+
+/** Filter dasar (kategori/ruangan/cari) — ringkasan pita tahap dihitung setelah filter ini. */
+export function saringDasar(items: readonly AntreanItem[], f: AntreanFilter): AntreanItem[] {
+  return items.filter(
+    (it) =>
+      (!f.kategori || it.kategori === f.kategori) &&
+      (!f.ruangan || (it.ruanganId?.startsWith(f.ruangan) ?? false)) &&
+      (!f.q || cocokCari(it, f.q)),
+  );
+}
+
+/**
+ * Seluruh item antrean rentang (sebelum filter) dengan status & tindak lanjut
+ * reporthub terkini. Komputasi SIMGOS segar (bukan dari cache) sekaligus
+ * merekonsiliasi tindak lanjut berkas di rentang ini.
+ */
+export async function itemAntrean(f: AntreanFilter & { segar?: "1" }) {
+  const key = `${f.from}|${f.to}|${f.cakupan}`;
+  const { value: k, at, hit } = await cacheRentang.get(
+    key,
+    () => batasKomputasi(() => hitungRentang(f.from, f.to, f.cakupan)),
+    { fresh: f.segar === "1" },
+  );
+  const nopens = k.snapshots.map((s) => s.nopen);
+
+  if (!hit) {
+    const adaTl = await findNopenDenganTlOpen(nopens);
+    if (adaTl.size) {
+      await sinkronTindakLanjut(
+        k.snapshots.filter((s) => adaTl.has(s.nopen)).map((s) => ({ snapshot: s, cek: k.cek.get(s.nopen)! })),
+      );
+    }
+  }
+
+  const tersimpan = await findStatusByNopens(nopens);
+  const tl = await hitungTindakLanjut(nopens);
+  const semua = k.snapshots
+    .map((s) => keItem(s, k.cek.get(s.nopen)!, tersimpan.get(s.nopen), tl.get(s.nopen)))
+    .sort((a, b) => (a.pulang ?? "").localeCompare(b.pulang ?? "") || a.nopen.localeCompare(b.nopen));
+  return { semua, k, at, hit };
 }
 
 /**
@@ -205,30 +299,24 @@ function ringkas(items: readonly AntreanItem[]): AntreanRingkasan {
  * filter status/masalah/lengkap — agar jumlah per tahap tetap terlihat.
  */
 export async function getAntreanVerifikasi(input: AntreanQuery): Promise<AntreanResult> {
-  const key = `${input.from}|${input.to}|${input.cakupan}`;
-  const { value: k, at, hit } = await cacheRentang.get(
-    key,
-    () => batasKomputasi(() => hitungRentang(input.from, input.to, input.cakupan)),
-    { fresh: input.segar === "1" },
-  );
+  const { semua, k, at, hit } = await itemAntrean(input);
 
-  const tersimpan = await findStatusByNopens(k.snapshots.map((s) => s.nopen));
-  const semua = k.snapshots
-    .map((s) => keItem(s, k.cek.get(s.nopen)!, tersimpan.get(s.nopen)))
-    .sort((a, b) => (a.pulang ?? "").localeCompare(b.pulang ?? "") || a.nopen.localeCompare(b.nopen));
-
-  const dasar = semua.filter(
-    (it) =>
-      (!input.kategori || it.kategori === input.kategori) &&
-      (!input.ruangan || (it.ruanganId?.startsWith(input.ruangan) ?? false)) &&
-      (!input.q || cocokCari(it, input.q)),
-  );
+  const dasar = saringDasar(semua, input);
   const tersaring = dasar.filter(
     (it) =>
       (!input.status || it.status === input.status) &&
       (!input.masalah || it.cek.masalah.some((m) => m.key === input.masalah && m.status === "gagal")) &&
-      (!input.lengkap || it.cek.lengkap === (input.lengkap === "ya")),
+      (!input.lengkap || it.cek.lengkap === (input.lengkap === "ya")) &&
+      (!input.siap || siapPeriksaUlang(it)),
   );
+
+  const ruang = new Map<string, { id: string; nama: string; n: number }>();
+  for (const it of semua) {
+    if (!it.ruanganId) continue;
+    const r = ruang.get(it.ruanganId) ?? { id: it.ruanganId, nama: it.ruang ?? it.ruanganId, n: 0 };
+    r.n++;
+    ruang.set(it.ruanganId, r);
+  }
 
   const awal = (input.page - 1) * input.pageSize;
   return {
@@ -246,29 +334,58 @@ export async function getAntreanVerifikasi(input: AntreanQuery): Promise<Antrean
       durasiMs: k.durasiMs,
       dariCache: hit,
     },
+    opsi: { ruang: [...ruang.values()].sort((a, b) => a.nama.localeCompare(b.nama)) },
   };
 }
 
 /* ------------------------------------------------------------------ detail */
 
-/**
- * Hasil cek SEGAR satu episode (tanpa cache) — dasar "Cek ulang dari SIMRS".
- * Episode IGD yang digabung ke RI tetap dievaluasi sebagai dirinya, dengan
- * `digabungKe` menunjuk NOPEN RI tujuan.
- */
-export async function getDetailKlaim(nopen: string): Promise<DetailKlaim> {
-  const [episode] = await queryEpisodeByNopens([nopen]);
-  if (!episode) throw new NotFoundError("Episode (NOPEN) tidak ditemukan atau dibatalkan");
+/** Episode + cek SEGAR + status tersimpan satu berkas (tanpa cache). */
+export async function muatBerkas(nopen: string): Promise<BerkasSegar & { simpan: StatusTersimpan | undefined }> {
+  const b = (await cekSegarBatch([nopen])).get(nopen);
+  if (!b) throw new NotFoundError("Episode (NOPEN) tidak ditemukan atau dibatalkan");
+  const simpan = (await findStatusByNopens([nopen])).get(nopen);
+  return { ...b, simpan };
+}
 
-  const gabung = episode.ri ? new Map<string, string>() : await queryGabungKeRi([nopen]);
-  const [snapshot] = await rakitSnapshot([episode]);
+/** Rakit detail dari berkas segar + data reporthub terkini (status, tindak lanjut, riwayat). */
+export async function bangunDetail(b: BerkasSegar): Promise<DetailKlaim> {
+  const nopen = b.snapshot.nopen;
   const simpan = (await findStatusByNopens([nopen])).get(nopen);
   return {
-    snapshot,
-    cek: evaluasi(snapshot),
+    snapshot: b.snapshot,
+    cek: b.cek,
     status: simpan?.status ?? STATUS_AWAL,
     versi: simpan?.versi ?? null,
-    final: episode.terbuka === 0,
-    digabungKe: gabung.get(nopen) ?? null,
+    final: b.final,
+    digabungKe: b.digabungKe,
+    cekManual: cekManualUntuk(b.snapshot.kategori),
+    tindakLanjut: await findTindakLanjut(nopen),
+    riwayat: await findRiwayat(nopen),
   };
+}
+
+/**
+ * Hasil cek SEGAR satu episode (dasar "Cek ulang dari SIMRS"), sekaligus
+ * merekonsiliasi tindak lanjutnya. Episode IGD yang digabung ke RI tetap
+ * dievaluasi sebagai dirinya, dengan `digabungKe` menunjuk NOPEN RI tujuan.
+ */
+export async function getDetailKlaim(nopen: string): Promise<DetailKlaim> {
+  const b = await muatBerkas(nopen);
+  await sinkronTindakLanjut([b]);
+  return bangunDetail(b);
+}
+
+/** Aksi Tahap 1 yang boleh dilakukan pengguna pada berkas ini sekarang. */
+export async function izinKlaim(user: SessionUser, d: Pick<DetailKlaim, "status" | "final" | "digabungKe">): Promise<IzinKlaim> {
+  const bisa = d.final && !d.digabungKe && (await can(user.role, MODUL_VERIFIKASI.RM, "update"));
+  return {
+    loloskan: bisa && !!cariTransisi(d.status, "LOLOSKAN_RM"),
+    tandai: bisa && !!cariTransisi(d.status, "TANDAI_TIDAK_LENGKAP"),
+  };
+}
+
+export async function getRuangKerja(nopen: string, user: SessionUser): Promise<RuangKerjaKlaim> {
+  const d = await getDetailKlaim(nopen);
+  return { ...d, izin: await izinKlaim(user, d) };
 }

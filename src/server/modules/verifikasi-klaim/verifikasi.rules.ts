@@ -8,7 +8,14 @@
  * disahkan Casemix / Komite RM — keputusan §11-4).
  */
 import type { Kategori, PenanggungJawab } from "./verifikasi.constants";
-import type { HasilAturan, HasilCek, Keharusan, SnapshotKlaim } from "./verifikasi.types";
+import type {
+  CekManualItem,
+  HasilAturan,
+  HasilCek,
+  ItemTindakLanjut,
+  Keharusan,
+  SnapshotKlaim,
+} from "./verifikasi.types";
 
 type HasilMentah = { lolos: boolean; pesan: string; /** Gagal ringan → selalu peringatan. */ ringan?: boolean };
 
@@ -183,4 +190,84 @@ export function evaluasi(s: SnapshotKlaim, katalog: readonly Aturan[] = ATURAN_T
 export function masalahDari(cek: HasilCek): HasilAturan[] {
   const rank = { gagal: 0, peringatan: 1, lolos: 2 } as const;
   return cek.hasil.filter((h) => h.status !== "lolos").sort((a, b) => rank[a.status] - rank[b.status]);
+}
+
+/* ------------------------------------------- cek manual oleh verifikator RM */
+
+/**
+ * Pemeriksaan yang TIDAK bisa dibaca dari data SIMGOS — dikonfirmasi verifikator
+ * (PRD §5.1 "cek manual"). Meloloskan berkas tanpa mengonfirmasi semuanya butuh
+ * alasan. Kunci berawalan `manual-` (tak pernah tertutup otomatis).
+ */
+export const CEK_MANUAL: readonly (CekManualItem & { berlaku: readonly Kategori[] })[] = [
+  {
+    key: "manual-ttd",
+    label: "Tanda tangan & nama jelas DPJP pada resume / CPPT",
+    pj: "DPJP",
+    berlaku: ["RI", "IGD", "RJ"],
+  },
+  {
+    key: "manual-identitas",
+    label: "Identitas pasien sama di semua lembar berkas",
+    pj: "PERAWAT",
+    berlaku: ["RI", "IGD", "RJ"],
+  },
+];
+
+export const PREFIKS_MANUAL = "manual-";
+
+export function cekManualUntuk(kategori: Kategori): CekManualItem[] {
+  return CEK_MANUAL.filter((c) => c.berlaku.includes(kategori)).map(({ key, label, pj }) => ({ key, label, pj }));
+}
+
+/* ------------------------------------------------------------- tindak lanjut */
+
+/** Sub-item penunjang: sasaran berbeda (unit Laboratorium vs Radiologi), tertutup masing-masing. */
+const SUB_ATURAN: Record<string, { label: string; induk: string }> = {
+  "penunjang-lab": { label: "Hasil Laboratorium Final", induk: "penunjang" },
+  "penunjang-rad": { label: "Hasil Radiologi Final", induk: "penunjang" },
+};
+
+/** Label tampilan kunci item tindak lanjut (aturan otomatis, sub-item, atau cek manual). */
+export function labelAturan(key: string): string {
+  return SUB_ATURAN[key]?.label ?? getAturan(key)?.label ?? CEK_MANUAL.find((c) => c.key === key)?.label ?? key;
+}
+
+/**
+ * Item tindak lanjut untuk satu kunci yang dipilih verifikator. `null` = kunci
+ * tidak sah untuk kondisi berkas sekarang (aturan sudah lolos / tak berlaku /
+ * cek manual sudah dikonfirmasi) → ditolak server.
+ */
+export function itemTindakLanjut(
+  key: string,
+  s: SnapshotKlaim,
+  cek: HasilCek,
+  manualOk: ReadonlySet<string>,
+): ItemTindakLanjut[] | null {
+  if (key.startsWith(PREFIKS_MANUAL)) {
+    const m = cekManualUntuk(s.kategori).find((c) => c.key === key);
+    return m && !manualOk.has(key) ? [{ aturan: key, pesan: m.label, pj: m.pj }] : null;
+  }
+  const h = cek.hasil.find((x) => x.key === key);
+  if (!h || h.status === "lolos") return null;
+  if (key === "penunjang") {
+    const p = s.fakta.penunjang;
+    const items: ItemTindakLanjut[] = [];
+    if (p.labBelum > 0) items.push({ aturan: "penunjang-lab", pesan: `${p.labBelum} hasil laboratorium belum final`, pj: "PENUNJANG" });
+    if (p.radBelum > 0) items.push({ aturan: "penunjang-rad", pesan: `${p.radBelum} hasil radiologi belum final`, pj: "PENUNJANG" });
+    return items.length ? items : null;
+  }
+  return [{ aturan: key, pesan: h.pesan, pj: h.pj }];
+}
+
+/**
+ * Apakah kekurangan yang dimaksud item tindak lanjut sudah terpenuhi menurut
+ * data SIMGOS terbaru? Cek manual tak pernah terpenuhi otomatis.
+ */
+export function tindakLanjutTerpenuhi(aturan: string, s: SnapshotKlaim, cek: HasilCek): boolean {
+  if (aturan.startsWith(PREFIKS_MANUAL)) return false;
+  if (aturan === "penunjang-lab") return s.fakta.penunjang.labBelum === 0;
+  if (aturan === "penunjang-rad") return s.fakta.penunjang.radBelum === 0;
+  const h = cek.hasil.find((x) => x.key === (SUB_ATURAN[aturan]?.induk ?? aturan));
+  return !h || h.status === "lolos";
 }

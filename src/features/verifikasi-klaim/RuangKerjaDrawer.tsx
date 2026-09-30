@@ -1,0 +1,250 @@
+"use client";
+
+import { useState } from "react";
+import { ArrowRight, GitMerge, History, Info, RefreshCw } from "lucide-react";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Drawer } from "@/components/ui/Drawer";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { ErrorState } from "@/components/feedback/States";
+import { useToast } from "@/components/ui/Toast";
+import { ApiError, apiGet, apiPost, pesanGalat } from "@/lib/api-client";
+import { cn } from "@/lib/cn";
+import { formatDateTime } from "@/lib/format";
+import { useAsyncData } from "@/lib/useAsyncData";
+import { KATEGORI_LABEL, STATUS_META } from "@/server/modules/verifikasi-klaim/verifikasi.constants";
+import { labelAturan } from "@/server/modules/verifikasi-klaim/verifikasi.rules";
+import type { RiwayatItem, RuangKerjaKlaim } from "@/server/modules/verifikasi-klaim/verifikasi.types";
+import { PanelKelengkapan, type KirimKeputusan } from "./PanelKelengkapan";
+import { StatusVerifikasiBadge } from "./status-ui";
+
+type Tab = "kelengkapan" | "riwayat";
+
+/**
+ * Ruang kerja satu berkas (PRD §6.3) — panel samping. Data SELALU dicek segar
+ * dari SIMRS saat dibuka / "Cek ulang". Keputusan dikirim dengan versi berkas;
+ * bila bentrok (409) data dimuat ulang.
+ */
+export function RuangKerjaDrawer({
+  nopen,
+  onClose,
+  onBerubah,
+}: {
+  nopen: string | null;
+  onClose: () => void;
+  /** Dipanggil setelah keputusan tersimpan (antrean dimuat ulang). */
+  onBerubah: () => void;
+}) {
+  const toast = useToast();
+  const [tab, setTab] = useState<Tab>("kelengkapan");
+  const [terbaru, setTerbaru] = useState<RuangKerjaKlaim | null>(null);
+  const [mengirim, setMengirim] = useState(false);
+  const { result, loading, error, reload } = useAsyncData<RuangKerjaKlaim | null>(
+    () => (nopen ? apiGet<RuangKerjaKlaim>(`/api/berkas-klaim/verifikasi/${nopen}`) : Promise.resolve(null)),
+    [nopen],
+  );
+  // Respons keputusan menggantikan hasil muat sampai "Cek ulang" berikutnya.
+  const data = terbaru && terbaru.snapshot.nopen === nopen ? terbaru : result;
+
+  function cekUlang() {
+    setTerbaru(null);
+    reload();
+  }
+
+  function tutup() {
+    setTerbaru(null);
+    setTab("kelengkapan");
+    onClose();
+  }
+
+  const kirim: KirimKeputusan = async (body) => {
+    if (!nopen) return false;
+    setMengirim(true);
+    try {
+      const r = await apiPost<RuangKerjaKlaim>(`/api/berkas-klaim/verifikasi/${nopen}/keputusan`, body);
+      setTerbaru(r);
+      toast.success(
+        body.aksi === "LOLOSKAN_RM" ? "Berkas diloloskan ke Tahap 2" : "Berkas ditandai tidak lengkap",
+        body.aksi === "LOLOSKAN_RM"
+          ? "Keputusan tercatat di riwayat berkas."
+          : "Tindak lanjut & notifikasi terkirim ke penanggung jawab.",
+      );
+      onBerubah();
+      return true;
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && e.code === "CONFLICT") {
+        toast.warning("Berkas sudah diubah pengguna lain", "Data terbaru dimuat ulang — periksa kembali sebelum memutuskan.");
+        cekUlang();
+        onBerubah();
+      } else {
+        toast.error("Keputusan gagal disimpan", pesanGalat(e));
+      }
+      return false;
+    } finally {
+      setMengirim(false);
+    }
+  };
+
+  const s = data?.snapshot;
+  return (
+    <Drawer
+      open={!!nopen}
+      onClose={tutup}
+      size="xl"
+      title={s ? `Berkas klaim ${s.nama}` : "Berkas klaim"}
+      header={
+        s && data ? (
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="truncate text-base font-semibold text-fg">{s.nama}</h2>
+              <StatusVerifikasiBadge status={data.status} />
+              {data.versi != null && <span className="text-[11px] text-fg-subtle">versi {data.versi}</span>}
+            </div>
+            <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-fg-muted">
+              <span>RM {s.norm}</span>
+              <span className="font-mono">NOPEN {s.nopen}</span>
+              <span>{KATEGORI_LABEL[s.kategori]}{s.ruang ? ` · ${s.ruang}` : ""}</span>
+              <span>Pulang {s.pulang ? formatDateTime(s.pulang) : "—"}</span>
+              <span>SEP {s.fakta.sep?.nomor ?? "—"}</span>
+            </p>
+          </div>
+        ) : (
+          <Skeleton className="h-10 w-72 rounded" />
+        )
+      }
+    >
+      <div className="flex min-h-full flex-col">
+        <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-bg/95 px-5 py-2 backdrop-blur">
+          <div role="tablist" aria-label="Ruang kerja berkas" className="-mx-1 flex min-w-0 gap-1 overflow-x-auto px-1">
+            <TabButton aktif={tab === "kelengkapan"} onClick={() => setTab("kelengkapan")}>
+              Kelengkapan
+            </TabButton>
+            <TabButton aktif={tab === "riwayat"} onClick={() => setTab("riwayat")}>
+              Riwayat{data ? ` (${data.riwayat.length})` : ""}
+            </TabButton>
+            <TabButton aktif={false} disabled title="Stage V2">
+              Koding
+            </TabButton>
+            <TabButton aktif={false} disabled title="Stage V3">
+              Paket Klaim
+            </TabButton>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto"
+            icon={<RefreshCw className={cn("size-4", loading && "animate-spin")} aria-hidden />}
+            onClick={cekUlang}
+            disabled={loading || mengirim}
+          >
+            <span className="hidden sm:inline">Cek ulang dari SIMRS</span>
+            <span className="sm:hidden">Cek ulang</span>
+          </Button>
+        </div>
+
+        {error && !data ? (
+          <ErrorState onRetry={cekUlang} />
+        ) : !data || (loading && !terbaru) ? (
+          <MemuatRuangKerja />
+        ) : (
+          <>
+            {(data.digabungKe || !data.final) && (
+              <div className="mx-5 mt-4 flex items-start gap-2 rounded-[var(--radius-md)] border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-warning">
+                {data.digabungKe ? <GitMerge className="mt-0.5 size-4 shrink-0" aria-hidden /> : <Info className="mt-0.5 size-4 shrink-0" aria-hidden />}
+                {data.digabungKe
+                  ? `Episode ini digabung ke klaim Rawat Inap NOPEN ${data.digabungKe} — dokumennya ikut paket RI dan diputuskan di sana.`
+                  : "Episode belum final (masih ada kunjungan yang belum keluar) — belum bisa diputuskan."}
+              </div>
+            )}
+            {tab === "kelengkapan" ? (
+              <PanelKelengkapan key={`${data.snapshot.nopen}:${data.versi ?? 0}`} data={data} kirim={kirim} mengirim={mengirim} />
+            ) : (
+              <PanelRiwayat items={data.riwayat} />
+            )}
+          </>
+        )}
+      </div>
+    </Drawer>
+  );
+}
+
+function TabButton({
+  aktif,
+  children,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { aktif: boolean }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={aktif}
+      className={cn(
+        "shrink-0 whitespace-nowrap rounded-[var(--radius-md)] px-3 py-1.5 text-[13px] font-medium transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring disabled:cursor-not-allowed disabled:opacity-45",
+        aktif ? "bg-brand-soft text-brand-soft-fg" : "text-fg-muted hover:bg-surface-2 hover:text-fg",
+      )}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+function MemuatRuangKerja() {
+  return (
+    <div className="space-y-2 px-5 py-4" aria-busy="true" aria-label="Memeriksa data SIMRS">
+      <p className="text-xs text-fg-subtle">Memeriksa data terbaru di SIMRS…</p>
+      {Array.from({ length: 7 }).map((_, i) => (
+        <Skeleton key={i} className="h-12 w-full rounded-[var(--radius-md)]" />
+      ))}
+    </div>
+  );
+}
+
+const DATA_LABEL: Record<string, string> = { item: "Item", gagal: "Pemeriksaan gagal", aturan: "Item" };
+
+/** Linimasa riwayat berkas (terbaru di atas). */
+function PanelRiwayat({ items }: { items: readonly RiwayatItem[] }) {
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-2 px-6 py-12 text-center text-sm text-fg-muted">
+        <History className="size-6 text-fg-subtle" aria-hidden />
+        Belum ada keputusan untuk berkas ini.
+      </div>
+    );
+  }
+  return (
+    <ol className="space-y-3 px-5 py-4">
+      {items.map((r) => {
+        const d = r.data ?? {};
+        return (
+          <li key={r.id} className="relative rounded-[var(--radius-md)] border border-border bg-surface px-4 py-3 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium text-fg">{r.label}</span>
+              {r.dariStatus && r.keStatus && r.dariStatus !== r.keStatus && (
+                <span className="flex items-center gap-1 text-xs text-fg-muted">
+                  {STATUS_META[r.dariStatus].label}
+                  <ArrowRight className="size-3" aria-hidden />
+                  {STATUS_META[r.keStatus].label}
+                </span>
+              )}
+              {d.override === true && <Badge tone="warning">Diloloskan dengan alasan</Badge>}
+              {d.massal === true && <Badge tone="brand">Massal</Badge>}
+            </div>
+            <p className="mt-0.5 text-xs text-fg-subtle">
+              {r.olehNama ?? "—"} · {formatDateTime(r.createdAt)}
+            </p>
+            {r.catatan && <p className="mt-1.5 text-xs italic text-fg-muted">“{r.catatan}”</p>}
+            {(["item", "gagal", "aturan"] as const).map((k) =>
+              Array.isArray(d[k]) && (d[k] as string[]).length > 0 ? (
+                <p key={k} className="mt-1 text-xs text-fg-muted">
+                  {DATA_LABEL[k]}: {(d[k] as string[]).map(labelAturan).join(", ")}
+                </p>
+              ) : null,
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}

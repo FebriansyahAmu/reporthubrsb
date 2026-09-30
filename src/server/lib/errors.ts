@@ -45,6 +45,13 @@ export class BusinessRuleError extends AppError {
   }
 }
 
+/** Data sudah diubah pihak lain sejak dibaca (optimistic locking / unik bentrok). */
+export class ConflictError extends AppError {
+  constructor(msg = "Data sudah diubah pengguna lain. Muat ulang lalu coba lagi.") {
+    super(msg, "CONFLICT", 409);
+  }
+}
+
 /** Dependensi eksternal (mis. SIMGOS) tidak tersedia / tidak dikonfigurasi. */
 export class ServiceUnavailableError extends AppError {
   constructor(msg = "Layanan sumber data tidak tersedia") {

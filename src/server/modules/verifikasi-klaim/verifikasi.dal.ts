@@ -301,6 +301,69 @@ export async function queryTagihanAda(nopens: readonly string[]): Promise<Set<st
   return new Set(rows.map((r) => String(r.nopen)));
 }
 
+/* ------------------------------------------- sasaran tindak lanjut (V1) */
+
+export type DokterRingkas = { nip: string; nama: string };
+
+/**
+ * NIP & nama DPJP (`master.dokter.NIP` → `master.pegawai`) — NIP dicocokkan
+ * dengan `users.nip` sebagai sasaran notifikasi. 31/31 dokter aktif ber-NIP.
+ */
+export async function queryDokterNip(ids: readonly number[]): Promise<Map<number, DokterRingkas>> {
+  if (ids.length === 0) return new Map();
+  const rows = await query<{ id: Num; nip: string | null; gd: string | null; nama: string | null; gb: string | null }>(
+    `SELECT ${CAP} d.ID AS id, d.NIP AS nip, pg.GELAR_DEPAN AS gd, pg.NAMA AS nama, pg.GELAR_BELAKANG AS gb
+       FROM ${MS}.dokter d LEFT JOIN ${MS}.pegawai pg ON pg.NIP = d.NIP
+      WHERE d.ID IN (${ids.map(() => "?").join(",")})`,
+    ids,
+  );
+  const out = new Map<number, DokterRingkas>();
+  for (const r of rows) {
+    const nip = r.nip?.trim();
+    if (!nip) continue;
+    const nama = [r.gd?.trim(), r.nama?.trim()].filter(Boolean).join(" ");
+    out.set(num(r.id), { nip, nama: `${nama || `NIP ${nip}`}${r.gb?.trim() ? `, ${r.gb.trim()}` : ""}` });
+  }
+  return out;
+}
+
+export type RuangRingkas = { id: string; nama: string };
+
+/** Ruang IGD (leg JENIS_KUNJUNGAN 2 terakhir) per NOPEN — sasaran item triase/SPRI. */
+export async function queryRuangIgd(nopens: readonly string[]): Promise<Map<string, RuangRingkas>> {
+  const rows = await perChunk(nopens, (chunk, ph) =>
+    query<{ nopen: string; id: string; nama: string | null }>(
+      `SELECT ${CAP} x.nopen, x.id, r.DESKRIPSI AS nama FROM (
+          SELECT k.NOPEN AS nopen,
+            SUBSTRING_INDEX(GROUP_CONCAT(k.RUANGAN ORDER BY k.MASUK DESC), ',', 1) AS id
+          FROM ${PD}.kunjungan k JOIN ${MS}.ruangan rr ON rr.ID = k.RUANGAN AND rr.JENIS_KUNJUNGAN = 2
+          WHERE k.NOPEN IN (${ph}) AND k.STATUS <> 0
+          GROUP BY k.NOPEN
+        ) x LEFT JOIN ${MS}.ruangan r ON r.ID = x.id`,
+      chunk,
+    ),
+  );
+  return new Map(rows.map((r) => [String(r.nopen), { id: String(r.id), nama: r.nama?.trim() || String(r.id) }]));
+}
+
+/**
+ * Unit pelayanan penunjang (ruang leaf aktif JENIS_KUNJUNGAN 4 = Laboratorium,
+ * 5 = Radiologi). Hasil belum final tercatat di ruang PEMESAN, jadi item
+ * penunjang ditujukan ke unit ini (bukan ruang episode).
+ */
+export async function queryUnitPenunjang(): Promise<{ lab: RuangRingkas | null; rad: RuangRingkas | null }> {
+  const rows = await query<{ id: string; nama: string | null; jk: Num }>(
+    `SELECT ${CAP} ID AS id, DESKRIPSI AS nama, JENIS_KUNJUNGAN AS jk FROM ${MS}.ruangan
+      WHERE JENIS = 5 AND STATUS = 1 AND JENIS_KUNJUNGAN IN (4, 5) ORDER BY ID`,
+    [],
+  );
+  const pertama = (jk: number) => {
+    const r = rows.find((x) => num(x.jk) === jk);
+    return r ? { id: String(r.id), nama: r.nama?.trim() || String(r.id) } : null;
+  };
+  return { lab: pertama(4), rad: pertama(5) };
+}
+
 export type SepKandidat = { nomor: string; jenisPelayanan: number; tanggal: string; jarak: number };
 
 /**

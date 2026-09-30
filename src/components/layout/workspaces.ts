@@ -153,6 +153,8 @@ export const WORKSPACES: Workspace[] = [
         icon: BellRing,
         description: "Item berkas yang harus dilengkapi DPJP / unit",
         moduleKey: "berkas-klaim.tindak-lanjut",
+        // Verifikator RM memantau semua tindak lanjut yang dikirimnya.
+        anyOf: ["berkas-klaim.verifikasi-rm"],
       },
     ],
   },

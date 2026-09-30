@@ -133,6 +133,15 @@ export function formatLama(menit: number | null | undefined): string {
   return `${m} mnt`;
 }
 
+/** Waktu relatif ringkas terhadap `now` (ms), mis. "5 mnt lalu", "3 hari lalu". */
+export function formatRelatif(iso: string | Date, now: number): string {
+  const detik = Math.max(0, (now - new Date(iso).getTime()) / 1000);
+  if (detik < 60) return "baru saja";
+  if (detik < 3600) return `${Math.floor(detik / 60)} mnt lalu`;
+  if (detik < 86_400) return `${Math.floor(detik / 3600)} jam lalu`;
+  return `${Math.floor(detik / 86_400)} hari lalu`;
+}
+
 /** Jam:menit:detik untuk indikator "diperbarui pukul ...". */
 export function formatJam(iso: string | Date): string {
   return new Intl.DateTimeFormat("id-ID", {

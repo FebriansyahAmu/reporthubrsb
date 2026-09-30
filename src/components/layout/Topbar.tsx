@@ -4,6 +4,7 @@ import { Menu } from "lucide-react";
 import { UserMenu, type MenuUser } from "./UserMenu";
 import { ModuleSwitcher } from "./ModuleSwitcher";
 import { AdminMenu } from "./AdminMenu";
+import { NotificationBell } from "./NotificationBell";
 
 export type TopbarUser = MenuUser;
 
@@ -29,6 +30,7 @@ export function Topbar({
       <ModuleSwitcher allowedModules={allowedModules} />
 
       <div className="ml-auto flex items-center gap-2 sm:gap-3">
+        {user && <NotificationBell />}
         <AdminMenu allowedModules={allowedModules} />
         <div className="hidden h-6 w-px bg-border sm:block" />
         <UserMenu user={user} />

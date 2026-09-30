@@ -130,6 +130,34 @@ export function cariTransisi(dari: StatusVerifikasi, aksi: AksiVerifikasi): Tran
   return TRANSISI.find((t) => t.aksi === aksi && t.dari.includes(dari)) ?? null;
 }
 
+/** Aksi Tahap 1 (Stage V1) yang bisa dikirim lewat API keputusan. */
+export const AKSI_TAHAP1 = ["LOLOSKAN_RM", "TANDAI_TIDAK_LENGKAP"] as const satisfies readonly AksiVerifikasi[];
+export type AksiTahap1 = (typeof AKSI_TAHAP1)[number];
+
+/** Aksi sistem (tanpa perubahan status) yang juga tercatat di riwayat. */
+export const AKSI_SISTEM = {
+  TL_SELESAI_OTOMATIS: "Tindak lanjut selesai otomatis (data SIMRS lengkap)",
+  TL_SELESAI_MANUAL: "Tindak lanjut ditandai selesai",
+} as const;
+
+/** Label riwayat untuk semua aksi (transisi + sistem). */
+export function labelAksi(aksi: string): string {
+  return TRANSISI.find((t) => t.aksi === aksi)?.label ?? AKSI_SISTEM[aksi as keyof typeof AKSI_SISTEM] ?? aksi;
+}
+
+/* ------------------------------------------------------------ tindak lanjut */
+
+export const STATUS_TINDAK_LANJUT = ["OPEN", "SELESAI", "BATAL"] as const;
+export type StatusTindakLanjut = (typeof STATUS_TINDAK_LANJUT)[number];
+
+/** Sasaran item tindak lanjut: DPJP (NIP), ruangan (akses ruangan SIMGOS), atau peran aplikasi. */
+export const SASARAN_TINDAK_LANJUT = ["DPJP", "RUANGAN", "PERAN"] as const;
+export type SasaranTindakLanjut = (typeof SASARAN_TINDAK_LANJUT)[number];
+
+/** Lingkup halaman Tindak Lanjut: milik penerima, atau semua (khusus verifikator RM). */
+export const LINGKUP_TINDAK_LANJUT = ["saya", "semua"] as const;
+export type LingkupTindakLanjut = (typeof LINGKUP_TINDAK_LANJUT)[number];
+
 /* -------------------------------------------------- penanggung jawab item */
 
 export const PENANGGUNG_JAWAB = {
@@ -142,6 +170,17 @@ export const PENANGGUNG_JAWAB = {
   KEPALA_RUANGAN: "Kepala Ruangan",
 } as const;
 export type PenanggungJawab = keyof typeof PENANGGUNG_JAWAB;
+
+/**
+ * Penanggung jawab tanpa unit SIMGOS → PERAN aplikasi (`roles.key`), juga
+ * sasaran cadangan bila unit/DPJP tak terpetakan. Pengguna ber-peran ini
+ * melihat itemnya di Tindak Lanjut Berkas (butuh izin modul tindak lanjut).
+ */
+export const PERAN_PENANGGUNG_JAWAB: Partial<Record<PenanggungJawab, string>> = {
+  ADMISI: "admisi",
+  KASIR: "kasir",
+};
+export const PERAN_CADANGAN = "admisi";
 
 /* ------------------------------------------------------ batas anti-overload */
 
@@ -158,4 +197,14 @@ export const BATAS = {
   KOMPUTASI_PARALEL: 2,
   /** Ukuran halaman antrean. */
   HALAMAN_MAKS: 100,
+  /** Maks berkas satu permintaan "loloskan massal" (dicek ulang segar dalam satu batch). */
+  MASSAL_MAKS: 200,
+  /** Panjang catatan keputusan / tindak lanjut. */
+  CATATAN_MAKS: 1000,
+  /** Alasan minimal saat meloloskan berkas yang belum lengkap (override verifikator). */
+  ALASAN_MIN: 10,
+  /** Maks NOPEN yang direkonsiliasi sekali muat halaman Tindak Lanjut. */
+  SINKRON_MAKS: 300,
+  /** Umur cache rekonsiliasi tindak lanjut per himpunan NOPEN. */
+  SINKRON_TTL_MS: 30_000,
 } as const;

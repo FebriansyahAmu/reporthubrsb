@@ -5,7 +5,7 @@
 **Project:** ReportHub (`reporthubrsb`) · Workspace **Berkas & Klaim** (`berkas-klaim`)
 **Organisasi:** UPTD RSUD Bolaang Mongondow Timur
 **Versi:** 1.0 — keputusan §11 disetujui mengikuti rekomendasi (matriks §5.1 tetap menunggu pengesahan Casemix)
-**Tanggal:** 29 September 2026 · **Status:** Stage V0 selesai (§8)
+**Tanggal:** 29 September 2026 · **Status:** Stage V0 & V1 selesai (§8) — 30 September 2026
 **Sifat data SIMGOS:** **FULL READ-ONLY.** Hanya `SELECT` / `information_schema`. Tidak ada DDL/DML, tidak menambah/mengubah tabel apa pun di SIMGOS. Semua status verifikasi, koreksi, lampiran, dan paket disimpan di DB aplikasi `reporthub`.
 
 ---
@@ -384,11 +384,36 @@ Validasi E2E 49/49 + UI 10/10:
 - Drift model ↔ tabel: 8/8 cocok.
 - UI 1440 px & 390 px tanpa scroll horizontal dan tanpa error JS.
 
-### Stage V1 — Verifikasi Pertama
+### Stage V1 — Verifikasi Pertama ✅ (30 Sep 2026)
 
 - Antrean + pita tahap + filter + meter kelengkapan + aksi massal.
 - Ruang kerja tab **Kelengkapan** + keputusan Loloskan / Tidak Lengkap (transisi terkunci, riwayat, audit).
 - **Tindak lanjut** otomatis ke penanggung jawab + **notifikasi** (lonceng) + halaman **Tindak Lanjut Berkas** + penutupan otomatis saat data SIMRS lengkap.
+
+**Hasil V1:**
+
+Kode:
+- `verifikasi-klaim/`: `keputusan.service` (keputusan Tahap 1 + loloskan massal), `tindak-lanjut.service` (daftar & tutup manual), `tindak-lanjut.sinkron` (rekonsiliasi), `verifikasi.sasaran` (penentu sasaran). Katalog aturan ditambah cek manual, pembentuk item tindak lanjut & predikat "terpenuhi" (murni).
+- Modul generik `notifikasi/` (penerima = pengguna / NIP / akses ruangan SIMGOS / peran) + lonceng di Topbar.
+- API: `POST …/verifikasi/[nopen]/keputusan`, `POST …/verifikasi/massal`, `GET …/tindak-lanjut`, `POST …/tindak-lanjut/[id]/selesai`, `GET /api/notifikasi`, `POST /api/notifikasi/baca`. Detail berkas kini memuat cek manual, tindak lanjut, riwayat & izin.
+- UI: antrean kerja (filter satu baris, pita tahap, chip masalah, ↑/↓/Enter), ruang kerja (tab Kelengkapan & Riwayat, pintasan L/K, `?nopen=`), halaman Tindak Lanjut Berkas, modal loloskan massal.
+
+Keputusan desain V1:
+- **Cek manual** verifikator: `manual-ttd` (tanda tangan DPJP) & `manual-identitas`. Meloloskan berkas yang masih punya aturan wajib gagal, cek manual yang belum "Sesuai", atau tindak lanjut terbuka **wajib disertai alasan** (≥ 10 karakter); tindak lanjut terbuka lalu **dibatalkan** dan riwayat mencatat `override`. Ini jalan keluar selama matriks §5.1 (mis. `bukti`) belum disahkan Casemix.
+- **Sasaran tindak lanjut:** DPJP → NIP DPJP · perawat/kepala ruang → ruang leg terakhir · triase/SPRI → ruang IGD (tanpa IGD → peran `admisi`) · hasil penunjang → **unit Laboratorium / Radiologi** (hasil belum final tercatat di ruang pemesan, bukan di unit penunjang; item dipecah `penunjang-lab` / `penunjang-rad`) · SEP → peran `admisi` · tagihan → peran `kasir`. Cadangan: ruang episode → peran `admisi`.
+- **Penutupan otomatis** = rekonsiliasi idempoten saat detail berkas dibuka, antrean dihitung segar, dan halaman Tindak Lanjut dimuat. Item terakhir selesai → notifikasi "siap diperiksa ulang" ke verifikator pembuatnya. Item cek manual hanya ditutup manual (penerima atau verifikator).
+- **Loloskan massal** mewajibkan pernyataan cek manual sudah diperiksa, mengecek ulang tiap berkas secara segar, maks 200 berkas per proses.
+
+Validasi E2E 59/59 + UI 17/17:
+- Sasaran tiap item = SQL SIMGOS independen (NIP DPJP, ruang, unit lab/rad, peran).
+- Notifikasi hanya sampai ke penerimanya; tandai dibaca hanya untuk notifikasi milik sendiri.
+- Transisi ilegal 409, versi lama 409, dua keputusan bersamaan → tepat satu berhasil tanpa tulisan ganda (transaksi).
+- Tiga jalur penutupan otomatis (detail, halaman Tindak Lanjut, antrean segar) + idempoten.
+- RBAC per aksi (lihat-saja 403), validasi input (422), audit tanpa PHI selain NOPEN.
+- DAL SIMGOS tanpa kata kunci tulis dan tanpa kolom `PASSWORD`; seluruh data uji terhapus (0 baris tersisa).
+- UI 1440 px & 390 px tanpa scroll horizontal, tanpa error JS.
+
+Catatan operasional: peran `kasir` belum ada di aplikasi — item Tagihan tetap tercatat (tampil di lingkup "Semua" verifikator) sampai peran itu dibuat. DPJP / unit butuh izin **Tindak Lanjut Berkas**; notifikasi DPJP memerlukan NIP di data pengguna, notifikasi ruangan memerlukan login dengan akun SIMGOS.
 
 ### Stage V2 — Verifikasi Kedua (Coder)
 

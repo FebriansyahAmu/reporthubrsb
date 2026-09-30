@@ -6,7 +6,10 @@
  */
 import type {
   Kategori,
+  LingkupTindakLanjut,
   PenanggungJawab,
+  SasaranTindakLanjut,
+  StatusTindakLanjut,
   StatusVerifikasi,
 } from "./verifikasi.constants";
 
@@ -114,6 +117,8 @@ export type AntreanItem = {
   /** Versi baris verifikasi (null = belum pernah diputuskan). */
   versi: number | null;
   cek: Omit<HasilCek, "hasil" | "tahap"> & { masalah: MasalahRingkas[] };
+  /** Item tindak lanjut berkas ini: masih terbuka & seluruhnya. */
+  tl: { open: number; total: number };
 };
 
 export type AntreanRingkasan = {
@@ -124,6 +129,8 @@ export type AntreanRingkasan = {
   perAturan: Record<string, number>;
   /** Berkas BELUM_DIPERIKSA yang lengkap otomatis (kandidat setujui massal). */
   lengkapOtomatis: number;
+  /** TIDAK_LENGKAP yang seluruh tindak lanjutnya sudah selesai → siap diperiksa ulang. */
+  siapPeriksaUlang: number;
 };
 
 export type AntreanResult = {
@@ -143,7 +150,50 @@ export type AntreanResult = {
     durasiMs: number;
     dariCache: boolean;
   };
+  /** Pilihan filter ruang (dari seluruh episode rentang). */
+  opsi: { ruang: { id: string; nama: string; n: number }[] };
 };
+
+/* ------------------------------------------------ tindak lanjut & riwayat */
+
+/** Item kekurangan yang dikirim ke penanggung jawab (dibentuk aturan murni). */
+export type ItemTindakLanjut = { aturan: string; pesan: string; pj: PenanggungJawab };
+
+export type TindakLanjutItem = {
+  id: string;
+  nopen: string;
+  aturan: string;
+  label: string;
+  pesan: string;
+  sasaranJenis: SasaranTindakLanjut;
+  sasaranRef: string;
+  sasaranNama: string | null;
+  status: StatusTindakLanjut;
+  catatan: string | null;
+  dibuatOlehNama: string | null;
+  createdAt: string;
+  selesaiAt: string | null;
+  /** OTOMATIS | MANUAL | BATAL */
+  selesaiCara: string | null;
+  selesaiOlehNama: string | null;
+  /** Item cek manual (hanya bisa ditutup manual). */
+  manual: boolean;
+};
+
+export type RiwayatItem = {
+  id: string;
+  aksi: string;
+  label: string;
+  dariStatus: StatusVerifikasi | null;
+  keStatus: StatusVerifikasi | null;
+  versi: number;
+  catatan: string | null;
+  data: Record<string, unknown> | null;
+  olehNama: string | null;
+  createdAt: string;
+};
+
+export type CekManualItem = { key: string; label: string; pj: PenanggungJawab };
 
 export type DetailKlaim = {
   snapshot: SnapshotKlaim;
@@ -154,4 +204,40 @@ export type DetailKlaim = {
   final: boolean;
   /** Bila episode ini (IGD) digabung ke episode RI: NOPEN RI tujuan. */
   digabungKe: string | null;
+  cekManual: CekManualItem[];
+  tindakLanjut: TindakLanjutItem[];
+  riwayat: RiwayatItem[];
+};
+
+/** Aksi yang boleh dilakukan pengguna pada berkas ini sekarang. */
+export type IzinKlaim = { loloskan: boolean; tandai: boolean };
+
+export type RuangKerjaKlaim = DetailKlaim & { izin: IzinKlaim };
+
+export type HasilMassal = {
+  disetujui: string[];
+  dilewati: { nopen: string; alasan: string }[];
+};
+
+/* ------------------------------------------------ halaman Tindak Lanjut */
+
+export type TindakLanjutBaris = TindakLanjutItem & {
+  pasien: { nama: string | null; norm: string | null; kategori: string; ruang: string | null; tglPulang: string | null };
+  statusKlaim: StatusVerifikasi;
+  /** Penerima boleh menandai selesai (item cek manual yang ditujukan kepadanya / verifikator). */
+  bolehSelesai: boolean;
+};
+
+export type TindakLanjutDaftar = {
+  items: TindakLanjutBaris[];
+  page: number;
+  pageSize: number;
+  total: number;
+  ringkasan: { open: number; selesai: number };
+  lingkup: LingkupTindakLanjut;
+  /** Pengguna boleh melihat semua item (verifikator RM). */
+  bolehSemua: boolean;
+  /** Pengguna belum punya sasaran pribadi (NIP / akses ruangan) — hanya lewat peran. */
+  tanpaSasaranPribadi: boolean;
+  meta: { ditutupOtomatis: number; dihitungPada: string };
 };
