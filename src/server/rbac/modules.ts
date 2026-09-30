@@ -21,6 +21,7 @@ import {
   FileStack,
   Fingerprint,
   FolderCheck,
+  HandCoins,
   History,
   Landmark,
   LayoutDashboard,
@@ -179,6 +180,19 @@ export const MODULES: readonly AppModule[] = [
     apiPrefixes: ["/api/laporan"],
     actions: ["view", "print"],
     order: 60,
+  },
+  // Data keuangan → izin terpisah dari `laporan` (least privilege). Halamannya di
+  // bawah /laporan, jadi pengguna juga butuh `laporan:view` untuk masuk Pusat Laporan.
+  {
+    key: "laporan.pendapatan",
+    group: "Laporan",
+    label: "Laporan Pendapatan",
+    description: "Pendapatan per unit semua layanan (data keuangan) — lihat & ekspor",
+    icon: HandCoins,
+    navHref: "/laporan/pendapatan-unit",
+    apiPrefixes: ["/api/laporan/pendapatan-unit"],
+    actions: ["view", "print"],
+    order: 61,
   },
   {
     key: "inventaris",

@@ -14,6 +14,7 @@ const BORDER = "FFD7DEE5";
 const INK = "FF1E293B";
 const MUTED = "FF475569";
 const SUBTLE = "FF64748B";
+const TOTAL_BG = "FFE8EEF0";
 /** Medali peringkat 1–3 (emas, perak, perunggu) — lembut. */
 const MEDAL = ["FFFDE68A", "FFE6EAF0", "FFFCD9B6"];
 
@@ -50,6 +51,11 @@ export type BuildReportOptions<T> = {
   emptyText?: string;
   /** Beri warna medali pada sel peringkat baris 1–3 (kolom pertama). */
   rankMedal?: boolean;
+  /**
+   * Baris TOTAL opsional setelah data, selaras `columns` (null = sel kosong).
+   * Angka memakai `numFmt` kolomnya; tidak ikut auto-filter.
+   */
+  totals?: (string | number | null)[];
 };
 
 /** Susun workbook Excel rapi dari definisi kolom + baris. */
@@ -153,6 +159,25 @@ export async function buildReportWorkbook<T>(opts: BuildReportOptions<T>): Promi
     from: { row: headerRowIdx, column: 1 },
     to: { row: headerRowIdx + Math.max(rows.length, 0), column: lastCol },
   };
+
+  if (opts.totals && rows.length > 0) {
+    const totalRow = ws.getRow(dataStart + rows.length);
+    columns.forEach((c, ci) => {
+      const cell = totalRow.getCell(ci + 1);
+      const v = opts.totals?.[ci] ?? null;
+      cell.value = v ?? "";
+      if (typeof v === "number" && c.numFmt) cell.numFmt = c.numFmt;
+      cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: INK } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: TOTAL_BG } };
+      cell.alignment = { vertical: "middle", horizontal: c.align ?? (typeof v === "number" ? "right" : "left") };
+      cell.border = {
+        top: { style: "thin", color: { argb: TEAL } },
+        bottom: { style: "thin", color: { argb: TEAL } },
+        left: { style: "thin", color: { argb: BORDER } },
+        right: { style: "thin", color: { argb: BORDER } },
+      };
+    });
+  }
 
   if (rows.length === 0) {
     mergeAcross(dataStart);

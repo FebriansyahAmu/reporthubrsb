@@ -8,6 +8,7 @@ import {
   FileBarChart,
   FileText,
   FlaskConical,
+  HandCoins,
   NotebookText,
   Pill,
   ShieldCheck,
@@ -27,6 +28,8 @@ export type ReportItem = {
   icon: LucideIcon;
   status: ReportStatus;
   href?: string; // wajib bila status "tersedia"
+  /** Modul RBAC tambahan (selain `laporan`) — kartu disembunyikan bila tak berizin. */
+  moduleKey?: string;
 };
 
 export type ReportGroup = {
@@ -167,6 +170,21 @@ export const LAPORAN_CATALOG: ReportGroup[] = [
     ],
   },
   {
+    title: "Keuangan",
+    description: "Laporan pendapatan — hanya tampil bagi peran dengan izin data keuangan.",
+    items: [
+      {
+        title: "Pendapatan per Unit",
+        description:
+          "Pendapatan akomodasi & tindakan pelayanan tiap unit — Rawat Jalan, IGD, Rawat Inap, Laboratorium, Radiologi & Farmasi — untuk semua status tagihan: final, belum final & batal. Ekspor Excel/PDF.",
+        icon: HandCoins,
+        status: "tersedia",
+        href: "/laporan/pendapatan-unit",
+        moduleKey: "laporan.pendapatan",
+      },
+    ],
+  },
+  {
     title: "Farmasi & Penunjang",
     description: "Laporan unit penunjang.",
     items: [
@@ -193,8 +211,10 @@ export const LAPORAN_CATALOG: ReportGroup[] = [
   },
 ];
 
-export const LAPORAN_TERSEDIA = LAPORAN_CATALOG.flatMap((g) => g.items).filter(
-  (i) => i.status === "tersedia",
-).length;
-
-export const LAPORAN_TOTAL = LAPORAN_CATALOG.flatMap((g) => g.items).length;
+/** Katalog yang boleh dilihat: buang kartu ber-`moduleKey` yang tak diizinkan, lalu grup kosong. */
+export function katalogTerlihat(allowed: ReadonlySet<string>): ReportGroup[] {
+  return LAPORAN_CATALOG.map((g) => ({
+    ...g,
+    items: g.items.filter((i) => !i.moduleKey || allowed.has(i.moduleKey)),
+  })).filter((g) => g.items.length > 0);
+}

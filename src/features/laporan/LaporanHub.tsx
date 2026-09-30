@@ -2,22 +2,22 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
-import {
-  LAPORAN_CATALOG,
-  LAPORAN_TERSEDIA,
-  LAPORAN_TOTAL,
-  type ReportItem,
-} from "./catalog";
+import { katalogTerlihat, type ReportItem } from "./catalog";
 
-export function LaporanHub() {
+/** `allowed` = modul RBAC milik pengguna — kartu ber-`moduleKey` lain disembunyikan. */
+export function LaporanHub({ allowed }: { allowed: ReadonlySet<string> }) {
+  const katalog = katalogTerlihat(allowed);
+  const semua = katalog.flatMap((g) => g.items);
+  const tersedia = semua.filter((i) => i.status === "tersedia").length;
+
   return (
     <div className="space-y-8">
       <div className="flex items-center gap-2 text-sm text-fg-muted">
-        <Badge tone="brand">{LAPORAN_TERSEDIA} tersedia</Badge>
-        <span>dari {LAPORAN_TOTAL} laporan terencana</span>
+        <Badge tone="brand">{tersedia} tersedia</Badge>
+        <span>dari {semua.length} laporan terencana</span>
       </div>
 
-      {LAPORAN_CATALOG.map((group) => (
+      {katalog.map((group) => (
         <section key={group.title}>
           <div className="mb-3">
             <h2 className="text-sm font-semibold text-fg">{group.title}</h2>

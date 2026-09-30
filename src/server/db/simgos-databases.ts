@@ -24,6 +24,8 @@ export const SIMGOS_DB = {
   INVENTORY: "inventory",
   /** Tagihan/pembayaran: `rincian_tagihan` (tarif per item layanan). */
   PEMBAYARAN: "pembayaran",
+  /** Penjualan bebas apotek (tanpa tagihan pasien): `penjualan`. */
+  PENJUALAN: "penjualan",
   /** Antrean/registrasi online BPJS: `reservasi`, `task_action_antrian`. */
   REGONLINE: "regonline",
   /** Bridging BPJS/VClaim: `kunjungan` (noSEP per noKartu+tglSEP), `peserta` (noKartu↔nik). */
