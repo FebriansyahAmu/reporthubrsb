@@ -17,6 +17,11 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      STORAGE_DIR: /app/storage
+    # Sisipan & PDF Paket Klaim (Verifikasi Klaim BPJS) — berkas di disk, metadata di DB.
+    # Named volume: isi bertahan saat image diganti; pemilik folder ikut image (nextjs).
+    volumes:
+      - storage:/app/storage
     ports:
       - "127.0.0.1:3003:3000"
     healthcheck:
@@ -55,3 +60,7 @@ services:
       - ./scripts:/app/scripts:ro
     entrypoint: ["node"]
     command: ["scripts/db/migrate-inventaris-all.mjs"]
+
+volumes:
+  storage:
+    name: reporthubrsb-storage

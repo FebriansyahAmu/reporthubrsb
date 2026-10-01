@@ -58,6 +58,9 @@ export const MODUL_VERIFIKASI = {
 /** Modul yang boleh membuka antrean Verifikasi Klaim (salah satu cukup). */
 export const MODUL_ANTREAN = [MODUL_VERIFIKASI.RM, MODUL_VERIFIKASI.KLAIM, MODUL_VERIFIKASI.PAKET] as const;
 
+/** Modul yang boleh MELIHAT paket klaim: petugas paket & coder (coder membuka kunci FINAL). */
+export const MODUL_LIHAT_PAKET = [MODUL_VERIFIKASI.PAKET, MODUL_VERIFIKASI.KLAIM] as const;
+
 export type AksiVerifikasi =
   | "LOLOSKAN_RM"
   | "TANDAI_TIDAK_LENGKAP"
@@ -152,16 +155,47 @@ export type StatusKoreksi = (typeof STATUS_KOREKSI)[number];
 export const JENIS_ICD = ["10", "9"] as const;
 export type JenisIcd = (typeof JENIS_ICD)[number];
 
+/** Aksi paket (Stage V3) lewat API keputusan paket. */
+export const AKSI_PAKET = ["KUNCI_FINAL", "BUKA_KUNCI"] as const satisfies readonly AksiVerifikasi[];
+export type AksiPaket = (typeof AKSI_PAKET)[number];
+
 /** Aksi sistem (tanpa perubahan status) yang juga tercatat di riwayat. */
 export const AKSI_SISTEM = {
   TL_SELESAI_OTOMATIS: "Tindak lanjut selesai otomatis (data SIMRS lengkap)",
   TL_SELESAI_MANUAL: "Tindak lanjut ditandai selesai",
+  PAKET_DIGABUNG: "Paket klaim digabung",
+  LAMPIRAN_UNGGAH: "Sisipan diunggah",
+  LAMPIRAN_HAPUS: "Sisipan dihapus",
 } as const;
 
 /** Label riwayat untuk semua aksi (transisi + sistem). */
 export function labelAksi(aksi: string): string {
   return TRANSISI.find((t) => t.aksi === aksi)?.label ?? AKSI_SISTEM[aksi as keyof typeof AKSI_SISTEM] ?? aksi;
 }
+
+/* ------------------------------------------------------------ paket klaim */
+
+/** Status `klaim_paket` — DRAF (boleh digabung ulang) / FINAL (terkunci). */
+export const STATUS_PAKET = ["DRAF", "FINAL"] as const;
+export type StatusPaket = (typeof STATUS_PAKET)[number];
+
+/**
+ * Jenis komponen paket dari report engine SIMGOS (Stage V3). Urutan = urutan
+ * bawaan susunan paket (PRD §6.3-3). Dokumen buatan aplikasi & penunjang = V4.
+ */
+export const JENIS_KOMPONEN = ["sep", "resume-medis", "spri", "cppt"] as const;
+export type JenisKomponen = (typeof JENIS_KOMPONEN)[number];
+
+export const LABEL_KOMPONEN: Record<JenisKomponen, string> = {
+  sep: "SEP (Surat Eligibilitas Peserta)",
+  "resume-medis": "Resume Medis",
+  spri: "SPRI (Surat Perintah Rawat Inap)",
+  cppt: "CPPT (Catatan Perkembangan)",
+};
+
+/** Jenis berkas sisipan yang diterima — ditentukan dari tanda tangan berkas (magic bytes). */
+export const MIME_LAMPIRAN = ["application/pdf", "image/png", "image/jpeg"] as const;
+export type MimeLampiran = (typeof MIME_LAMPIRAN)[number];
 
 /* ------------------------------------------------------------ tindak lanjut */
 
@@ -235,4 +269,14 @@ export const BATAS = {
   ICD_PARALEL: 2,
   /** Maks entri jejak bukti SIMGOS yang disimpan per koreksi. */
   BUKTI_MAKS: 20,
+  /** Ukuran maks satu berkas sisipan (PRD §7.3 / §11-9). */
+  LAMPIRAN_UKURAN_MAKS: 10 * 1024 * 1024,
+  /** Maks sisipan aktif per berkas. */
+  LAMPIRAN_MAKS: 20,
+  /** Maks halaman satu paket gabungan. */
+  PAKET_HALAMAN_MAKS: 300,
+  /** Maks penggabungan paket bersamaan (tiap gabung menarik report SIMGOS berurutan). */
+  PAKET_PARALEL: 2,
+  /** Panjang nama berkas sisipan yang disimpan (setelah disanitasi). */
+  NAMA_BERKAS_MAKS: 120,
 } as const;

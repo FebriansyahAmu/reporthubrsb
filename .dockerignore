@@ -35,3 +35,6 @@ docs
 
 # Memori/claude & scratch
 .claude
+
+# Berkas unggahan lokal (STORAGE_DIR) — di produksi memakai volume
+storage

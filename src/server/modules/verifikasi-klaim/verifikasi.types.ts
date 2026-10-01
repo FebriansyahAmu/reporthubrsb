@@ -6,11 +6,14 @@
  */
 import type {
   JenisIcd,
+  JenisKomponen,
   Kategori,
   LingkupTindakLanjut,
+  MimeLampiran,
   PenanggungJawab,
   SasaranTindakLanjut,
   StatusKoreksi,
+  StatusPaket,
   StatusTindakLanjut,
   StatusVerifikasi,
 } from "./verifikasi.constants";
@@ -235,6 +238,8 @@ export type AntreanItem = {
   koding: Pick<HasilCek, "gagal" | "peringatan"> & { masalah: MasalahRingkas[] };
   /** Usulan koreksi yang menunggu SIMRS: jumlah langkah & yang belum diterapkan. */
   koreksi: { perubahan: number; sisa: number; sejak: string } | null;
+  /** Paket gabungan terakhir (berkas Siap Final / Final). */
+  paket: PaketRingkas | null;
 };
 
 export type AntreanRingkasan = {
@@ -342,6 +347,10 @@ export type IzinKlaim = {
   ajukanKoreksi: boolean;
   loloskanKlaim: boolean;
   kembalikan: boolean;
+  /** Boleh membuka tab Paket (izin Paket Klaim / Coder — lihat). */
+  paket: boolean;
+  kunciFinal: boolean;
+  bukaKunci: boolean;
 };
 
 export type RuangKerjaKlaim = DetailKlaim & { izin: IzinKlaim };
@@ -349,6 +358,84 @@ export type RuangKerjaKlaim = DetailKlaim & { izin: IzinKlaim };
 export type HasilMassal = {
   disetujui: string[];
   dilewati: { nopen: string; alasan: string }[];
+};
+
+/* ------------------------------------------------------------ paket klaim */
+
+/** Satu komponen paket dari report engine SIMGOS (tersedia / tidak untuk episode ini). */
+export type KomponenPaket = {
+  /** Kunci stabil: `sep`, `resume-medis`, `spri`, `cppt-<nomor kunjungan>`. */
+  key: string;
+  jenis: JenisKomponen;
+  label: string;
+  /** Penjelas, mis. nomor SEP / ruang & jumlah catatan CPPT. */
+  keterangan: string | null;
+  tersedia: boolean;
+  /** Alasan tidak tersedia (dokumen belum ada di SIMRS). */
+  alasan: string | null;
+};
+
+export type LampiranItem = {
+  id: string;
+  nama: string;
+  mime: MimeLampiran;
+  ukuran: number;
+  halaman: number;
+  keterangan: string | null;
+  diunggahOlehNama: string | null;
+  createdAt: string;
+};
+
+/** Satu butir susunan paket (urutan gabung). */
+export type ItemSusunan = { tipe: "komponen"; key: string } | { tipe: "lampiran"; id: string };
+
+/** Butir paket yang sudah digabung: posisi halaman di PDF gabungan. */
+export type ItemManifest = ItemSusunan & {
+  label: string;
+  keterangan: string | null;
+  /** Halaman pertama (1-based) & jumlah halaman butir ini di PDF gabungan. */
+  awal: number;
+  halaman: number;
+  /** SHA-256 berkas sisipan (butir lampiran). */
+  sha256?: string;
+};
+
+export type ManifestPaket = {
+  items: ItemManifest[];
+  /** Butir yang tersedia tetapi sengaja tidak diikutkan saat digabung. */
+  nonaktif: ItemSusunan[];
+  /** Sidik susunan (urutan + identitas komponen + hash sisipan) — dasar pakai ulang. */
+  sidik: string;
+  durasiMs: number;
+};
+
+export type PaketInfo = {
+  versi: number;
+  status: StatusPaket;
+  /** SHA-256 PDF gabungan. */
+  hash: string;
+  halaman: number;
+  ukuran: number;
+  manifest: ManifestPaket;
+  dibuatOlehNama: string | null;
+  /** Waktu digabung (versi ini). */
+  digabungPada: string;
+};
+
+export type PaketRingkas = Pick<PaketInfo, "versi" | "status" | "halaman">;
+
+export type PaketKlaim = {
+  nopen: string;
+  statusBerkas: StatusVerifikasi;
+  versiBerkas: number;
+  kategori: Kategori;
+  /** Komponen SIMGOS (tersedia dulu, urutan bawaan). Kosong saat FINAL (susunan = manifest). */
+  komponen: KomponenPaket[];
+  /** Sisipan aktif (belum dihapus), urutan unggah. */
+  lampiran: LampiranItem[];
+  paket: PaketInfo | null;
+  izin: { susun: boolean; cetak: boolean; kunci: boolean; bukaKunci: boolean };
+  batas: { ukuranMaks: number; lampiranMaks: number; halamanMaks: number };
 };
 
 /* ------------------------------------------------ halaman Tindak Lanjut */

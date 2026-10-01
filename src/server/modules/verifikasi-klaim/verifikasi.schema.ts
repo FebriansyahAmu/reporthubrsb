@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  AKSI_PAKET,
   AKSI_TAHAP1,
   AKSI_TAHAP2,
   BATAS,
@@ -174,6 +175,60 @@ export const icdQuerySchema = z.object({
   jenis: z.enum(JENIS_ICD),
   q: z.string().trim().min(1, "Ketik kode atau nama").max(60),
 });
+
+/* ------------------------------------------------------------ paket klaim */
+
+/** Kunci komponen paket (registri `paket.sources`): tetap, atau CPPT per leg (`cppt-<nomor kunjungan>`). */
+export const kunciKomponenSchema = z.string().trim().regex(/^(sep|resume-medis|spri|cppt|cppt-\d{6,30})$/, "Komponen tidak dikenal");
+export const idLampiranSchema = z.string().trim().regex(/^[a-z0-9]{10,30}$/i, "ID sisipan tidak valid");
+
+const itemSusunanSchema = z.discriminatedUnion("tipe", [
+  z.object({ tipe: z.literal("komponen"), key: kunciKomponenSchema }).strict(),
+  z.object({ tipe: z.literal("lampiran"), id: idLampiranSchema }).strict(),
+]);
+
+/**
+ * Gabung paket: susunan AKTIF berurutan (komponen SIMGOS + sisipan). `versi` =
+ * versi berkas yang dilihat. `segar` = ambil ulang dari SIMRS walau susunan
+ * sama dengan paket draf terakhir (tanpa `segar`, paket yang sama dipakai ulang).
+ */
+export const gabungSchema = z
+  .object({
+    versi: z.number().int().min(1),
+    susunan: z
+      .array(itemSusunanSchema)
+      .min(1, "Pilih minimal satu dokumen untuk digabung")
+      .max(BATAS.LAMPIRAN_MAKS + 40),
+    segar: z.boolean().default(false),
+  })
+  .strict()
+  .refine((v) => new Set(v.susunan.map((i) => (i.tipe === "komponen" ? `k:${i.key}` : `l:${i.id}`))).size === v.susunan.length, {
+    message: "Dokumen ganda dalam susunan",
+    path: ["susunan"],
+  });
+
+export type GabungInput = z.infer<typeof gabungSchema>;
+
+/** Kunci FINAL (paket draf versi `paketVersi`) / buka kunci (alasan wajib). */
+export const paketKeputusanSchema = z
+  .object({
+    aksi: z.enum(AKSI_PAKET),
+    versi: z.number().int().min(1),
+    paketVersi: z.number().int().min(1).optional(),
+    catatan,
+  })
+  .strict()
+  .refine((v) => v.aksi !== "KUNCI_FINAL" || v.paketVersi !== undefined, {
+    message: "Versi paket yang dikunci wajib dikirim",
+    path: ["paketVersi"],
+  });
+
+export type PaketKeputusanInput = z.infer<typeof paketKeputusanSchema>;
+
+export const keteranganLampiranSchema = z.string().trim().max(255, "Keterangan maksimal 255 karakter").optional();
+
+/** Mode unduh PDF paket: lihat (pratinjau) · cetak · unduh — dua terakhir tercatat di audit. */
+export const modePdfSchema = z.enum(["lihat", "cetak", "unduh"]).default("lihat");
 
 /* ------------------------------------------------------------ tindak lanjut */
 

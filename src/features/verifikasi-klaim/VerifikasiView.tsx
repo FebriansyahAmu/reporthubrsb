@@ -84,10 +84,12 @@ function params(f: Filter, segar: boolean): URLSearchParams {
 export function VerifikasiView({
   bolehRm,
   bolehCoder,
+  bolehPaket,
   nopenAwal,
 }: {
   bolehRm: boolean;
   bolehCoder: boolean;
+  bolehPaket: boolean;
   nopenAwal: string | null;
 }) {
   const [hariIni] = useState(() => toLocalDateInput(new Date()));
@@ -98,8 +100,8 @@ export function VerifikasiView({
     kategori: "",
     ruangan: "",
     q: "",
-    // Coder tanpa izin RM langsung melihat pekerjaannya (Lolos RM).
-    status: bolehCoder && !bolehRm ? "LOLOS_RM" : "",
+    // Tanpa izin RM langsung ke pekerjaannya: coder → Lolos RM, petugas paket → Siap Final.
+    status: bolehRm ? "" : bolehCoder ? "LOLOS_RM" : bolehPaket ? "LOLOS_KLAIM" : "",
     masalah: "",
     lengkap: "",
     siap: false,
@@ -537,7 +539,22 @@ function SelMasalah({ it }: { it: AntreanItem }) {
       </span>
     );
   }
-  if (it.status === "LOLOS_KLAIM" || it.status === "FINAL") return <span className="text-xs text-fg-subtle">Koding disetujui</span>;
+  if (it.status === "FINAL") {
+    return (
+      <span className="text-xs text-success">
+        Paket final{it.paket ? ` · v${it.paket.versi} · ${it.paket.halaman} hal` : ""}
+      </span>
+    );
+  }
+  if (it.status === "LOLOS_KLAIM") {
+    return it.paket ? (
+      <span className="text-xs text-fg-muted">
+        Draf paket v{it.paket.versi} · {it.paket.halaman} hal — belum dikunci
+      </span>
+    ) : (
+      <span className="text-xs text-fg-subtle">Paket belum digabung</span>
+    );
+  }
   const tahap2 = it.status === "LOLOS_RM";
   const masalah = (tahap2 ? it.koding.masalah : it.cek.masalah).filter((m) => m.status === "gagal");
   if (masalah.length === 0) {

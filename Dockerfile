@@ -52,6 +52,9 @@ RUN addgroup -g 1001 -S nodejs && adduser -u 1001 -S nextjs -G nodejs
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+# Folder penyimpanan berkas (sisipan & PDF Paket Klaim) — titik mount volume;
+# dimiliki nextjs agar named volume baru mewarisi pemilik yang bisa ditulisi.
+RUN mkdir -p /app/storage && chown nextjs:nodejs /app/storage
 USER nextjs
 EXPOSE 3000
 # Cek sehat: server merespons < 500 (halaman login "/" balas 200 tanpa auth).

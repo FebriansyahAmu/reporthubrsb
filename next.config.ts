@@ -22,6 +22,15 @@ const nextConfig: NextConfig = {
    * tak jalan (tidak ter-hydrate). Samakan dengan SIGN_PUBLIC_ORIGIN di .env.
    */
   allowedDevOrigins: ["10.202.100.127", "10.10.102.20"],
+
+  experimental: {
+    /**
+     * Body request yang melewati `src/proxy.ts` di-buffer & DIPOTONG DIAM-DIAM
+     * di batas ini (default 10 MB). Sisipan Paket Klaim maks 10 MB + overhead
+     * multipart → 12 MB agar unggahan tidak rusak.
+     */
+    proxyClientMaxBodySize: "12mb",
+  },
 };
 
 export default nextConfig;

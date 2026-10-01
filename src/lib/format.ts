@@ -36,6 +36,14 @@ export function formatRupiah(n: number | null | undefined): string {
   return rupiahFmt.format(n);
 }
 
+/** Ukuran berkas ringkas (mis. "820 KB", "1,4 MB"). */
+export function formatUkuran(bytes: number | null | undefined): string {
+  if (bytes == null || Number.isNaN(bytes)) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1).replace(".", ",")} MB`;
+}
+
 /** Rupiah ringkas untuk angka besar (mis. "Rp9,4 jt", "Rp1,2 rb"). */
 export function formatRupiahRingkas(n: number | null | undefined): string {
   if (n == null || Number.isNaN(n)) return "—";

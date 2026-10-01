@@ -16,6 +16,27 @@ export function ok<T>(data: T, meta?: unknown) {
   return NextResponse.json({ data, meta }, { status: 200 });
 }
 
+/**
+ * Response berkas biner (PDF / gambar) dari penyimpanan / report engine:
+ * inline (pratinjau) atau attachment (unduh). Nama berkas ASCII + `filename*`
+ * UTF-8; `nosniff` agar browser tak menebak tipe lain dari isi berkas.
+ */
+export function berkasResponse(bytes: Uint8Array, opts: { mime: string; nama: string; unduh?: boolean }) {
+  const ascii = opts.nama.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+  const body = new Uint8Array(bytes.byteLength);
+  body.set(bytes);
+  return new Response(body.buffer, {
+    status: 200,
+    headers: {
+      "Content-Type": opts.mime,
+      "Content-Length": String(bytes.byteLength),
+      "Content-Disposition": `${opts.unduh ? "attachment" : "inline"}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(opts.nama)}`,
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
 /** Terjemahkan error apa pun → response error standar { error: { code, message, details } }. */
 export function fail(err: unknown) {
   if (err instanceof ZodError) {

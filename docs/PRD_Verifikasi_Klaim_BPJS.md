@@ -5,7 +5,7 @@
 **Project:** ReportHub (`reporthubrsb`) · Workspace **Berkas & Klaim** (`berkas-klaim`)
 **Organisasi:** UPTD RSUD Bolaang Mongondow Timur
 **Versi:** 1.0 — keputusan §11 disetujui mengikuti rekomendasi (matriks §5.1 tetap menunggu pengesahan Casemix)
-**Tanggal:** 29 September 2026 · **Status:** Stage V0, V1 & V2 selesai (§8) — 1 Oktober 2026
+**Tanggal:** 29 September 2026 · **Status:** Stage V0–V3 selesai (§8) — 1 Oktober 2026
 **Sifat data SIMGOS:** **FULL READ-ONLY.** Hanya `SELECT` / `information_schema`. Tidak ada DDL/DML, tidak menambah/mengubah tabel apa pun di SIMGOS. Semua status verifikasi, koreksi, lampiran, dan paket disimpan di DB aplikasi `reporthub`.
 
 ---
@@ -296,8 +296,13 @@ src/server/modules/verifikasi-klaim/
   koding.service.ts         // keputusan coder (ajukan/revisi, loloskan klaim, kembalikan)
   koding.sinkron.ts         // deteksi "sudah diterapkan di SIMRS" + bukti log
   icd.cache.ts              // cache ICD-10/9 IM per kode & per pencarian (24 jam)
-  paket.sources.ts          // registri komponen paket (strategy: applicable() + fetchPdf())
-  paket.service.ts          // gabung PDF (pdf-lib) + sisipan + versi/hash
+  paket.dal.ts              // sumber parameter komponen (leg CPPT, SPRI, resume) — 1 query read-only
+  paket.sources.ts          // registri komponen paket (strategy: kumpulkan(fakta) → komponen + payload report)
+  paket.susunan.ts          // susunan bawaan, selaraskan, "berubah sejak digabung" (MURNI, aman client)
+  paket.berkas.ts           // sisipan: magic bytes, sanitasi nama, PDF/gambar → halaman (EXIF)
+  paket.repo.ts             // klaim_lampiran / klaim_paket (Prisma)
+  paket.service.ts          // gabung PDF (pdf-lib) + sisipan + versi/hash + kunci/buka kunci
+src/server/lib/storage.ts        // penyimpanan berkas di disk (STORAGE_DIR, path aman, tulis atomik)
 src/server/modules/notifikasi/   // generik, bisa dipakai modul lain
 src/features/verifikasi-klaim/   // UI
 ```
@@ -324,6 +329,11 @@ Lapisan tetap: schema → dal → service → route (`withPermission` + `ok`/`fa
 - Batas: sisipan maks **10 MB/berkas**, **20 sisipan**, paket maks **300 halaman**.
 - Hasil gabung di-cache berdasarkan **hash manifest** (urutan + versi komponen); cetak ulang tanpa perubahan tak menggabung ulang.
 - Paket FINAL disimpan satu versi per NOPEN (versi lama diganti, hash tercatat di riwayat).
+
+Diukur V3 (1 Okt 2026):
+- Report engine 0,6–1,5 dtk per komponen; paket RI 4–5 komponen digabung dalam 3–5 dtk.
+- "Hash manifest" = **sidik susunan**: urutan + parameter report tiap komponen + SHA-256 sisipan. Susunan sama → paket draf dipakai ulang (±0,1 dtk), kecuali pengguna meminta **gabung ulang dari SIMRS**. Cetak/unduh selalu melayani PDF tersimpan.
+- Body unggahan melewati `src/proxy.ts`, yang memotong body **diam-diam** di 10 MB. Karena itu `experimental.proxyClientMaxBodySize` dinaikkan ke 12 MB (sisipan 10 MB + overhead multipart).
 
 ### 7.4. Model data baru (DB `reporthub`, DDL manual — bukan `prisma db push`)
 
@@ -506,10 +516,100 @@ Catatan operasional:
 - DPJP butuh **Tindak Lanjut Berkas** + NIP agar menerima item koreksi diagnosa. Petugas ruang butuh login SIMGOS ber-akses ruang agar menerima item koreksi prosedur.
 - Opsi `useTextProtocol` adapter mariadb berpotensi memangkas overhead per query di seluruh aplikasi, tetapi perlu uji regresi semua modul (di luar cakupan V2).
 
-### Stage V3 — Paket Klaim (PDF dari SIMGOS + sisipan)
+### Stage V3 — Paket Klaim (PDF dari SIMGOS + sisipan) ✅ (1 Okt 2026)
 
 - Registri komponen; komponen report engine SIMGOS (SEP, Resume Medis, SPRI, CPPT + CPPT IGD).
 - Unggah sisipan + urutan seret-lepas + gabung (pdf-lib) + pratinjau + cetak/unduh + kunci FINAL + versi/hash + buka kunci beralasan.
+
+**Hasil V3:**
+
+Kode (`verifikasi-klaim/`):
+- `paket.dal` (satu query `UNION ALL`, read-only) dan `paket.sources`. Registri ini menghasilkan, per episode:
+  - SEP: aturan pemilihan sama dengan snapshot;
+  - Resume Medis: hanya bila resume terisi, karena report tetap mengeluarkan PDF kosong 2 halaman;
+  - SPRI (RI);
+  - **CPPT per leg**, termasuk leg IGD asal.
+  Komponen yang tidak tersedia ikut ditampilkan beserta alasannya.
+- `paket.berkas` (sisipan), `paket.susunan` (murni), `paket.repo`, `paket.service`.
+- `server/lib/storage` (disk, `STORAGE_DIR`).
+- Pembentuk payload report dipusatkan di `report.registry`, sehingga tidak ada duplikasi NAME/PARAMETER.
+- Tidak ada tabel baru: `klaim_lampiran` & `klaim_paket` sudah dibuat sejak V0.
+
+API (`/api/berkas-klaim/paket/[nopen]`):
+- `GET` — komponen, sisipan, paket terakhir & izin.
+- `POST lampiran` (multipart) dan `GET`/`DELETE lampiran/[id]`.
+- `GET komponen/[key]` — pratinjau PDF segar.
+- `POST gabung`.
+- `GET pdf?mode=lihat|cetak|unduh`.
+- `POST keputusan` (`KUNCI_FINAL` / `BUKA_KUNCI`).
+
+Antrean membawa ringkasan paket. Viewer `/print/paket/[nopen]` (iframe) dipakai untuk pratinjau komponen, sisipan, dan cetak.
+
+UI — tab **Paket Klaim** (bawaan untuk status Siap Final/Final):
+- Susunan paket: seret-lepas plus tombol naik/turun (keyboard & HP), centang ikut/tidak, pratinjau per dokumen, rentang halaman per butir.
+- Unggah seret-lepas atau pilih berkas, dengan keterangan.
+- Gabungkan, lalu pratinjau PDF di panel.
+- Cetak & Unduh.
+- Kunci FINAL (konfirmasi menampilkan versi, halaman & SHA-256).
+- Buka kunci (coder, modal alasan).
+- Riwayat menampilkan versi paket + SHA-256 dan sisipan.
+- Petugas paket tanpa izin RM/coder langsung membuka antrean "Siap Final".
+
+Keputusan desain V3:
+- **CPPT per leg.** Report `CetakCatatanMedik` hanya mencetak leg `PKUNJUNGAN`. Diuji: pasien pindah ruang, leg A 1 halaman + leg B 4 halaman. Satu komponen per leg memastikan paket tidak kurang. Cetak tunggal di Berkas Klaim RM tidak diubah.
+- **Komponen gagal → penggabungan gagal (503) dengan nama komponennya.** Paket tidak pernah diam-diam kurang. Pengguna mencoba lagi atau mengeluarkan komponen itu secara sadar.
+- **Sisipan:**
+  - Jenis berkas ditentukan dari magic bytes (PDF/PNG/JPEG); ekstensi diabaikan.
+  - PDF berkata sandi ditolak.
+  - Berkas disimpan beralamat isi (`klaim/<nopen>/lampiran/<sha256>.<ext>`); nama asli hanya disimpan sebagai tampilan setelah disanitasi.
+  - Maks 10 MB per berkas & 20 sisipan aktif.
+  - Hapus bersifat lunak; berkas fisik disimpan.
+  - Gambar menjadi satu halaman A4: lanskap bila gambar melebar, dan foto HP diputar sesuai EXIF orientasi.
+- **Integritas:** setiap kali PDF paket dilayani, SHA-256-nya dicocokkan dengan DB. Bila berbeda → 500 + audit `klaim.paket.integritas-gagal`.
+- **Cetak/unduh** tercatat di audit secara fail-closed: versi & hash paket mana yang dicetak (PRD §1). Pratinjau tidak dicatat.
+- **Kunci FINAL** hanya untuk paket draf yang dipratinjau (versi paket dicocokkan) dan semua sisipan di dalamnya masih aktif.
+- **Buka kunci** (coder, alasan wajib) mengembalikan paket ke DRAF tanpa menggabung ulang, dan pengunci diberi notifikasi.
+- **Konkurensi:** maks 2 penggabungan per proses; satu penggabungan per berkas (yang kedua 409); tulisan paket per berkas diserialkan dengan `SELECT … FOR UPDATE` pada `klaim_verifikasi`.
+- **Penyimpanan:** volume Docker `reporthubrsb-storage` → `/app/storage` (dimiliki `nextjs`). Lokal: `./storage` (di-gitignore).
+
+Validasi E2E 47/47 + UI 17/17:
+- **Komponen = SQL SIMGOS independen** (formulasi berbeda) untuk 3 episode (RI + IGD asal, RI 2 leg CPPT, RJ): nomor SEP, SPRI, resume, dan jumlah catatan per leg CPPT; IGD asal diurutkan lebih dulu.
+- **Sisipan:**
+  - SHA-256 DB = berkas di disk;
+  - ditolak 422: teks ber-ekstensi `.pdf`, EXE ber-ekstensi `.png`, kosong, PDF terenkripsi, 10 MB+1, 13 MB;
+  - PDF tepat 10 MB (body > 10 MB) diterima utuh — batas proxy berlaku;
+  - duplikat ditolak; nama disanitasi; batas 20; hapus-lunak; akses silang antar-NOPEN 404.
+- **PDF gabungan:**
+  - urutan halaman = manifest;
+  - halaman per butir = PDF komponen yang ditarik terpisah;
+  - sisipan tepat di posisi pilihan (halaman 300×300);
+  - PNG → A4 lanskap; JPEG EXIF-6 → potret + rotasi −90°;
+  - SHA-256 = DB = berkas.
+- **Pakai ulang, segar & konkurensi:**
+  - pakai ulang ±0,1 dtk vs gabung 3,5 dtk;
+  - segar → versi baru & berkas lama diganti;
+  - > 300 halaman 409;
+  - dua gabung bersamaan → satu 409.
+- **Kunci / buka kunci:**
+  - kunci: versi paket lama / versi berkas usang 409, sisipan dalam paket terhapus 409;
+  - saat FINAL, unggah / hapus / gabung 409;
+  - buka kunci: petugas paket 403, alasan pendek 422; berhasil → DRAF dengan hash sama + notifikasi;
+  - kunci ulang tanpa menggabung ulang.
+- **Audit, RBAC & data:**
+  - audit 8 jenis aksi tanpa nama pasien / nama berkas;
+  - RBAC per aksi;
+  - integritas: berkas diubah di disk → 500;
+  - DAL tanpa kata kunci tulis; payload tanpa `DOCUMENT_STORAGE`;
+  - storage & data uji terhapus; data nyata tidak berubah.
+- **UI** 1440 px & 390 px tanpa scroll horizontal, tanpa error JS.
+
+Regresi: V2 E2E 66/66 · UI 15/15, V1 E2E 59/59 · UI 17/17, drift 8/8. V0 E2E 45/49 — sisa 4 item usang yang sudah diketahui sejak V2 (R5/R7/R9/W2). Batas waktu A2/A4/D7/K3 kini lolos karena latensi DB turun.
+
+Catatan operasional:
+- Petugas paket butuh **Paket Klaim (Final)**: lihat, buat (susun/unggah/gabung/kunci), cetak (cetak/unduh).
+- Buka kunci butuh **Verifikasi Klaim / Coder (ubah)**.
+- Deploy: `docker compose up -d` membuat volume `reporthubrsb-storage` otomatis. Tanpa migrasi DB.
+- Sisipan yang dihapus-lunak tetap di disk. Pembersihan terjadwal belum dibuat (kandidat V5).
 
 ### Stage V4 — Komponen tambahan
 

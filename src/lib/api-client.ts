@@ -46,6 +46,15 @@ export async function apiPost<T>(url: string, body: unknown): Promise<T> {
   );
 }
 
+/** POST multipart (unggah berkas) — browser yang menetapkan boundary Content-Type. */
+export async function apiUpload<T>(url: string, form: FormData): Promise<T> {
+  return baca<T>(await fetch(url, { method: "POST", headers: { Accept: "application/json" }, body: form }));
+}
+
+export async function apiDelete<T>(url: string): Promise<T> {
+  return baca<T>(await fetch(url, { method: "DELETE", headers: { Accept: "application/json" } }));
+}
+
 /** Pesan galat validasi per field (`details.fieldErrors`) → satu kalimat. */
 export function pesanGalat(e: unknown, cadangan = "Terjadi kesalahan"): string {
   if (e instanceof ApiError) {

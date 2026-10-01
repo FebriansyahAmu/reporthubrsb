@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * Verifikasi Klaim BPJS — antrean kerja + ruang kerja berkas (Tahap 1
- * Kelengkapan RM, Tahap 2 Koding). `?nopen=` membuka ruang kerja berkas itu
- * langsung (tautan notifikasi). docs/PRD_Verifikasi_Klaim_BPJS.md §6.
+ * Kelengkapan RM, Tahap 2 Koding, Paket Klaim). `?nopen=` membuka ruang kerja
+ * berkas itu langsung (tautan notifikasi). docs/PRD_Verifikasi_Klaim_BPJS.md §6.
  */
 export default async function VerifikasiKlaimPage({
   searchParams,
@@ -20,6 +20,7 @@ export default async function VerifikasiKlaimPage({
   const user = await requireAnyModule(MODUL_ANTREAN);
   const bolehRm = await hasModule(user, MODUL_VERIFIKASI.RM, "update");
   const bolehCoder = await hasModule(user, MODUL_VERIFIKASI.KLAIM, "view");
+  const bolehPaket = await hasModule(user, MODUL_VERIFIKASI.PAKET, "view");
   const { nopen } = await searchParams;
   const nopenAwal = typeof nopen === "string" && /^\d{6,20}$/.test(nopen) ? nopen : null;
 
@@ -29,7 +30,7 @@ export default async function VerifikasiKlaimPage({
         title="Verifikasi Klaim BPJS"
         description="Antrean kerja per episode (tanggal pulang): periksa kelengkapan berkas RM, sesuaikan koding (coder), lalu teruskan ke paket klaim. Perubahan data dilakukan di SIMRS — aplikasi ini membaca & melacaknya."
       />
-      <VerifikasiView bolehRm={bolehRm} bolehCoder={bolehCoder} nopenAwal={nopenAwal} />
+      <VerifikasiView bolehRm={bolehRm} bolehCoder={bolehCoder} bolehPaket={bolehPaket} nopenAwal={nopenAwal} />
     </FadeIn>
   );
 }

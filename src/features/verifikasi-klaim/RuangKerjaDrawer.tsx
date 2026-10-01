@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, GitMerge, History, Info, RefreshCw } from "lucide-react";
+import { ArrowRight, GitMerge, History, Info, Lock, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
@@ -10,12 +10,13 @@ import { ErrorState } from "@/components/feedback/States";
 import { useToast } from "@/components/ui/Toast";
 import { ApiError, apiGet, apiPost, pesanGalat } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatUkuran } from "@/lib/format";
 import { useAsyncData } from "@/lib/useAsyncData";
 import { getAturanKoding } from "@/server/modules/verifikasi-klaim/koding.rules";
 import {
   KATEGORI_LABEL,
   STATUS_META,
+  type AksiPaket,
   type AksiTahap2,
   type StatusVerifikasi,
 } from "@/server/modules/verifikasi-klaim/verifikasi.constants";
@@ -23,24 +24,33 @@ import { labelAturan } from "@/server/modules/verifikasi-klaim/verifikasi.rules"
 import type { RiwayatItem, RuangKerjaKlaim } from "@/server/modules/verifikasi-klaim/verifikasi.types";
 import { PanelKelengkapan, type KirimKeputusan } from "./PanelKelengkapan";
 import { PanelKoding, type KirimKoding } from "./PanelKoding";
+import { PanelPaket, type KirimPaket } from "./PanelPaket";
 import { StatusVerifikasiBadge } from "./status-ui";
 
-type Tab = "kelengkapan" | "koding" | "riwayat";
+type Tab = "kelengkapan" | "koding" | "paket" | "riwayat";
 
-/** Tab bawaan mengikuti tahap berkas: setelah Lolos RM pekerjaannya ada di Koding. */
+/** Tab bawaan mengikuti tahap berkas: setelah Lolos RM di Koding, setelah lolos klaim di Paket. */
 const TAB_TAHAP: Record<StatusVerifikasi, Tab> = {
   BELUM_DIPERIKSA: "kelengkapan",
   TIDAK_LENGKAP: "kelengkapan",
   LOLOS_RM: "koding",
   KOREKSI_KODING: "koding",
-  LOLOS_KLAIM: "koding",
-  FINAL: "koding",
+  LOLOS_KLAIM: "paket",
+  FINAL: "paket",
 };
+
+/** Status di mana tab Paket aktif. */
+const STATUS_PAKET: readonly StatusVerifikasi[] = ["LOLOS_KLAIM", "FINAL"];
 
 const PESAN_KODING: Record<AksiTahap2, [string, string]> = {
   AJUKAN_KOREKSI: ["Usulan koreksi terkirim", "Tindak lanjut & notifikasi dikirim ke penerap di SIMRS."],
   LOLOSKAN_KLAIM: ["Klaim diloloskan", "Berkas siap dipaketkan (Tahap final)."],
   KEMBALIKAN_KE_RM: ["Berkas dikembalikan ke Tahap 1", "Verifikator RM diberi tahu."],
+};
+
+const PESAN_PAKET: Record<AksiPaket, [string, string]> = {
+  KUNCI_FINAL: ["Paket dikunci FINAL", "Berkas klaim siap dicetak / dikirim."],
+  BUKA_KUNCI: ["Kunci FINAL dibuka", "Paket dapat disusun & digabung ulang; pengunci diberi tahu."],
 };
 
 /**
@@ -69,7 +79,10 @@ export function RuangKerjaDrawer({
   );
   // Respons keputusan menggantikan hasil muat sampai "Cek ulang" berikutnya.
   const data = terbaru && terbaru.snapshot.nopen === nopen ? terbaru : result;
-  const tab: Tab = tabPilihan ?? (data ? TAB_TAHAP[data.status] : "kelengkapan");
+  const paketAktif = !!data && data.izin.paket && STATUS_PAKET.includes(data.status);
+  const bawaan: Tab = data ? TAB_TAHAP[data.status] : "kelengkapan";
+  const tabDipilih: Tab = tabPilihan ?? (bawaan === "paket" && !paketAktif ? "koding" : bawaan);
+  const tab: Tab = tabDipilih === "paket" && !paketAktif ? "koding" : tabDipilih;
 
   function cekUlang() {
     setTerbaru(null);
@@ -118,6 +131,9 @@ export function RuangKerjaDrawer({
   const kirimKoding: KirimKoding = async (body) =>
     !!nopen && putuskan(`/api/berkas-klaim/koding/${nopen}/keputusan`, body, PESAN_KODING[body.aksi]);
 
+  const kirimPaket: KirimPaket = async (body) =>
+    !!nopen && putuskan(`/api/berkas-klaim/paket/${nopen}/keputusan`, body, PESAN_PAKET[body.aksi]);
+
   const s = data?.snapshot;
   return (
     <Drawer
@@ -160,11 +176,17 @@ export function RuangKerjaDrawer({
                 </span>
               )}
             </TabButton>
+            <TabButton
+              aktif={tab === "paket"}
+              onClick={() => setTabPilihan("paket")}
+              disabled={!paketAktif}
+              title={paketAktif ? undefined : data && !data.izin.paket ? "Butuh izin Paket Klaim / Coder" : "Tersedia setelah klaim diloloskan coder"}
+            >
+              Paket Klaim
+              {data?.status === "FINAL" && <Lock className="ml-1 inline size-3" aria-label="terkunci" />}
+            </TabButton>
             <TabButton aktif={tab === "riwayat"} onClick={() => setTabPilihan("riwayat")}>
               Riwayat{data ? ` (${data.riwayat.length})` : ""}
-            </TabButton>
-            <TabButton aktif={false} disabled title="Stage V3">
-              Paket Klaim
             </TabButton>
           </div>
           <Button
@@ -198,6 +220,14 @@ export function RuangKerjaDrawer({
               <PanelKelengkapan key={`${data.snapshot.nopen}:${data.versi ?? 0}`} data={data} kirim={kirim} mengirim={mengirim} />
             ) : tab === "koding" ? (
               <PanelKoding key={`${data.snapshot.nopen}:${data.versi ?? 0}`} data={data} kirim={kirimKoding} mengirim={mengirim} />
+            ) : tab === "paket" ? (
+              <PanelPaket
+                key={`${data.snapshot.nopen}:${data.versi ?? 0}`}
+                nopen={data.snapshot.nopen}
+                kirim={kirimPaket}
+                mengirim={mengirim}
+                onBerubah={onBerubah}
+              />
             ) : (
               <PanelRiwayat items={data.riwayat} />
             )}
@@ -245,6 +275,10 @@ const DATA_LABEL: Record<string, string> = { item: "Item", gagal: "Pemeriksaan g
 /** Label kunci aturan Tahap 1 / Tahap 2 / item tindak lanjut. */
 const labelKunci = (k: string) => getAturanKoding(k)?.label ?? labelAturan(k);
 
+type InfoPaketRiwayat = { versi: number; hash: string; halaman: number; ukuran: number };
+const infoPaket = (p: unknown): InfoPaketRiwayat | null =>
+  p && typeof p === "object" && typeof (p as InfoPaketRiwayat).hash === "string" ? (p as InfoPaketRiwayat) : null;
+
 const buktiOleh = (b: unknown) => (b && typeof b === "object" && typeof (b as { oleh?: unknown }).oleh === "string" ? (b as { oleh: string }).oleh : null);
 const buktiPada = (b: unknown) => (b && typeof b === "object" && typeof (b as { pada?: unknown }).pada === "string" ? (b as { pada: string }).pada : null);
 
@@ -262,6 +296,7 @@ function PanelRiwayat({ items }: { items: readonly RiwayatItem[] }) {
     <ol className="space-y-3 px-5 py-4">
       {items.map((r) => {
         const d = r.data ?? {};
+        const pk = infoPaket(d.paket);
         return (
           <li key={r.id} className="relative rounded-[var(--radius-md)] border border-border bg-surface px-4 py-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
@@ -295,6 +330,15 @@ function PanelRiwayat({ items }: { items: readonly RiwayatItem[] }) {
                 ))}
               </ul>
             )}
+            {pk && (
+              <p className="mt-1 text-xs text-fg-muted">
+                Paket v{pk.versi} · {pk.halaman} halaman · {formatUkuran(pk.ukuran)} ·{" "}
+                <span className="font-mono text-[11px]" title={pk.hash}>
+                  SHA-256 {pk.hash.slice(0, 16)}…
+                </span>
+              </p>
+            )}
+            {typeof d.nama === "string" && <p className="mt-1 truncate text-xs text-fg-muted">Sisipan: {d.nama}</p>}
             {buktiOleh(d.bukti) && (
               <p className="mt-1 text-xs text-fg-muted">
                 Diterapkan di SIMRS oleh {buktiOleh(d.bukti)}

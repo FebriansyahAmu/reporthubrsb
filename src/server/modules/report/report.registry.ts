@@ -24,8 +24,14 @@ export type ReportDef = {
   build: (nopen: string) => Promise<ReportPayload | null>;
 };
 
-/** Payload cetak "Catatan Medik" (CPPT) untuk satu leg (NOPEN + KUNJUNGAN). */
-function cpptPayload(nopen: string, kunjungan: string): ReportPayload {
+/*
+ * Pembentuk payload per report — dipakai registry cetak di bawah dan registry
+ * komponen Paket Klaim (verifikasi-klaim/paket.sources.ts), agar NAME/PARAMETER
+ * tiap report hanya tertulis di satu tempat.
+ */
+
+/** "Catatan Medik" (CPPT) — PER LEG: hanya catatan leg `kunjungan` yang tercetak. */
+export function cpptPayload(nopen: string, kunjungan: string): ReportPayload {
   return {
     NAME: "mr.7111011-CetakCatatanMedik",
     PARAMETER: { PNOPEN: nopen, PKUNJUNGAN: kunjungan, PID: 0 },
@@ -39,39 +45,63 @@ function cpptPayload(nopen: string, kunjungan: string): ReportPayload {
   };
 }
 
+export function resumeMedisPayload(nopen: string): ReportPayload {
+  return {
+    TITLE: `RESUME MEDIS - ${nopen}`,
+    NAME: "mr.7111011-CetakMR2ResumeMedis",
+    FINAL: 1,
+    ENABLE_BUTTON_SIGN: false,
+    PARAMETER: { PNOPEN: nopen },
+    PRINT_NAME: "CetakMR",
+    TYPE: "Pdf",
+    EXT: "pdf",
+    REQUEST_FOR_PRINT: false,
+    ALLOW_DOWNLOAD: false,
+    CONNECTION_NUMBER: 0,
+    COPIES: 1,
+  };
+}
+
+export function sepPayload(noSep: string): ReportPayload {
+  return {
+    NAME: "bpjs.7111011-CetakSEP",
+    TYPE: "Pdf",
+    EXT: "pdf",
+    PARAMETER: { PSEP: noSep, CETAK_HEADER: 1 },
+    REQUEST_FOR_PRINT: false,
+    MULTI_PRINT: false,
+    PRINT_NAME: "CetakSEP",
+    ALLOW_DOWNLOAD: false,
+    CONNECTION_NUMBER: 0,
+    COPIES: 1,
+  };
+}
+
+/** SPRI — PKUNJUNGAN = leg IGD/asal tempat SPRI dibuat (bukan leg Rawat Inap). */
+export function spriPayload(kunjungan: string): ReportPayload {
+  return {
+    NAME: "bpjs.7111011-RencanaKontrol",
+    TYPE: "Pdf",
+    EXT: "pdf",
+    PARAMETER: { PKUNJUNGAN: kunjungan, CETAK_HEADER: 1 },
+    REQUEST_FOR_PRINT: false,
+    MULTI_PRINT: false,
+    PRINT_NAME: "CetakSPRI",
+    TITLE: "Cetak Surat Rencana Rawat Inap",
+    ALLOW_DOWNLOAD: false,
+    CONNECTION_NUMBER: 0,
+    COPIES: 1,
+  };
+}
+
 export const REPORTS: Record<string, ReportDef> = {
   "resume-medis": {
-    build: async (nopen) => ({
-      TITLE: `RESUME MEDIS - ${nopen}`,
-      NAME: "mr.7111011-CetakMR2ResumeMedis",
-      FINAL: 1,
-      ENABLE_BUTTON_SIGN: false,
-      PARAMETER: { PNOPEN: nopen },
-      PRINT_NAME: "CetakMR",
-      TYPE: "Pdf",
-      EXT: "pdf",
-      REQUEST_FOR_PRINT: false,
-      ALLOW_DOWNLOAD: false,
-      CONNECTION_NUMBER: 0,
-      COPIES: 1,
-    }),
+    build: async (nopen) => resumeMedisPayload(nopen),
   },
   sep: {
     build: async (nopen) => {
       const sep = await querySepByNopen(nopen);
-      if (!sep) return null;
-      return {
-        NAME: "bpjs.7111011-CetakSEP",
-        TYPE: "Pdf",
-        EXT: "pdf",
-        PARAMETER: { PSEP: sep, CETAK_HEADER: 1 },
-        REQUEST_FOR_PRINT: false,
-        MULTI_PRINT: false,
-        PRINT_NAME: "CetakSEP",
-        ALLOW_DOWNLOAD: false,
-        CONNECTION_NUMBER: 0,
-        COPIES: 1,
-      };
+      return sep ? sepPayload(sep) : null;
     },
   },
   cppt: {
@@ -82,22 +112,8 @@ export const REPORTS: Record<string, ReportDef> = {
   },
   spri: {
     build: async (nopen) => {
-      // PKUNJUNGAN = leg IGD/asal tempat SPRI dibuat (bukan leg Rawat Inap).
       const kunjungan = await querySpriKunjunganByNopen(nopen);
-      if (!kunjungan) return null;
-      return {
-        NAME: "bpjs.7111011-RencanaKontrol",
-        TYPE: "Pdf",
-        EXT: "pdf",
-        PARAMETER: { PKUNJUNGAN: kunjungan, CETAK_HEADER: 1 },
-        REQUEST_FOR_PRINT: false,
-        MULTI_PRINT: false,
-        PRINT_NAME: "CetakSPRI",
-        TITLE: "Cetak Surat Rencana Rawat Inap",
-        ALLOW_DOWNLOAD: false,
-        CONNECTION_NUMBER: 0,
-        COPIES: 1,
-      };
+      return kunjungan ? spriPayload(kunjungan) : null;
     },
   },
 };

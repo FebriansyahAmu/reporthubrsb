@@ -57,6 +57,7 @@ import {
   type KoreksiAktif,
   type StatusTersimpan,
 } from "./verifikasi.repo";
+import { findPaketRingkas } from "./paket.repo";
 import { cekManualUntuk, evaluasi, masalahDari } from "./verifikasi.rules";
 import { selisihHari, tambahHari, type AntreanFilter, type AntreanQuery } from "./verifikasi.schema";
 import { sinkronTindakLanjut } from "./tindak-lanjut.sinkron";
@@ -68,6 +69,7 @@ import type {
   HasilCek,
   IzinKlaim,
   MasalahRingkas,
+  PaketRingkas,
   RuangKerjaKlaim,
   SnapshotKlaim,
 } from "./verifikasi.types";
@@ -103,7 +105,7 @@ function kategoriDari(e: EpisodeRow): Kategori {
 }
 
 /** SEP dengan jenis pelayanan cocok (RI=1, lainnya=2), tglSEP terdekat (kandidat sudah terurut). */
-function pilihSep(kandidat: SepKandidat[] | undefined, kategori: Kategori): SnapshotKlaim["fakta"]["sep"] {
+export function pilihSep(kandidat: SepKandidat[] | undefined, kategori: Kategori): SnapshotKlaim["fakta"]["sep"] {
   const jp = kategori === "RI" ? 1 : 2;
   const k = kandidat?.find((c) => c.jenisPelayanan === jp);
   return k ? { nomor: k.nomor, tanggal: k.tanggal } : null;
@@ -259,6 +261,7 @@ function keItem(
   simpan: StatusTersimpan | undefined,
   tl: { open: number; total: number } | undefined,
   koreksi: KoreksiAktif | undefined,
+  paket: PaketRingkas | undefined,
 ): AntreanItem {
   const status = simpan?.status ?? STATUS_AWAL;
   return {
@@ -294,6 +297,7 @@ function keItem(
             sejak: koreksi.createdAt.toISOString(),
           }
         : null,
+    paket: status === "LOLOS_KLAIM" || status === "FINAL" ? (paket ?? null) : null,
   };
 }
 
@@ -375,11 +379,23 @@ export async function itemAntrean(f: AntreanFilter & { segar?: "1" }) {
   }
 
   const tersimpan = await findStatusByNopens(nopens);
-  const tl = await hitungTindakLanjut(nopens);
-  const koreksi = await findKoreksiAktif(nopens.filter((n) => tersimpan.get(n)?.status === "KOREKSI_KODING"));
+  const tahap = (st: StatusVerifikasi[]) => nopens.filter((n) => st.includes(tersimpan.get(n)?.status ?? STATUS_AWAL));
+  const [tl, koreksi, paket] = await Promise.all([
+    hitungTindakLanjut(nopens),
+    findKoreksiAktif(tahap(["KOREKSI_KODING"])),
+    findPaketRingkas(tahap(["LOLOS_KLAIM", "FINAL"])),
+  ]);
   const semua = k.snapshots
     .map((s) =>
-      keItem(s, k.cek.get(s.nopen)!, k.koding.get(s.nopen)!, tersimpan.get(s.nopen), tl.get(s.nopen), koreksi.get(s.nopen)),
+      keItem(
+        s,
+        k.cek.get(s.nopen)!,
+        k.koding.get(s.nopen)!,
+        tersimpan.get(s.nopen),
+        tl.get(s.nopen),
+        koreksi.get(s.nopen),
+        paket.get(s.nopen),
+      ),
     )
     .sort((a, b) => (a.pulang ?? "").localeCompare(b.pulang ?? "") || a.nopen.localeCompare(b.nopen));
   return { semua, k, at, hit };
@@ -494,11 +510,18 @@ export async function getDetailKlaim(nopen: string): Promise<DetailKlaim> {
   return bangunDetail(b);
 }
 
-/** Aksi Tahap 1 & 2 yang boleh dilakukan pengguna pada berkas ini sekarang. */
+/** Aksi Tahap 1, 2 & paket yang boleh dilakukan pengguna pada berkas ini sekarang. */
 export async function izinKlaim(user: SessionUser, d: Pick<DetailKlaim, "status" | "final" | "digabungKe">): Promise<IzinKlaim> {
   const sah = d.final && !d.digabungKe;
-  const rm = sah && (await can(user.role, MODUL_VERIFIKASI.RM, "update"));
-  const coder = sah && (await can(user.role, MODUL_VERIFIKASI.KLAIM, "update"));
+  const [rmUbah, coderUbah, coderLihat, paketLihat, paketBuat] = await Promise.all([
+    can(user.role, MODUL_VERIFIKASI.RM, "update"),
+    can(user.role, MODUL_VERIFIKASI.KLAIM, "update"),
+    can(user.role, MODUL_VERIFIKASI.KLAIM, "view"),
+    can(user.role, MODUL_VERIFIKASI.PAKET, "view"),
+    can(user.role, MODUL_VERIFIKASI.PAKET, "create"),
+  ]);
+  const rm = sah && rmUbah;
+  const coder = sah && coderUbah;
   const boleh = (izin: boolean, aksi: AksiVerifikasi) => izin && !!cariTransisi(d.status, aksi);
   return {
     loloskan: boleh(rm, "LOLOSKAN_RM"),
@@ -506,6 +529,9 @@ export async function izinKlaim(user: SessionUser, d: Pick<DetailKlaim, "status"
     ajukanKoreksi: boleh(coder, "AJUKAN_KOREKSI"),
     loloskanKlaim: boleh(coder, "LOLOSKAN_KLAIM"),
     kembalikan: boleh(coder, "KEMBALIKAN_KE_RM"),
+    paket: sah && (paketLihat || coderLihat),
+    kunciFinal: boleh(sah && paketBuat, "KUNCI_FINAL"),
+    bukaKunci: boleh(coder, "BUKA_KUNCI"),
   };
 }
 
