@@ -7,7 +7,9 @@ import {
   Eye,
   FileSpreadsheet,
   FileText,
+  ImageOff,
   Layers,
+  Package,
   Pencil,
   Plus,
   Search,
@@ -38,6 +40,7 @@ import {
   deleteBarang as apiDeleteBarang,
   fetchBarang,
   fetchRefs,
+  fotoBarangUrl,
   type BarangItem,
   type BarangListMeta,
   type FormRefs,
@@ -276,9 +279,14 @@ export function MasterBarangView({ perms }: { perms: BarangPerms }) {
               {items.map((b) => (
                 <TR key={b.id} className="cursor-pointer" onClick={() => setDetailItem(b)}>
                   <TD>
-                    <p className="font-mono text-xs font-semibold text-brand">{b.kodeBarang}</p>
-                    <p className="mt-0.5 font-medium text-fg">{b.nama}</p>
-                    {b.merk && <p className="text-xs text-fg-subtle">{b.merk}</p>}
+                    <div className="flex items-center gap-3">
+                      <FotoMini item={b} />
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs font-semibold text-brand">{b.kodeBarang}</p>
+                        <p className="mt-0.5 font-medium text-fg">{b.nama}</p>
+                        {b.merk && <p className="text-xs text-fg-subtle">{b.merk}</p>}
+                      </div>
+                    </div>
                   </TD>
                   <TD className="hidden text-sm text-fg-muted lg:table-cell">{b.ruangan.nama}</TD>
                   <TD className="hidden text-sm text-fg-muted md:table-cell">{b.kategori?.nama ?? "—"}</TD>
@@ -321,8 +329,13 @@ export function MasterBarangView({ perms }: { perms: BarangPerms }) {
       <BarangDetailModal
         open={!!detailItem}
         item={detailItem}
+        canCreate={perms.create}
         canUpdate={perms.update}
         canDelete={perms.delete}
+        onFotoChanged={(id, foto) => {
+          setDetailItem((d) => (d && d.id === id ? { ...d, foto } : d));
+          reload();
+        }}
         onClose={() => setDetailItem(null)}
         onEdit={() => {
           const it = detailItem;
@@ -444,6 +457,31 @@ function AddOption({
         <span className="block text-xs text-fg-muted">{desc}</span>
       </span>
     </button>
+  );
+}
+
+/** Miniatur foto di daftar (lazy; jatuh ke ikon bila belum berfoto / gagal dimuat). */
+function FotoMini({ item }: { item: BarangItem }) {
+  const [gagal, setGagal] = useState<string | null>(null);
+  const versi = item.foto && item.foto !== gagal ? item.foto : null;
+  return (
+    <span className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-md)] border border-border bg-surface-2/60 text-fg-subtle">
+      {versi ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={fotoBarangUrl(item.id, versi, { thumb: true })}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => setGagal(versi)}
+          className="size-full object-cover"
+        />
+      ) : item.foto ? (
+        <ImageOff className="size-4.5" aria-hidden />
+      ) : (
+        <Package className="size-4.5" aria-hidden />
+      )}
+    </span>
   );
 }
 

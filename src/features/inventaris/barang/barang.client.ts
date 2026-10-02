@@ -18,6 +18,8 @@ export type BarangItem = {
   harga: number | null;
   statusAset: StatusAset;
   keterangan: string | null;
+  /** Versi foto (hash ringkas) — null bila belum berfoto. Lihat `fotoBarangUrl`. */
+  foto: string | null;
   item: RefMini | null;
   kategori: RefMini | null;
   sumberAnggaran: (RefMini & { singkatan?: string | null }) | null;
@@ -178,6 +180,31 @@ export const importCommit = (file: File) => importCall(file, "commit") as Promis
 
 export async function bulkCreateBarang(rows: BarangPayload[]): Promise<{ results: BulkRowResult[]; masuk: number }> {
   return (await jsonCall<{ results: BulkRowResult[]; masuk: number }>(`${BASE}/bulk`, "POST", { rows })).data;
+}
+
+/* --------------------------------------------------------------------- foto */
+
+/** URL foto berversi (aman di-cache permanen oleh browser). */
+export function fotoBarangUrl(id: string, versi: string, opts: { thumb?: boolean; unduh?: boolean } = {}): string {
+  return `${BASE}/${id}/foto?v=${versi}${opts.thumb ? "&ukuran=thumb" : ""}${opts.unduh ? "&unduh=1" : ""}`;
+}
+
+export async function unggahFotoBarang(id: string, foto: Blob, thumb: Blob): Promise<{ foto: string }> {
+  const fd = new FormData();
+  const ext = (b: Blob) => (b.type === "image/webp" ? "webp" : "jpg");
+  fd.set("foto", foto, `foto.${ext(foto)}`);
+  fd.set("thumb", thumb, `thumb.${ext(thumb)}`);
+  const res = await fetch(`${BASE}/${id}/foto`, { method: "POST", body: fd });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = (json as { error?: { message?: string; details?: { fieldErrors?: { foto?: string[] } } } })?.error;
+    throw new Error(err?.details?.fieldErrors?.foto?.[0] || err?.message || "Gagal mengunggah foto");
+  }
+  return (json as { data: { foto: string } }).data;
+}
+
+export async function hapusFotoBarang(id: string): Promise<void> {
+  await jsonCall<{ foto: null }>(`${BASE}/${id}/foto`, "DELETE");
 }
 
 /* ------------------------------------------------------------------ katalog */

@@ -30,6 +30,27 @@ export function isStatusAset(v: string): v is StatusAset {
   return (STATUS_ASET as readonly string[]).includes(v);
 }
 
+/* ---------------------------------------------------------------- foto unit */
+
+/**
+ * Batas foto unit aset. Foto HP sebesar apa pun (≤ `masukanMaks`, mis. 20 MB /
+ * 50 MP) dikompres dulu di browser — sisi terpanjang ≤ `sisiMaks` (cukup tajam
+ * untuk membaca label/nomor seri saat di-zoom), WebP/JPEG — lalu foto +
+ * miniatur diunggah; server menegakkan ukuran & jenis.
+ */
+export const FOTO_BARANG = {
+  /** Berkas asli yang boleh dipilih pengguna (sebelum dikompres di browser). */
+  masukanMaks: 30 * 1024 * 1024,
+  /** Foto utama hasil kompres yang diterima server. */
+  ukuranMaks: 5 * 1024 * 1024,
+  /** Target ukuran foto hasil kompres; di atasnya mutu diturunkan bertahap. */
+  ukuranTarget: 1024 * 1024,
+  /** Miniatur (daftar barang). */
+  thumbMaks: 512 * 1024,
+  sisiMaks: 2560,
+  sisiThumb: 360,
+} as const;
+
 /* --------------------------------------------------------------- helpers zod */
 
 /** String opsional: "" / whitespace → undefined. */

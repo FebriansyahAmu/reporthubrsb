@@ -20,8 +20,9 @@ export function ok<T>(data: T, meta?: unknown) {
  * Response berkas biner (PDF / gambar) dari penyimpanan / report engine:
  * inline (pratinjau) atau attachment (unduh). Nama berkas ASCII + `filename*`
  * UTF-8; `nosniff` agar browser tak menebak tipe lain dari isi berkas.
+ * `cache` default `no-store`; isi lain hanya untuk URL berversi (isi tak berubah).
  */
-export function berkasResponse(bytes: Uint8Array, opts: { mime: string; nama: string; unduh?: boolean }) {
+export function berkasResponse(bytes: Uint8Array, opts: { mime: string; nama: string; unduh?: boolean; cache?: string }) {
   const ascii = opts.nama.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
   const body = new Uint8Array(bytes.byteLength);
   body.set(bytes);
@@ -31,7 +32,7 @@ export function berkasResponse(bytes: Uint8Array, opts: { mime: string; nama: st
       "Content-Type": opts.mime,
       "Content-Length": String(bytes.byteLength),
       "Content-Disposition": `${opts.unduh ? "attachment" : "inline"}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(opts.nama)}`,
-      "Cache-Control": "private, no-store",
+      "Cache-Control": opts.cache ?? "private, no-store",
       "X-Content-Type-Options": "nosniff",
     },
   });

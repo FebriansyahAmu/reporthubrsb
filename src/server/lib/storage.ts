@@ -1,11 +1,13 @@
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { ServiceUnavailableError } from "./errors";
 
 /**
- * Penyimpanan berkas aplikasi di disk (BUKAN BLOB DB) — di produksi volume Docker
- * `/app/storage` (PRD Verifikasi Klaim §11-8). Root dari env `STORAGE_DIR`
+ * Penyimpanan berkas aplikasi di disk (BUKAN BLOB DB) — di produksi folder host
+ * `./storage` yang di-mount ke `/app/storage` (PRD Verifikasi Klaim §11-8;
+ * docker-compose.yml). Root dari env `STORAGE_DIR`
  * (default `<cwd>/storage`), di luar folder `public` → hanya dilayani lewat
  * route berizin. Path selalu RELATIF terhadap root dan diverifikasi tidak keluar
  * root (tolak absolut / `..` / NUL). Penulisan atomik: berkas sementara → rename.
@@ -34,17 +36,30 @@ export async function adaBerkas(rel: string): Promise<boolean> {
   }
 }
 
+/**
+ * Folder tak bisa ditulis (umumnya bind mount `./storage` di host belum
+ * di-`chown` ke UID 1001 pengguna container) → pesan jelas, bukan 500 polos.
+ */
+function galatIzin(e: unknown): never {
+  const code = (e as NodeJS.ErrnoException).code;
+  if (code === "EACCES" || code === "EPERM" || code === "EROFS") {
+    console.error(`[storage] folder ${storageRoot()} tidak bisa ditulis (${code})`);
+    throw new ServiceUnavailableError("Folder penyimpanan berkas tidak bisa ditulis server. Hubungi admin (izin folder storage).");
+  }
+  throw e;
+}
+
 /** Tulis berkas secara atomik (pembaca tak pernah melihat berkas setengah jadi). */
 export async function simpanBerkas(rel: string, bytes: Uint8Array): Promise<void> {
   const abs = resolveAman(rel);
-  await mkdir(path.dirname(abs), { recursive: true });
+  await mkdir(path.dirname(abs), { recursive: true }).catch(galatIzin);
   const tmp = `${abs}.${randomBytes(6).toString("hex")}.tmp`;
   try {
     await writeFile(tmp, bytes, { flag: "wx" });
     await rename(tmp, abs);
   } catch (e) {
     await rm(tmp, { force: true });
-    throw e;
+    galatIzin(e);
   }
 }
 
@@ -60,4 +75,14 @@ export async function bacaBerkas(rel: string): Promise<Uint8Array | null> {
 
 export async function hapusBerkas(rel: string): Promise<void> {
   await rm(resolveAman(rel), { force: true });
+}
+
+/** Hapus folder bila sudah kosong (merapikan folder per-entitas); selain itu dibiarkan. */
+export async function hapusFolderJikaKosong(rel: string): Promise<void> {
+  try {
+    await rmdir(resolveAman(rel));
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code !== "ENOTEMPTY" && code !== "EEXIST" && code !== "ENOENT") throw e;
+  }
 }

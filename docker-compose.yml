@@ -18,10 +18,18 @@ services:
     environment:
       NODE_ENV: production
       STORAGE_DIR: /app/storage
-    # Sisipan & PDF Paket Klaim (Verifikasi Klaim BPJS) — berkas di disk, metadata di DB.
-    # Named volume: isi bertahan saat image diganti; pemilik folder ikut image (nextjs).
+    # Berkas aplikasi di disk, metadata di DB: sisipan & PDF Paket Klaim
+    # (storage/klaim/<nopen>/…) dan foto barang Inventaris
+    # (storage/inventaris/foto/<KODE>/…). Folder biasa di samping file ini →
+    # bisa dibuka & di-backup langsung. SEKALI di server, sebelum `up`:
+    #   mkdir -p storage && sudo chown -R 1001:1001 storage
+    # (container berjalan sebagai nextjs UID 1001; tanpa chown unggahan gagal
+    # dengan pesan "Folder penyimpanan berkas tidak bisa ditulis server").
+    # Pindahan dari named volume lama `reporthubrsb-storage` (bila pernah dipakai),
+    # jalankan SEBELUM chown di atas:
+    #   docker run --rm -v reporthubrsb-storage:/dari -v "$PWD/storage":/ke alpine cp -a /dari/. /ke/
     volumes:
-      - storage:/app/storage
+      - ./storage:/app/storage
     ports:
       - "127.0.0.1:3003:3000"
     healthcheck:
@@ -60,7 +68,3 @@ services:
       - ./scripts:/app/scripts:ro
     entrypoint: ["node"]
     command: ["scripts/db/migrate-inventaris-all.mjs"]
-
-volumes:
-  storage:
-    name: reporthubrsb-storage

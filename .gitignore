@@ -43,5 +43,5 @@ next-env.d.ts
 # prisma generated client (dibuat oleh `postinstall` / db:simgos:generate)
 /src/generated
 
-# berkas unggahan & PDF paket klaim (STORAGE_DIR) — data, bukan kode
+# berkas unggahan, PDF paket klaim & foto barang (STORAGE_DIR) — data, bukan kode
 /storage

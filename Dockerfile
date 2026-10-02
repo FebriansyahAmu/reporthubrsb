@@ -52,8 +52,8 @@ RUN addgroup -g 1001 -S nodejs && adduser -u 1001 -S nextjs -G nodejs
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-# Folder penyimpanan berkas (sisipan & PDF Paket Klaim) — titik mount volume;
-# dimiliki nextjs agar named volume baru mewarisi pemilik yang bisa ditulisi.
+# Folder penyimpanan berkas (Paket Klaim, foto barang) — titik mount folder host
+# ./storage (docker-compose.yml); folder host itu harus dimiliki UID 1001 (nextjs).
 RUN mkdir -p /app/storage && chown nextjs:nodejs /app/storage
 USER nextjs
 EXPOSE 3000

@@ -12,6 +12,7 @@ import {
   type BarangUpdateInput,
   type StatusAset,
 } from "./barang.schema";
+import { bersihkanFotoYatim, versiFoto } from "./barang.foto";
 
 /* ------------------------------------------------------------------- tipe DTO */
 
@@ -29,6 +30,8 @@ export type BarangListItem = {
   harga: number | null;
   statusAset: StatusAset;
   keterangan: string | null;
+  /** Versi foto (hash ringkas) untuk URL `/api/inventaris/barang/<id>/foto?v=` — null bila belum berfoto. */
+  foto: string | null;
   item: { id: string; nama: string } | null;
   kategori: BarangRefMini | null;
   sumberAnggaran: (BarangRefMini & { singkatan?: string | null }) | null;
@@ -82,6 +85,7 @@ function serialize(b: BarangWithRefs): BarangListItem {
     harga: b.harga == null ? null : Number(b.harga),
     statusAset: (isStatusAset(b.statusAset) ? b.statusAset : "AKTIF") as StatusAset,
     keterangan: b.keterangan ?? null,
+    foto: versiFoto(b.fotoUrl),
     item: b.item ? { id: b.item.id, nama: b.item.nama } : null,
     kategori: b.kategori ? { id: b.kategori.id, nama: b.kategori.nama } : null,
     sumberAnggaran: b.sumberAnggaran
@@ -392,7 +396,8 @@ export async function updateBarang(id: string, input: BarangUpdateInput, user: S
 export async function deleteBarang(id: string): Promise<void> {
   const db = getAppDb();
   try {
-    await db.invBarang.delete({ where: { id } });
+    const { fotoUrl } = await db.invBarang.delete({ where: { id }, select: { fotoUrl: true } });
+    await bersihkanFotoYatim(fotoUrl);
   } catch (e) {
     if (isNotFound(e)) throw new NotFoundError("Barang tidak ditemukan.");
     throw e;

@@ -570,7 +570,7 @@ Keputusan desain V3:
 - **Kunci FINAL** hanya untuk paket draf yang dipratinjau (versi paket dicocokkan) dan semua sisipan di dalamnya masih aktif.
 - **Buka kunci** (coder, alasan wajib) mengembalikan paket ke DRAF tanpa menggabung ulang, dan pengunci diberi notifikasi.
 - **Konkurensi:** maks 2 penggabungan per proses; satu penggabungan per berkas (yang kedua 409); tulisan paket per berkas diserialkan dengan `SELECT … FOR UPDATE` pada `klaim_verifikasi`.
-- **Penyimpanan:** volume Docker `reporthubrsb-storage` → `/app/storage` (dimiliki `nextjs`). Lokal: `./storage` (di-gitignore).
+- **Penyimpanan:** folder host `./storage` (di samping `docker-compose.yml`) di-mount ke `/app/storage`; harus dimiliki UID 1001 (`nextjs`). Lokal: `./storage` (di-gitignore). *(Semula named volume `reporthubrsb-storage`; diganti folder biasa agar bisa dibuka & di-backup langsung — dipakai bersama foto barang Inventaris.)*
 
 Validasi E2E 47/47 + UI 17/17:
 - **Komponen = SQL SIMGOS independen** (formulasi berbeda) untuk 3 episode (RI + IGD asal, RI 2 leg CPPT, RJ): nomor SEP, SPRI, resume, dan jumlah catatan per leg CPPT; IGD asal diurutkan lebih dulu.
@@ -608,7 +608,7 @@ Regresi: V2 E2E 66/66 · UI 15/15, V1 E2E 59/59 · UI 17/17, drift 8/8. V0 E2E 4
 Catatan operasional:
 - Petugas paket butuh **Paket Klaim (Final)**: lihat, buat (susun/unggah/gabung/kunci), cetak (cetak/unduh).
 - Buka kunci butuh **Verifikasi Klaim / Coder (ubah)**.
-- Deploy: `docker compose up -d` membuat volume `reporthubrsb-storage` otomatis. Tanpa migrasi DB.
+- Deploy: sekali di server `mkdir -p storage && sudo chown -R 1001:1001 storage`, lalu `docker compose up -d`. Tanpa migrasi DB. Bila sebelumnya sudah memakai volume `reporthubrsb-storage`, salin isinya dulu ke `./storage` (lihat komentar `docker-compose.yml`).
 - Sisipan yang dihapus-lunak tetap di disk. Pembersihan terjadwal belum dibuat (kandidat V5).
 
 ### Stage V4 — Komponen tambahan
