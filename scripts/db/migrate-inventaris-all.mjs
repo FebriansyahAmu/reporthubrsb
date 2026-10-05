@@ -1,6 +1,6 @@
 // ============================================================================
 // Runner GABUNGAN migrasi modul Inventarisasi Barang → DB APLIKASI `reporthub`.
-// Menjalankan ketiga migrasi berurutan (base → katalog → checklist).
+// Menjalankan migrasi berurutan (base → katalog → checklist → publik).
 // DB APLIKASI `reporthub` (RW). BUKAN SIMGOS.
 //
 // Jalankan:
@@ -9,10 +9,9 @@
 //                      docker compose run --rm migrate
 //                      docker compose up -d
 //
-// Idempotensi:
-//   - migrate-inventaris.mjs & ...-katalog.mjs  → AMAN diulang.
-//   - ...-checklist.mjs  → DROP+CREATE tabel checklist → JALANKAN SEKALI
-//     (mengulang setelah ada data checklist akan menghapus data checklist).
+// Idempotensi: SEMUA langkah AMAN diulang (CREATE … IF NOT EXISTS + cek
+// information_schema). Langkah checklist hanya membuang tabel model lama
+// (template) bila terdeteksi — data checklist model baru tidak dihapus.
 // Tiap sub-script membuka & menutup koneksinya sendiri; di sini dijalankan
 // via dynamic import berurutan (top-level await tiap modul ditunggu selesai).
 // ============================================================================
@@ -21,6 +20,7 @@ const STEPS = [
   "./migrate-inventaris.mjs",
   "./migrate-inventaris-katalog.mjs",
   "./migrate-inventaris-checklist.mjs",
+  "./migrate-inventaris-publik.mjs",
 ];
 
 for (let i = 0; i < STEPS.length; i++) {

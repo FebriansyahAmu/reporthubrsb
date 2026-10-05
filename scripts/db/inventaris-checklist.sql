@@ -6,10 +6,11 @@
 -- ============================================================================
 
 -- Buang model lama (berbasis template butir tugas) bila ada.
+-- inv_checklist_run / inv_checklist_periksa HANYA di-DROP bila masih berskema
+-- lama (run tanpa kolom periode_key) — runner .mjs memeriksanya otomatis.
+-- JANGAN men-DROP keduanya manual di DB yang sudah berisi data checklist.
 DROP TABLE IF EXISTS inv_checklist_check;
 DROP TABLE IF EXISTS inv_checklist_item;
-DROP TABLE IF EXISTS inv_checklist_periksa;
-DROP TABLE IF EXISTS inv_checklist_run;
 DROP TABLE IF EXISTS inv_checklist_template;
 
 CREATE TABLE IF NOT EXISTS inv_checklist_run (

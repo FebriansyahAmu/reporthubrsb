@@ -220,11 +220,12 @@ export const MODULES: readonly AppModule[] = [
     key: "inventaris.kir",
     group: "Inventarisasi Barang",
     label: "KIR & BAST",
-    description: "Kartu Inventaris Ruangan & Berita Acara Serah Terima Barang + cetak resmi",
+    description:
+      "Kartu Inventaris Ruangan & Berita Acara Serah Terima Barang + cetak resmi; QR publik daftar barang (cetak = lihat/cetak label, ubah = terbitkan/nonaktifkan/ganti tautan)",
     icon: ClipboardList,
     navHref: "/inventaris/kir",
     apiPrefixes: ["/api/inventaris/kir"],
-    actions: ["view", "print"],
+    actions: ["view", "print", "update"],
     order: 72,
   },
   {

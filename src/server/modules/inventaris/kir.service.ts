@@ -2,6 +2,7 @@ import "server-only";
 import { getAppDb } from "@/server/db/app.client";
 import { NotFoundError } from "@/server/lib/errors";
 import { isStatusAset, type StatusAset } from "./barang.schema";
+import type { StatusTautan } from "./publik.schema";
 
 /**
  * KIR — Kartu Inventaris Ruangan. Menyusun daftar aset per ruangan + info
@@ -17,7 +18,7 @@ export type KirRuangan = {
   aktif: boolean;
 };
 
-export type KirRuanganSummary = KirRuangan & { jumlah: number; totalNilai: number };
+export type KirRuanganSummary = KirRuangan & { jumlah: number; totalNilai: number; publik: StatusTautan };
 
 export type KirBarang = {
   kodeBarang: string;
@@ -41,15 +42,16 @@ export async function listRuanganForKir(): Promise<KirRuanganSummary[]> {
   const [ruangan, grouped] = await Promise.all([
     db.invRuangan.findMany({
       orderBy: [{ aktif: "desc" }, { urutan: "asc" }, { kodePrefix: "asc" }],
-      select: { id: true, kodePrefix: true, nama: true, pjNama: true, pjNip: true, aktif: true },
+      select: { id: true, kodePrefix: true, nama: true, pjNama: true, pjNip: true, aktif: true, publik: { select: { aktif: true } } },
     }),
     db.invBarang.groupBy({ by: ["ruanganId"], _count: { _all: true }, _sum: { harga: true } }),
   ]);
   const stat = new Map(grouped.map((g) => [g.ruanganId, { jumlah: g._count._all, nilai: g._sum.harga == null ? 0 : Number(g._sum.harga) }]));
-  return ruangan.map((r) => ({
+  return ruangan.map(({ publik, ...r }) => ({
     ...r,
     jumlah: stat.get(r.id)?.jumlah ?? 0,
     totalNilai: stat.get(r.id)?.nilai ?? 0,
+    publik: !publik ? "BELUM" : publik.aktif ? "AKTIF" : "NONAKTIF",
   }));
 }
 

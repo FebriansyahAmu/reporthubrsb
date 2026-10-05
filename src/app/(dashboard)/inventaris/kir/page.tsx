@@ -10,7 +10,10 @@ export const dynamic = "force-dynamic";
 
 export default async function KirPage() {
   const user = await requireModule("inventaris.kir");
-  const canPrint = await hasModule(user, "inventaris.kir", "print");
+  const [canPrint, canUpdate] = await Promise.all([
+    hasModule(user, "inventaris.kir", "print"),
+    hasModule(user, "inventaris.kir", "update"),
+  ]);
 
   return (
     <FadeIn className="space-y-6">
@@ -23,9 +26,9 @@ export default async function KirPage() {
       </Link>
       <PageHeader
         title="KIR & BAST"
-        description="Kartu Inventaris Ruangan (KIR) atau Berita Acara Serah Terima Barang (BAST) — pilih via toggle, siap cetak resmi bertanda tangan."
+        description="Kartu Inventaris Ruangan (KIR) atau Berita Acara Serah Terima Barang (BAST) — pilih via toggle, siap cetak resmi bertanda tangan — plus QR publik daftar barang per ruangan."
       />
-      <KirView canPrint={canPrint} />
+      <KirView canPrint={canPrint} canUpdate={canUpdate} />
     </FadeIn>
   );
 }

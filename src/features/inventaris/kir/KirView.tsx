@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Boxes, ClipboardList, DoorOpen, FileSignature, MapPin, Plus, Printer, Stamp, User, Wallet, X } from "lucide-react";
+import { Boxes, ClipboardList, DoorOpen, FileSignature, MapPin, Plus, Printer, QrCode, Stamp, User, Wallet, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -17,6 +17,7 @@ import { cn } from "@/lib/cn";
 import { STATUS_ASET_LABEL, STATUS_ASET_TONE } from "@/server/modules/inventaris/barang.schema";
 import { fetchKirData, fetchKirRuangan, type KirData, type KirRuanganSummary } from "./kir.client";
 import { BastPanel } from "./BastPanel";
+import { PublikPanel } from "./PublikPanel";
 
 type Signer = { atas: string; jabatan: string; name: string; nip: string };
 
@@ -63,7 +64,7 @@ function defaultSigners(direktur: KirRuanganSummary | null): Signer[] {
   ];
 }
 
-export function KirView({ canPrint }: { canPrint: boolean }) {
+export function KirView({ canPrint, canUpdate }: { canPrint: boolean; canUpdate: boolean }) {
   const toast = useToast();
   const listState = useAsyncData<KirRuanganSummary[]>(() => fetchKirRuangan(), []);
   const list = listState.result ?? [];
@@ -80,8 +81,9 @@ export function KirView({ canPrint }: { canPrint: boolean }) {
   );
   const data = dataState.result;
 
-  // Toggle dokumen: KIR (kartu inventaris) atau BAST (berita acara serah terima).
-  const [doc, setDoc] = useState<"kir" | "bast">("kir");
+  // Toggle: KIR (kartu inventaris), BAST (berita acara), atau QR publik ruangan.
+  const [doc, setDoc] = useState<"kir" | "bast" | "publik">("kir");
+  const terpilih = list.find((r) => r.id === selectedId) ?? null;
   const direktur = findDirektur(list);
   const direkturDefault = { nama: direktur?.pjNama ?? "", nip: direktur?.pjNip ?? "" };
 
@@ -127,10 +129,10 @@ export function KirView({ canPrint }: { canPrint: boolean }) {
       <Card className="overflow-hidden p-0 lg:sticky lg:top-4 lg:self-start">
         <div className="border-b border-border px-4 py-3">
           <h3 className="text-sm font-semibold text-fg">Pilih Ruangan</h3>
-          <p className="text-xs text-fg-muted">{listState.loading ? "Memuat…" : `${list.length} ruangan`}</p>
+          <p className="text-xs text-fg-muted">{listState.loading && !listState.result ? "Memuat…" : `${list.length} ruangan`}</p>
         </div>
         <div className="max-h-[70vh] overflow-y-auto p-2">
-          {listState.loading ? (
+          {listState.loading && !listState.result ? (
             <div className="space-y-2 p-1">
               {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-[var(--radius-md)]" />)}
             </div>
@@ -157,6 +159,12 @@ export function KirView({ canPrint }: { canPrint: boolean }) {
                           {r.kodePrefix}
                         </span>
                         <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">{r.nama}</span>
+                        {r.publik === "AKTIF" && (
+                          <span title="QR publik aktif" className="shrink-0 text-accent">
+                            <QrCode className="size-3.5" aria-hidden />
+                            <span className="sr-only">QR publik aktif</span>
+                          </span>
+                        )}
                       </div>
                       <div className="mt-1.5 flex items-center gap-3 text-[11px] text-fg-muted">
                         <span className="inline-flex items-center gap-1"><Boxes className="size-3" /> {r.jumlah} unit</span>
@@ -180,9 +188,16 @@ export function KirView({ canPrint }: { canPrint: boolean }) {
         <div className="inline-flex rounded-[var(--radius-md)] border border-border bg-surface-2/50 p-1">
           <DocTab active={doc === "kir"} icon={ClipboardList} label="KIR" onClick={() => setDoc("kir")} />
           <DocTab active={doc === "bast"} icon={FileSignature} label="BAST" onClick={() => setDoc("bast")} />
+          {canPrint && <DocTab active={doc === "publik"} icon={QrCode} label="QR Publik" onClick={() => setDoc("publik")} />}
         </div>
 
-        {doc === "bast" ? (
+        {doc === "publik" ? (
+          terpilih ? (
+            <PublikPanel key={terpilih.id} ruangan={terpilih} canUpdate={canUpdate} onBerubah={listState.reload} />
+          ) : (
+            <Card><EmptyState title="Pilih ruangan" description="Pilih ruangan di kiri untuk mengelola QR publiknya." /></Card>
+          )
+        ) : doc === "bast" ? (
           <BastPanel data={data} direkturDefault={direkturDefault} canPrint={canPrint} />
         ) : (
         <>

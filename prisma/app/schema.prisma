@@ -284,8 +284,25 @@ model InvRuangan {
   mutasiKe   InvMutasi[] @relation("MutasiKe")
   mutasiDari InvMutasi[] @relation("MutasiDari")
   checklistRun      InvChecklistRun[]
+  publik     InvRuanganPublik?
 
   @@map("inv_ruangan")
+}
+
+/// Tautan publik (QR) daftar barang ruangan — `token` = kapabilitas acak
+/// 192-bit (base64url 32 kar., kolom ascii_bin). DDL: scripts/db/inventaris-publik.sql.
+model InvRuanganPublik {
+  ruanganId  String   @id @map("ruangan_id")
+  token      String   @unique @db.Char(32)
+  aktif      Boolean  @default(true)
+  dibuatOleh String?  @map("dibuat_oleh")
+  diubahOleh String?  @map("diubah_oleh")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  ruangan InvRuangan @relation(fields: [ruanganId], references: [id], onDelete: Cascade)
+
+  @@map("inv_ruangan_publik")
 }
 
 /// Unit aset (1 baris = 1 unit fisik). `kodeBarang` unik = tag permanen.

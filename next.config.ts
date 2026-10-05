@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
    */
   output: "standalone",
 
+  /** Jangan umumkan framework/versi lewat header `X-Powered-By`. */
+  poweredByHeader: false,
+
   /**
    * Paket sisi-server yang TIDAK di-bundle (di-require dari node_modules saat
    * runtime): Prisma client + driver adapter mariadb. Wajib agar driver adapter

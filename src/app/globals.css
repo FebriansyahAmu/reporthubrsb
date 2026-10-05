@@ -107,6 +107,17 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Satu-satunya animasi halaman publik inventaris: bilah komposisi kondisi
+   tumbuh dari kiri saat halaman dibuka (`motion-safe:animate-tumbuh`). */
+@theme {
+  --animate-tumbuh: tumbuh 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+  @keyframes tumbuh {
+    from {
+      transform: scaleX(0);
+    }
+  }
+}
+
 /* ========================================================================= */
 * {
   border-color: var(--border);

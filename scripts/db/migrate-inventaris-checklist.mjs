@@ -3,10 +3,10 @@
 //   inv_checklist_run (ruangan × frekuensi × periode)
 //   inv_checklist_periksa (per unit barang: kondisi + catatan)
 // Isi checklist diambil dari daftar barang di Master Barang (inv_barang).
-// MENGGANTI model lama berbasis template butir tugas (tabel lama di-DROP).
-// DB APLIKASI `reporthub` (RW). BUKAN SIMGOS. Idempoten.
-// PERHATIAN: script ini DROP lalu CREATE tabel checklist → JALANKAN SEKALI.
-// Mengulang setelah ada data checklist akan MENGHAPUS data checklist.
+// MENGGANTI model lama berbasis template butir tugas: tabel model lama di-DROP
+// HANYA bila terdeteksi berskema lama (tanpa kolom `periode_key`).
+// DB APLIKASI `reporthub` (RW). BUKAN SIMGOS. Idempoten & AMAN diulang —
+// data checklist model baru TIDAK pernah dihapus.
 // Jalankan:
 //   dev (host): node scripts/db/migrate-inventaris-checklist.mjs
 //   produksi (Docker): via service `migrate` — lihat migrate-inventaris-all.mjs
@@ -52,11 +52,17 @@ const conn = await mariadb.createConnection({
 try {
   console.log(`Target DB: ${database} @ ${u.hostname}\n— Checklist Pemeliharaan per barang…`);
 
-  // Buang model lama (template butir tugas). Urutan: anak → induk.
-  for (const t of ["inv_checklist_check", "inv_checklist_item", "inv_checklist_periksa", "inv_checklist_run", "inv_checklist_template"]) {
-    await conn.query(`DROP TABLE IF EXISTS ${t}`);
-  }
-  console.log("  ✓ tabel checklist lama dibersihkan (bila ada)");
+  // Buang model lama (template butir tugas). Tabel khas model lama selalu
+  // aman di-DROP; `inv_checklist_run`/`_periksa` hanya bila masih berskema
+  // lama (run tanpa `periode_key`) — model baru TIDAK disentuh.
+  const kolomRun = await conn.query(
+    "SELECT COLUMN_NAME c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME='inv_checklist_run'",
+    [database],
+  );
+  const runLama = kolomRun.length > 0 && !kolomRun.some((r) => r.c === "periode_key");
+  const buang = ["inv_checklist_check", "inv_checklist_item", ...(runLama ? ["inv_checklist_periksa", "inv_checklist_run"] : []), "inv_checklist_template"];
+  for (const t of buang) await conn.query(`DROP TABLE IF EXISTS ${t}`);
+  console.log(runLama ? "  ✓ tabel checklist model lama dibuang" : "  · checklist model baru dipertahankan (tak ada yang di-DROP)");
 
   await conn.query(`CREATE TABLE IF NOT EXISTS inv_checklist_run (
     id VARCHAR(30) NOT NULL PRIMARY KEY,
