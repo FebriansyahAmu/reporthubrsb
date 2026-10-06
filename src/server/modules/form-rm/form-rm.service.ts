@@ -1,4 +1,5 @@
 import "server-only";
+import type { z } from "zod";
 import { getAppDb } from "@/server/db/app.client";
 import { isSimgosConfigured } from "@/server/lib/env";
 import { hitungUmur } from "@/lib/format";
@@ -22,6 +23,13 @@ import {
   matchPendidikan,
   matchPerkawinan,
 } from "@/features/form-rm/ringkasan.constants";
+import {
+  bersihkanDataLama,
+  consentFormSchema,
+  edukasiFormSchema,
+  ringkasanFormSchema,
+  triaseFormSchema,
+} from "@/features/form-rm/skema";
 import type {
   ConsentContext,
   ConsentForm,
@@ -208,11 +216,16 @@ export async function getFormRmHeader(nopen: string): Promise<FormRmHeader | nul
   };
 }
 
-/** Rekaman form RM tersimpan (reporthub) untuk (NOPEN, jenis), atau null. */
-export async function getFormRmRecord(
+/**
+ * Rekaman form RM tersimpan (tabel lama `form_rm`) untuk (NOPEN, jenis), atau
+ * null. Data dibersihkan dari kunci yang sudah tidak dikenal skema strict, agar
+ * UI bisa menyimpan ulang tanpa ditolak.
+ */
+async function getFormRmRecord<T>(
   nopen: string,
   jenis: string,
-): Promise<FormRmSaved | null> {
+  skema: z.ZodType,
+): Promise<FormRmSaved<T> | null> {
   const rec = await getAppDb().formRm.findUnique({
     where: { nopen_jenis: { nopen, jenis } },
   });
@@ -220,7 +233,7 @@ export async function getFormRmRecord(
   return {
     nopen: rec.nopen,
     jenis: rec.jenis,
-    data: rec.data as unknown as EdukasiForm,
+    data: (bersihkanDataLama(skema, rec.data) ?? rec.data) as T,
     updatedAt: rec.updatedAt.toISOString(),
     updatedBy: rec.updatedBy ?? null,
   };
@@ -238,7 +251,7 @@ export async function formRmExists(nopen: string, jenis: string): Promise<boolea
 /** Konteks form Edukasi: rekaman tersimpan (bila ada) + header pasien SIMGOS. */
 export async function getEdukasiContext(nopen: string): Promise<EdukasiContext | null> {
   const [saved, header] = await Promise.all([
-    getFormRmRecord(nopen, EDUKASI_JENIS),
+    getFormRmRecord<EdukasiForm>(nopen, EDUKASI_JENIS, edukasiFormSchema),
     getFormRmHeader(nopen),
   ]);
   if (!header) return null;
@@ -247,20 +260,11 @@ export async function getEdukasiContext(nopen: string): Promise<EdukasiContext |
 
 /** Konteks form General Consent (RM.03): rekaman tersimpan + header pasien SIMGOS. */
 export async function getConsentContext(nopen: string): Promise<ConsentContext | null> {
-  const [rec, header] = await Promise.all([
-    getAppDb().formRm.findUnique({ where: { nopen_jenis: { nopen, jenis: CONSENT_JENIS } } }),
+  const [saved, header] = await Promise.all([
+    getFormRmRecord<ConsentForm>(nopen, CONSENT_JENIS, consentFormSchema),
     getFormRmHeader(nopen),
   ]);
   if (!header) return null;
-  const saved: FormRmSaved<ConsentForm> | null = rec
-    ? {
-        nopen: rec.nopen,
-        jenis: rec.jenis,
-        data: rec.data as unknown as ConsentForm,
-        updatedAt: rec.updatedAt.toISOString(),
-        updatedBy: rec.updatedBy ?? null,
-      }
-    : null;
   return { saved, header };
 }
 
@@ -336,56 +340,48 @@ const EMPTY_PREFILL: RingkasanPrefill = {
   diagnosaSekunderKode: "",
 };
 
+/**
+ * Prefill RM.01 dari SIMGOS (read-only), sudah dipetakan ke opsi formulir.
+ * Sumber yang gagal/kosong → nilai kosong (form tetap bisa diisi manual).
+ */
+export async function prefillRingkasan(nopen: string, header: FormRmHeader): Promise<RingkasanPrefill> {
+  if (!isSimgosConfigured()) return EMPTY_PREFILL;
+  const [row, dx] = await Promise.all([
+    queryRingkasanHeader(nopen).catch(() => null),
+    queryDiagnosaByNopen(nopen).catch(() => [] as DiagnosaRow[]),
+  ]);
+  if (!row) return EMPTY_PREFILL;
+  const pend = matchPendidikan(row.PENDIDIKAN?.trim() || "");
+  const goldar = row.GOL_DARAH?.trim() || "";
+  const negara = row.NEGARA?.trim() || "";
+  const penjamin = Number(row.PENJAMIN_JENIS);
+  return {
+    alamat: komposeAlamat(row.ALAMAT, row.RT, row.RW),
+    golDarah: /^tidak\s*tahu$/i.test(goldar) ? "" : goldar,
+    dirawatKe: row.DIRAWAT_KE != null ? String(Number(row.DIRAWAT_KE) || "") : "",
+    pendidikan: pend.opt,
+    pendidikanLain: pend.lain,
+    bangsa: negara ? (/indonesia/i.test(negara) ? "Indonesia" : "Asing") : "",
+    agama: matchAgama(row.AGAMA?.trim() || ""),
+    statusPerkawinan: matchPerkawinan(row.PERKAWINAN?.trim() || "", header.jenisKelamin),
+    pekerjaan: matchPekerjaan(row.PEKERJAAN?.trim() || ""),
+    tglMasuk: toWallClockLocal(row.MASUK),
+    tglKeluar: toWallClockLocal(row.KELUAR),
+    lamaRawat: hitungLamaRawat(row.MASUK, row.KELUAR),
+    dpjp: row.DPJP?.trim() || "",
+    peserta: penjamin === 2 ? "BPJS" : penjamin === 3 ? "Asuransi" : penjamin === 1 ? "Umum" : "",
+    ...ringkasDiagnosa(dx),
+  };
+}
+
 /** Konteks form RM.01: rekaman tersimpan + header pasien + prefill SIMGOS siap-isi. */
 export async function getRingkasanContext(nopen: string): Promise<RingkasanContext | null> {
-  const [rec, header] = await Promise.all([
-    getAppDb().formRm.findUnique({ where: { nopen_jenis: { nopen, jenis: RINGKASAN_JENIS } } }),
+  const [saved, header] = await Promise.all([
+    getFormRmRecord<RingkasanForm>(nopen, RINGKASAN_JENIS, ringkasanFormSchema),
     getFormRmHeader(nopen),
   ]);
   if (!header) return null;
-
-  const saved: FormRmSaved<RingkasanForm> | null = rec
-    ? {
-        nopen: rec.nopen,
-        jenis: rec.jenis,
-        data: rec.data as unknown as RingkasanForm,
-        updatedAt: rec.updatedAt.toISOString(),
-        updatedBy: rec.updatedBy ?? null,
-      }
-    : null;
-
-  let prefill = EMPTY_PREFILL;
-  if (isSimgosConfigured()) {
-    const [row, dx] = await Promise.all([
-      queryRingkasanHeader(nopen).catch(() => null),
-      queryDiagnosaByNopen(nopen).catch(() => [] as DiagnosaRow[]),
-    ]);
-    if (row) {
-      const pend = matchPendidikan(row.PENDIDIKAN?.trim() || "");
-      const goldar = row.GOL_DARAH?.trim() || "";
-      const negara = row.NEGARA?.trim() || "";
-      const penjamin = Number(row.PENJAMIN_JENIS);
-      prefill = {
-        alamat: komposeAlamat(row.ALAMAT, row.RT, row.RW),
-        golDarah: /^tidak\s*tahu$/i.test(goldar) ? "" : goldar,
-        dirawatKe: row.DIRAWAT_KE != null ? String(Number(row.DIRAWAT_KE) || "") : "",
-        pendidikan: pend.opt,
-        pendidikanLain: pend.lain,
-        bangsa: negara ? (/indonesia/i.test(negara) ? "Indonesia" : "Asing") : "",
-        agama: matchAgama(row.AGAMA?.trim() || ""),
-        statusPerkawinan: matchPerkawinan(row.PERKAWINAN?.trim() || "", header.jenisKelamin),
-        pekerjaan: matchPekerjaan(row.PEKERJAAN?.trim() || ""),
-        tglMasuk: toWallClockLocal(row.MASUK),
-        tglKeluar: toWallClockLocal(row.KELUAR),
-        lamaRawat: hitungLamaRawat(row.MASUK, row.KELUAR),
-        dpjp: row.DPJP?.trim() || "",
-        peserta: penjamin === 2 ? "BPJS" : penjamin === 3 ? "Asuransi" : penjamin === 1 ? "Umum" : "",
-        ...ringkasDiagnosa(dx),
-      };
-    }
-  }
-
-  return { saved, header, prefill };
+  return { saved, header, prefill: await prefillRingkasan(nopen, header) };
 }
 
 // --- RM.04 Triase IGD ------------------------------------------------------
@@ -466,6 +462,15 @@ function petaTriaseSimgos(r: TriaseSimgosRow): { prefill: TriasePrefill; simrs: 
   };
 }
 
+/** Triase terakhir episode dari SIMRS → prefill RM.04 + ringkasan rujukan; null bila tak ada. */
+export async function bacaTriaseSimrs(
+  nopen: string,
+): Promise<{ prefill: TriasePrefill; simrs: TriaseSimrs } | null> {
+  if (!isSimgosConfigured()) return null;
+  const row = await queryTriaseSimgos(nopen).catch(() => null);
+  return row ? petaTriaseSimgos(row) : null;
+}
+
 /**
  * Konteks form Triase (RM.04): rekaman tersimpan + header pasien + prefill & rujukan
  * dari triase SIMRS. `simrs: false` melewati query triase SIMGOS (mis. untuk cetak).
@@ -474,25 +479,12 @@ export async function getTriaseContext(
   nopen: string,
   opts: { simrs?: boolean } = {},
 ): Promise<TriaseContext | null> {
-  const withSimrs = opts.simrs !== false && isSimgosConfigured();
-  const [rec, header, row] = await Promise.all([
-    getAppDb().formRm.findUnique({ where: { nopen_jenis: { nopen, jenis: TRIASE_JENIS } } }),
+  const [saved, header, peta] = await Promise.all([
+    getFormRmRecord<TriaseForm>(nopen, TRIASE_JENIS, triaseFormSchema),
     getFormRmHeader(nopen),
-    withSimrs ? queryTriaseSimgos(nopen).catch(() => null) : Promise.resolve(null),
+    opts.simrs === false ? Promise.resolve(null) : bacaTriaseSimrs(nopen),
   ]);
   if (!header) return null;
-
-  const saved: FormRmSaved<TriaseForm> | null = rec
-    ? {
-        nopen: rec.nopen,
-        jenis: rec.jenis,
-        data: rec.data as unknown as TriaseForm,
-        updatedAt: rec.updatedAt.toISOString(),
-        updatedBy: rec.updatedBy ?? null,
-      }
-    : null;
-
-  const peta = row ? petaTriaseSimgos(row) : null;
   return { saved, header, prefill: peta?.prefill ?? null, simrs: peta?.simrs ?? null };
 }
 

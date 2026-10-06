@@ -1,14 +1,43 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
-import { AppError, ValidationError } from "./errors";
+import { AppError, PayloadTooLargeError, TooManyRequestsError, ValidationError } from "./errors";
+
+const jsonRusak = () =>
+  new ValidationError({ formErrors: ["Body permintaan harus JSON yang valid"], fieldErrors: {} });
 
 /** Body JSON permintaan; body kosong/rusak → 422 (bukan 500). */
 export async function readJson(req: Request): Promise<unknown> {
   try {
     return await req.json();
   } catch {
-    throw new ValidationError({ formErrors: ["Body permintaan harus JSON yang valid"], fieldErrors: {} });
+    throw jsonRusak();
   }
+}
+
+/**
+ * Seperti `readJson`, tetapi menolak body di atas `maksByte` (413) — dicek dari
+ * Content-Length lebih dulu, lalu dari panjang aktual (header bisa tidak ada).
+ */
+export async function readJsonTerbatas(req: Request, maksByte: number): Promise<unknown> {
+  const panjang = Number(req.headers.get("content-length"));
+  if (Number.isFinite(panjang) && panjang > maksByte) throw new PayloadTooLargeError();
+  const teks = await req.text();
+  if (new TextEncoder().encode(teks).byteLength > maksByte) throw new PayloadTooLargeError();
+  try {
+    return JSON.parse(teks);
+  } catch {
+    throw jsonRusak();
+  }
+}
+
+/**
+ * Tandai response berisi data pasien: tak boleh disimpan cache mana pun, dan
+ * browser tak boleh menebak tipe isinya.
+ */
+export function tanpaCache<R extends Response>(res: R): R {
+  res.headers.set("Cache-Control", "no-store");
+  res.headers.set("X-Content-Type-Options", "nosniff");
+  return res;
 }
 
 /** Response sukses standar: { data, meta }. */
@@ -48,10 +77,12 @@ export function fail(err: unknown) {
     );
   }
   if (err instanceof AppError) {
-    return NextResponse.json(
+    const res = NextResponse.json(
       { error: { code: err.code, message: err.message, details: err.details } },
       { status: err.httpStatus },
     );
+    if (err instanceof TooManyRequestsError) res.headers.set("Retry-After", String(err.ulangDetik));
+    return res;
   }
   // Jangan bocorkan detail internal DB ke klien.
   console.error("[UNHANDLED]", err);

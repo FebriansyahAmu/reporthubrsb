@@ -52,6 +52,20 @@ export class ConflictError extends AppError {
   }
 }
 
+/** Body permintaan melebihi batas ukuran endpoint. */
+export class PayloadTooLargeError extends AppError {
+  constructor(msg = "Ukuran data melebihi batas") {
+    super(msg, "PAYLOAD_TOO_LARGE", 413);
+  }
+}
+
+/** Terlalu banyak permintaan dalam satu jendela waktu; `ulangDetik` → header Retry-After. */
+export class TooManyRequestsError extends AppError {
+  constructor(readonly ulangDetik: number) {
+    super("Terlalu banyak permintaan. Coba lagi sebentar.", "TOO_MANY_REQUESTS", 429, { ulangDetik });
+  }
+}
+
 /** Dependensi eksternal (mis. SIMGOS) tidak tersedia / tidak dikonfigurasi. */
 export class ServiceUnavailableError extends AppError {
   constructor(msg = "Layanan sumber data tidak tersedia") {

@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
     "db:simgos:generate": "prisma generate --schema prisma/simgos/schema.prisma",
     "db:simgos:pull": "prisma db pull --schema prisma/simgos/schema.prisma",
     "db:app:generate": "prisma generate --config prisma.app.config.ts",
@@ -23,7 +24,7 @@
     "jose": "^6.2.4",
     "lucide-react": "^1.24.0",
     "mariadb": "^3.5.3",
-    "next": "16.2.10",
+    "next": "^16.3.8",
     "pdf-lib": "^1.17.1",
     "qrcode": "^1.5.4",
     "react": "19.2.4",
@@ -41,9 +42,10 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "^16.3.8",
     "prisma": "^7.9.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }

@@ -84,6 +84,18 @@ export function toDateInput(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+const tanggalWitaFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Makassar",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/** yyyy-mm-dd hari ini menurut WITA — tidak bergantung zona waktu server/container. */
+export function tanggalHariIniWita(sekarang: Date = new Date()): string {
+  return tanggalWitaFmt.format(sekarang);
+}
+
 /** yyyy-mm-dd dari komponen LOKAL (tidak bergeser TZ seperti toISOString). */
 export function toLocalDateInput(d: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");

@@ -171,6 +171,16 @@ export const MODULES: readonly AppModule[] = [
     order: 50,
   },
   {
+    key: "form-rm.kelola",
+    group: "Form RM",
+    label: "Kelola Isian FINAL (Instalasi RM)",
+    description: "Buka isian FINAL untuk koreksi atau batalkan isian FINAL (alasan wajib, tercatat di riwayat)",
+    icon: ShieldCheck,
+    apiPrefixes: [],
+    actions: ["view", "update"],
+    order: 51,
+  },
+  {
     key: "laporan",
     group: "Laporan",
     label: "Pusat Laporan",

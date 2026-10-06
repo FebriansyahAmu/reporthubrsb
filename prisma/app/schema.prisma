@@ -154,6 +154,85 @@ model FormRm {
   @@map("form_rm")
 }
 
+/// Isian Form RM v2 (registri form di kode: src/features/form-rm/registry.ts).
+/// DDL manual: scripts/db/form-rm.sql. Satu baris per isian; unik
+/// (formKode, subjek, urutan). `rev` naik di setiap tulis (konkurensi optimistis).
+/// Identitas pasien = snapshot SIMGOS yang diambil server (bukan dari klien).
+model FormRmIsian {
+  id               String    @id @default(cuid()) @db.VarChar(30)
+  formKode         String    @map("form_kode") @db.VarChar(20)
+  formVersi        Int       @map("form_versi") @db.SmallInt
+  /// NOPEN atau nomor KUNJUNGAN sesuai cakupan form.
+  subjek           String    @db.VarChar(30)
+  nopen            String    @db.VarChar(20)
+  kunjungan        String?   @db.VarChar(30)
+  urutan           Int       @default(1) @db.SmallInt
+  norm             String    @db.VarChar(20)
+  namaPasien       String    @map("nama_pasien") @db.VarChar(191)
+  ruang            String?   @db.VarChar(191)
+  /// DRAF | FINAL | BATAL
+  status           String    @default("DRAF") @db.VarChar(10)
+  rev              Int       @default(1)
+  /// Isi form; tanda tangan hanya berupa referensi "ttd:<id>".
+  data             Json
+  /// Path kolom yang terisi otomatis dari SIMRS.
+  asal             Json?
+  dibuatOlehId     String?   @map("dibuat_oleh_id") @db.VarChar(191)
+  diubahOlehId     String?   @map("diubah_oleh_id") @db.VarChar(191)
+  difinalkanOlehId String?   @map("difinalkan_oleh_id") @db.VarChar(191)
+  difinalkanAt     DateTime? @map("difinalkan_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  ttd    FormRmTtd[]
+  revisi FormRmRevisi[]
+
+  @@unique([formKode, subjek, urutan], map: "uq_form_rm_isian")
+  @@index([nopen], map: "idx_form_rm_isian_nopen")
+  @@index([norm], map: "idx_form_rm_isian_norm")
+  @@index([formKode, status, updatedAt], map: "idx_form_rm_isian_status")
+  @@map("form_rm_isian")
+}
+
+/// Gambar tanda tangan (PNG dinormalkan server). Sekali tulis, tak pernah diubah.
+model FormRmTtd {
+  id           String      @id @default(cuid()) @db.VarChar(30)
+  isianId      String      @map("isian_id") @db.VarChar(30)
+  slot         String      @db.VarChar(60)
+  png          Bytes       @db.MediumBlob
+  sha256       String      @db.Char(64)
+  ukuran       Int
+  dibuatOlehId String?     @map("dibuat_oleh_id") @db.VarChar(191)
+  createdAt    DateTime    @default(now()) @map("created_at")
+  isian        FormRmIsian @relation(fields: [isianId], references: [id], onDelete: Restrict, map: "fk_form_rm_ttd_isian")
+
+  @@unique([isianId, sha256], map: "uq_form_rm_ttd")
+  @@map("form_rm_ttd")
+}
+
+/// Snapshot isian di setiap transisi status. APPEND-ONLY; `hash` = HMAC-SHA256
+/// berantai per isian (lihat server/modules/form-rm/isian.segel.ts).
+model FormRmRevisi {
+  id          String      @id @default(cuid()) @db.VarChar(30)
+  isianId     String      @map("isian_id") @db.VarChar(30)
+  rev         Int
+  /// FINALKAN | BUKA_KOREKSI | BATALKAN
+  aksi        String      @db.VarChar(20)
+  status      String      @db.VarChar(10)
+  data        Json
+  alasan      String?     @db.VarChar(500)
+  olehId      String?     @map("oleh_id") @db.VarChar(191)
+  olehNama    String?     @map("oleh_nama") @db.VarChar(191)
+  hash        String      @db.Char(64)
+  hashSebelum String?     @map("hash_sebelum") @db.Char(64)
+  /// Diisi aplikasi (ikut disegel), bukan default DB.
+  createdAt   DateTime    @map("created_at")
+  isian       FormRmIsian @relation(fields: [isianId], references: [id], onDelete: Restrict, map: "fk_form_rm_revisi_isian")
+
+  @@unique([isianId, rev], map: "uq_form_rm_revisi")
+  @@map("form_rm_revisi")
+}
+
 /// Penetapan pejabat per ruangan (Kepala Instalasi, Kepala Ruangan, Ketua Tim, dll).
 /// Ruangan dibaca dari SIMGOS (`master.ruangan`, READ-ONLY); penetapan ini kita
 /// simpan di sini. `ruanganId` = `master.ruangan.ID` (9 digit) untuk satu ruangan,

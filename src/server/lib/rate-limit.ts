@@ -7,7 +7,9 @@
  * tertua (Map menjaga urutan sisip) — banjir IP palsu tak bisa menghabiskan RAM.
  */
 
-export type HasilLaju = { izin: true } | { izin: false; ulangDetik: number };
+import { ipKlien } from "./request";
+
+export type HasilLaju ={ izin: true } | { izin: false; ulangDetik: number };
 
 export type PembatasLaju = (kunci: string, sekarang?: number) => HasilLaju;
 
@@ -37,16 +39,9 @@ export function buatPembatasLaju(opsi: { batas: number; jendelaMs: number; maksK
 }
 
 /**
- * Kunci IP klien untuk pembatasan laju. Produksi: container hanya terbuka ke
- * 127.0.0.1 di balik reverse proxy, jadi header di bawah diisi proxy itu:
- * 1. `X-Real-IP` — reverse proxy MENIMPA nilainya (`proxy_set_header
- *    X-Real-IP $remote_addr`), jadi tak bisa dikarang klien;
- * 2. entri PALING KANAN `X-Forwarded-For` — yang ditambahkan hop terakhir
- *    (entri kiri bisa dikarang klien). Catatan: tanpa reverse proxy, Next
- *    sendiri mengisi XFF dengan alamat socket.
+ * Kunci IP klien untuk pembatasan laju (aturan pemilihan header: `ipKlien`).
  * Bila header dipalsukan pun, pembatas global tetap membatasi beban total.
  */
 export function kunciIpKlien(headers: Headers): string {
-  const kanan = headers.get("x-forwarded-for")?.split(",").map((s) => s.trim()).filter(Boolean).at(-1);
-  return (headers.get("x-real-ip")?.trim() || kanan || "tanpa-ip").slice(0, 64);
+  return ipKlien(headers) ?? "tanpa-ip";
 }
