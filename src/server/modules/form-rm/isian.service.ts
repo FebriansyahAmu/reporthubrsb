@@ -1,7 +1,6 @@
 import "server-only";
 import type { FormRmIsian, Prisma } from "@/generated/app/client";
 import { getAppDb } from "@/server/db/app.client";
-import { writeAudit } from "@/server/lib/audit";
 import {
   BusinessRuleError,
   ConflictError,
@@ -9,16 +8,8 @@ import {
   NotFoundError,
   PayloadTooLargeError,
   ServiceUnavailableError,
-  ValidationError,
 } from "@/server/lib/errors";
-import { normalkanPng } from "@/server/lib/png";
 import { definisiForm, type DefinisiForm } from "@/features/form-rm/registry";
-import {
-  adalahDataUrlTtd,
-  idDariRefTtd,
-  refTtd,
-  TTD_DATA_URL_PREFIX,
-} from "@/features/form-rm/skema";
 import {
   adalahStatusIsian,
   perluIzinKelola,
@@ -27,9 +18,13 @@ import {
   type StatusIsian,
 } from "@/features/form-rm/isian.status";
 import { getFormRmHeader } from "./form-rm.service";
+import type { FormRmHeader } from "./form-rm.types";
+import { auditIsian } from "./isian.audit";
+import { pindahkanBarisLama } from "./isian.lama";
 import { isiOtomatis } from "./isian.prefill";
-import { kanonik, periksaRantai, segel, sha256Hex, type IsiSegel } from "./isian.segel";
+import { kanonik, periksaRantai, segel, type IsiSegel } from "./isian.segel";
 import type { AksiIsianInput, BuatIsianInput, SimpanIsianInput } from "./isian.schema";
+import { pisahkanTtd, rujukanTtd, sidikTtd, sisipkanTtd } from "./isian.ttd";
 import type { Aktor, IsianForm, RevisiIsian, RiwayatIsian } from "./isian.types";
 
 /**
@@ -43,8 +38,6 @@ type Tx = Prisma.TransactionClient;
 
 /** JSON isian setelah TTD dipisah (TTD tidak ikut dihitung). */
 const MAKS_DATA_BYTE = 256 * 1024;
-/** TTD baru per sekali simpan. */
-const MAKS_TTD_BARU = 25;
 
 const isUnik = (e: unknown) => (e as { code?: string } | null)?.code === "P2002";
 
@@ -112,87 +105,18 @@ async function cariIsian(id: string, db: Tx = getAppDb()): Promise<FormRmIsian> 
   return row;
 }
 
-const audit = (aktor: Aktor, aksi: string, row: Pick<FormRmIsian, "id" | "formKode" | "nopen" | "status" | "rev">) =>
-  writeAudit({
-    actorId: aktor.id,
-    actorName: aktor.nama,
-    action: `form-rm.isian.${aksi}`,
-    targetId: row.id,
-    metadata: { kode: row.formKode, nopen: row.nopen, status: row.status, rev: row.rev },
-    ip: aktor.ip,
-  });
-
-/* ------------------------------------------------------------ tanda tangan */
-
-/** Id TTD yang dirujuk data (urutan slot). */
-function rujukanTtd(def: DefinisiForm, data: object): string[] {
-  const ids: string[] = [];
-  def.petaTtd(data, (v) => {
-    const id = idDariRefTtd(v);
-    if (id) ids.push(id);
-    return v;
-  });
-  return ids;
-}
-
-/**
- * Pisahkan TTD dari data: PNG data-URL baru dinormalkan & disimpan di
- * `form_rm_ttd` (dipakai ulang bila sha256 sama), lalu diganti referensi
- * `ttd:<id>`. Referensi yang ada harus milik isian INI (bukan isian lain).
- */
-async function pisahkanTtd(tx: Tx, isianId: string, def: DefinisiForm, data: object, olehId: string): Promise<object> {
-  const baru = new Map<string, string>(); // data-URL → slot pertama
-  const dirujuk = new Set<string>();
-  def.petaTtd(data, (v, slot) => {
-    if (adalahDataUrlTtd(v)) {
-      if (!baru.has(v)) baru.set(v, slot);
-    } else {
-      const id = idDariRefTtd(v);
-      if (id) dirujuk.add(id);
-    }
-    return v;
-  });
-
-  if (baru.size > MAKS_TTD_BARU) throw new ValidationError({ formErrors: ["Terlalu banyak tanda tangan baru"], fieldErrors: {} });
-  if (dirujuk.size > 0) {
-    const milik = await tx.formRmTtd.count({ where: { id: { in: [...dirujuk] }, isianId } });
-    if (milik !== dirujuk.size) {
-      throw new ValidationError({ formErrors: ["Referensi tanda tangan tidak dikenal"], fieldErrors: {} });
-    }
-  }
-
-  const ganti = new Map<string, string>();
-  for (const [dataUrl, slot] of baru) {
-    const hasil = normalkanPng(Buffer.from(dataUrl.slice(TTD_DATA_URL_PREFIX.length), "base64"));
-    if (!hasil.ok) throw new ValidationError({ formErrors: [], fieldErrors: { [slot]: [hasil.alasan] } });
-    const sha256 = sha256Hex(hasil.png);
-    const ada = await tx.formRmTtd.findUnique({ where: { isianId_sha256: { isianId, sha256 } }, select: { id: true } });
-    const id =
-      ada?.id ??
-      (
-        await tx.formRmTtd.create({
-          data: { isianId, slot, png: hasil.png, sha256, ukuran: hasil.png.byteLength, dibuatOlehId: olehId },
-          select: { id: true },
-        })
-      ).id;
-    ganti.set(dataUrl, refTtd(id));
-  }
-  return baru.size === 0 ? data : def.petaTtd(data, (v) => ganti.get(v) ?? v);
-}
-
-/** id TTD → sha256 dihitung ulang dari bytes (bukan kolom sha256) untuk segel. */
-async function sidikTtd(db: Tx, isianId: string, ids: readonly string[]): Promise<Record<string, string>> {
-  if (ids.length === 0) return {};
-  const rows = await db.formRmTtd.findMany({ where: { id: { in: [...ids] }, isianId }, select: { id: true, png: true } });
-  return Object.fromEntries(rows.map((r) => [r.id, sha256Hex(r.png)]));
-}
-
 /* ------------------------------------------------------------------ buat */
 
 /**
  * Buka isian aktif (bukan BATAL) untuk (form, pendaftaran), atau buat baru
  * dengan identitas & isi otomatis dari SIMGOS (read-only). Form berulang selalu
- * membuat isian baru dengan urutan berikutnya.
+ * membuat isian baru dengan urutan berikutnya. Bila form itu belum pernah punya
+ * isian tetapi ada di tabel lama, data lama yang dipindahkan (bukan isi otomatis).
+ *
+ * Urutan isian baru diambil dari snapshot AWAL (sebelum isi otomatis yang
+ * lambat): permintaan bersamaan menghitung urutan yang sama → bentrok di kunci
+ * unik → yang kalah membuka isian pemenang. Form tidak berulang tak pernah
+ * punya dua isian aktif.
  */
 export async function bukaAtauBuatIsian(
   input: BuatIsianInput,
@@ -203,21 +127,33 @@ export async function bukaAtauBuatIsian(
   const db = getAppDb();
   const subjek = input.nopen; // semua form saat ini bercakupan EPISODE
 
-  const aktif = () =>
-    db.formRmIsian.findFirst({
-      where: { formKode: def.kode, subjek, status: { not: "BATAL" } },
-      orderBy: { urutan: "desc" },
-    });
-  if (!def.berulang) {
-    const ada = await aktif();
-    if (ada) return { isian: keDto(ada), baru: false };
+  const terakhir = () => db.formRmIsian.findFirst({ where: { formKode: def.kode, subjek }, orderBy: { urutan: "desc" } });
+  /** Isian aktif milik permintaan lain yang menang balapan (form tidak berulang). */
+  const bukaPemenang = async () => {
+    const ada = def.berulang ? null : await terakhir();
+    if (!ada || ada.status === "BATAL") throw new ConflictError();
+    return { isian: keDto(ada), baru: false };
+  };
+
+  const awal = await terakhir();
+  if (!def.berulang && awal && awal.status !== "BATAL") return { isian: keDto(awal), baru: false };
+
+  if (!awal) {
+    const lama = await db.formRm.findUnique({ where: { nopen_jenis: { nopen: input.nopen, jenis: def.jenisLama } } });
+    if (lama) {
+      const h = await pindahkanBarisLama(lama, aktor);
+      if (h.hasil === "dipindah") return { isian: keDto(await cariIsian(h.isianId)), baru: true };
+      if (h.hasil === "gagal") {
+        throw new BusinessRuleError(`Isian lama form ini tidak bisa dipindahkan (${h.alasan}). Hubungi pengelola rekam medis.`);
+      }
+      return bukaPemenang(); // dilewati = baru saja dipindahkan permintaan lain
+    }
   }
 
   const header = await getFormRmHeader(input.nopen);
   if (!header) throw new NotFoundError("Pendaftaran tidak ditemukan atau tidak aktif");
   const { data, asal } = await isiOtomatis(def, input.nopen, header);
 
-  const terakhir = await db.formRmIsian.aggregate({ where: { formKode: def.kode, subjek }, _max: { urutan: true } });
   try {
     const row = await db.formRmIsian.create({
       data: {
@@ -225,7 +161,7 @@ export async function bukaAtauBuatIsian(
         formVersi: def.versi,
         subjek,
         nopen: input.nopen,
-        urutan: (terakhir._max.urutan ?? 0) + 1,
+        urutan: (awal?.urutan ?? 0) + 1,
         norm: header.norm,
         namaPasien: header.nama,
         ruang: header.ruang === "—" ? null : header.ruang,
@@ -235,14 +171,12 @@ export async function bukaAtauBuatIsian(
         diubahOlehId: aktor.id,
       },
     });
-    await audit(aktor, "buat", row);
+    await auditIsian(aktor, "buat", row);
     return { isian: keDto(row), baru: true };
   } catch (e) {
     // Dua permintaan bersamaan: yang kalah membuka isian milik pemenang.
     if (!isUnik(e)) throw e;
-    const ada = def.berulang ? null : await aktif();
-    if (!ada) throw new ConflictError();
-    return { isian: keDto(ada), baru: false };
+    return bukaPemenang();
   }
 }
 
@@ -250,8 +184,43 @@ export async function bukaAtauBuatIsian(
 
 export async function bacaIsian(id: string, aktor: Aktor): Promise<IsianForm> {
   const row = await cariIsian(id);
-  await audit(aktor, "lihat", row);
+  await auditIsian(aktor, "lihat", row);
   return keDto(row);
+}
+
+/**
+ * Identitas kepala formulir: No.RM, nama & ruang dari SNAPSHOT isian (diambil
+ * server saat dibuat); jenis kelamin, tanggal lahir, dst. dibaca dari SIMGOS.
+ */
+export async function identitasIsian(isian: IsianForm): Promise<FormRmHeader> {
+  const simgos = await getFormRmHeader(isian.nopen).catch(() => null);
+  return {
+    nopen: isian.nopen,
+    norm: isian.norm,
+    nama: isian.namaPasien,
+    jenisKelamin: simgos?.jenisKelamin ?? "—",
+    tanggalLahir: simgos?.tanggalLahir ?? null,
+    umur: simgos?.umur ?? null,
+    ruang: isian.ruang ?? simgos?.ruang ?? "—",
+    masuk: simgos?.masuk ?? isian.createdAt,
+    nik: simgos?.nik ?? "",
+  };
+}
+
+/**
+ * Isian untuk dokumen cetak: TTD disisipkan sebagai PNG data-URL, ditambah segel
+ * revisi terakhir bila isian identik dengan revisi itu (FINAL/BATAL). Diaudit.
+ */
+export async function bacaIsianCetak(id: string, aktor: Aktor): Promise<{ isian: IsianForm; segel: string | null }> {
+  const db = getAppDb();
+  const row = await cariIsian(id);
+  const def = definisiDari(row);
+  const [data, revisi] = await Promise.all([
+    sisipkanTtd(db, id, def, row.data as object),
+    db.formRmRevisi.findFirst({ where: { isianId: id }, orderBy: { rev: "desc" }, select: { rev: true, hash: true } }),
+  ]);
+  await auditIsian(aktor, "cetak", row);
+  return { isian: { ...keDto(row), data }, segel: revisi?.rev === row.rev ? revisi.hash : null };
 }
 
 /** Gambar TTD (PNG ternormalisasi). Izin dicek di API; id = cuid acak. */
@@ -289,7 +258,7 @@ export async function simpanIsian(id: string, input: SimpanIsianInput, aktor: Ak
     throw isUnik(e) ? new ConflictError() : e;
   });
 
-  await audit(aktor, "simpan", hasil);
+  await auditIsian(aktor, "simpan", hasil);
   return keDto(hasil);
 }
 
@@ -381,7 +350,7 @@ export async function aksiIsian(
     throw isUnik(e) ? new ConflictError() : e;
   });
 
-  await audit(aktor, LABEL_AUDIT[input.aksi], hasil);
+  await auditIsian(aktor, LABEL_AUDIT[input.aksi], hasil);
   return keDto(hasil);
 }
 

@@ -11,6 +11,7 @@ import {
   ClipboardList,
   Clock,
   DoorOpen,
+  PencilLine,
   RefreshCw,
   Search,
   Siren,
@@ -29,10 +30,13 @@ import { cn } from "@/lib/cn";
 import { useDebounce } from "@/lib/useDebounce";
 import { useAsyncData } from "@/lib/useAsyncData";
 import { addDays, formatDate, formatDateTime, formatJam, toLocalDateInput } from "@/lib/format";
+import { DEFINISI_FORM } from "@/features/form-rm/registry";
+import { TAMPILAN_FORM } from "@/features/form-rm/tampilan";
 import type {
   FormRmKelengkapan,
   FormRmListResult,
   FormRmPatient,
+  StatusFormPasien,
 } from "@/server/modules/form-rm/form-rm.types";
 import type { RuanganOption } from "@/server/modules/kunjungan/kunjungan.types";
 
@@ -132,7 +136,7 @@ export function FormRmListView({
           loading={loading}
         />
         <StatCard
-          label="RM Lengkap"
+          label="RM Lengkap (Final)"
           value={lengkapCount}
           icon={ClipboardCheck}
           tone="success"
@@ -274,10 +278,14 @@ function PatientCard({ item }: { item: FormRmPatient }) {
           <KelengkapanBadge k={item.kelengkapan} />
         </div>
         <div className="flex flex-wrap gap-1.5">
-          <FormChip kode="RM.04" nama="Triase" filled={item.kelengkapan.triase} />
-          <FormChip kode="RM.01" nama="Ringkasan" filled={item.kelengkapan.ringkasan} />
-          <FormChip kode="RM.21" nama="Edukasi" filled={item.kelengkapan.edukasi} />
-          <FormChip kode="RM.03" nama="Consent" filled={item.kelengkapan.consent} />
+          {DEFINISI_FORM.map((d) => (
+            <FormChip
+              key={d.kode}
+              kode={d.kode}
+              nama={TAMPILAN_FORM[d.kode].singkat}
+              status={item.kelengkapan.status[d.kode]}
+            />
+          ))}
         </div>
       </div>
 
@@ -293,7 +301,7 @@ function PatientCard({ item }: { item: FormRmPatient }) {
   );
 }
 
-/** Ringkasan status kelengkapan RM (teks + warna + ikon — tak hanya warna). */
+/** Ringkasan status kelengkapan RM (teks + warna + ikon — tak hanya warna). Lengkap = semua FINAL. */
 function KelengkapanBadge({ k }: { k: FormRmKelengkapan }) {
   if (k.lengkap) {
     return (
@@ -305,25 +313,28 @@ function KelengkapanBadge({ k }: { k: FormRmKelengkapan }) {
   if (k.terisi === 0) return <Badge tone="danger">Belum diisi</Badge>;
   return (
     <Badge tone="warning">
-      {k.terisi}/{k.total} terisi
+      {k.final}/{k.total} final
     </Badge>
   );
 }
 
-/** Chip satu form RM: terisi (hijau + centang) vs belum (garis putus, redup). */
-function FormChip({ kode, nama, filled }: { kode: string; nama: string; filled: boolean }) {
+const CHIP: Record<StatusFormPasien, { kelas: string; teks: string }> = {
+  FINAL: { kelas: "border-success/30 bg-success-soft text-success", teks: "final" },
+  DRAF: { kelas: "border-warning/40 bg-warning-soft text-warning", teks: "draf" },
+  KOSONG: { kelas: "border-dashed border-border bg-surface-2/60 text-fg-subtle", teks: "belum diisi" },
+};
+
+/** Chip satu form RM: final (centang) / draf (pensil) / belum (garis putus) — ikon + teks, tak hanya warna. */
+function FormChip({ kode, nama, status }: { kode: string; nama: string; status: StatusFormPasien }) {
   return (
     <span
-      title={`${kode} · ${nama} — ${filled ? "terisi" : "belum diisi"}`}
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
-        filled
-          ? "border-success/30 bg-success-soft text-success"
-          : "border-dashed border-border bg-surface-2/60 text-fg-subtle",
-      )}
+      title={`${kode} · ${nama} — ${CHIP[status].teks}`}
+      className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium", CHIP[status].kelas)}
     >
-      {filled ? (
+      {status === "FINAL" ? (
         <Check className="size-3" />
+      ) : status === "DRAF" ? (
+        <PencilLine className="size-3" />
       ) : (
         <span className="size-1.5 rounded-full bg-fg-subtle/50" aria-hidden />
       )}

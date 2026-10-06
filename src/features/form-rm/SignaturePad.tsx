@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { ImageCropper } from "@/features/form-rm/ImageCropper";
+import { useTerkunci } from "@/features/form-rm/isian/kunci";
+import { srcTtd } from "@/features/form-rm/skema";
 import {
   type CropRect,
   PHOTO_MAXDIM_DEFAULT,
@@ -48,6 +50,7 @@ export function SignaturePad({
   /** TTD dari slot lain yang bisa dipakai ulang (sekali klik) bila slot ini kosong. */
   reuse?: string;
 }) {
+  const terkunci = useTerkunci();
   const [editing, setEditing] = useState(!value);
   const [mode, setMode] = useState<Mode>("");
   const [error, setError] = useState<string | null>(null);
@@ -286,6 +289,25 @@ export function SignaturePad({
     startSource(shot);
   }
 
+  // -------- Isian terkunci (FINAL/BATAL): hanya tampil --------
+  if (terkunci) {
+    return (
+      <div>
+        <p className="mb-1.5 text-xs font-medium text-fg-muted">{label}</p>
+        {value ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={srcTtd(value)}
+            alt={label}
+            className="h-14 max-w-[60%] rounded-[var(--radius-md)] border border-border bg-white object-contain px-2"
+          />
+        ) : (
+          <p className="text-xs text-fg-subtle">Belum ditandatangani</p>
+        )}
+      </div>
+    );
+  }
+
   // -------- Tersimpan --------
   if (value && !editing) {
     return (
@@ -294,7 +316,7 @@ export function SignaturePad({
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={value}
+            src={srcTtd(value)}
             alt={label}
             className="h-14 max-w-[60%] rounded-[var(--radius-md)] border border-border bg-white object-contain px-2"
           />
@@ -361,7 +383,7 @@ export function SignaturePad({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={reuse}
+                  src={srcTtd(reuse)}
                   alt="TTD sebelumnya"
                   className="h-9 w-16 shrink-0 rounded-[var(--radius-sm)] border border-border bg-white object-contain"
                 />

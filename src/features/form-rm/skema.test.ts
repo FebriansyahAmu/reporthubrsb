@@ -6,6 +6,7 @@ import {
   idDariRefTtd,
   pangkasTeksPanjang,
   ringkasanFormSchema,
+  srcTtd,
   ttdSchema,
 } from "./skema";
 import { emptyEdukasiForm } from "./edukasi.constants";
@@ -35,6 +36,13 @@ describe("ttdSchema", () => {
     expect(idDariRefTtd("ttd:abcdefghijklmnopqrstuvwx")).toBe("abcdefghijklmnopqrstuvwx");
     expect(idDariRefTtd("ttd:x")).toBeNull();
     expect(idDariRefTtd("data:image/png;base64,AA==")).toBeNull();
+  });
+
+  it("srcTtd: referensi → API TTD; data-URL & kosong apa adanya; bukan-referensi tak pernah jadi URL API", () => {
+    expect(srcTtd("ttd:abcdefghijklmnopqrstuvwx")).toBe("/api/form-rm/ttd/abcdefghijklmnopqrstuvwx");
+    expect(srcTtd("data:image/png;base64,AA==")).toBe("data:image/png;base64,AA==");
+    expect(srcTtd("")).toBe("");
+    expect(srcTtd("ttd:../../api/auth/logout")).toBe("ttd:../../api/auth/logout");
   });
 });
 

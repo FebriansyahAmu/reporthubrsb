@@ -46,6 +46,16 @@ export async function apiPost<T>(url: string, body: unknown): Promise<T> {
   );
 }
 
+export async function apiPatch<T>(url: string, body: unknown): Promise<T> {
+  return baca<T>(
+    await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
 /** POST multipart (unggah berkas) — browser yang menetapkan boundary Content-Type. */
 export async function apiUpload<T>(url: string, form: FormData): Promise<T> {
   return baca<T>(await fetch(url, { method: "POST", headers: { Accept: "application/json" }, body: form }));

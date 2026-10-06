@@ -1,15 +1,16 @@
 import "server-only";
+import { headers } from "next/headers";
 import type { NextRequest } from "next/server";
 import type { SessionUser } from "@/server/auth/session";
 import { permintaanLintasSitus } from "@/server/lib/asal-sama";
 import { ForbiddenError, NotFoundError, TooManyRequestsError } from "@/server/lib/errors";
 import { asalPublik } from "@/server/lib/public-origin";
 import { buatPembatasLaju } from "@/server/lib/rate-limit";
-import { clientIp } from "@/server/lib/request";
+import { clientIp, ipKlien } from "@/server/lib/request";
 import { ID_RE } from "./isian.schema";
 import type { Aktor } from "./isian.types";
 
-/** Penjaga lapisan API isian Form RM (dipakai rute, bukan service). */
+/** Penjaga lapisan HTTP isian Form RM (dipakai rute & halaman, bukan service). */
 
 /** Batas body per jenis permintaan. Simpan memuat TTD baru (PNG base64). */
 export const BATAS_BODY = { kecil: 4 * 1024, simpan: 4 * 1024 * 1024 } as const;
@@ -21,6 +22,13 @@ export const aktorDari = (user: SessionUser, req: NextRequest): Aktor => ({
   id: user.id,
   nama: user.name,
   ip: clientIp(req),
+});
+
+/** Aktor untuk Server Component (halaman isian / cetak). */
+export const aktorHalaman = async (user: SessionUser): Promise<Aktor> => ({
+  id: user.id,
+  nama: user.name,
+  ip: ipKlien(await headers()),
 });
 
 /** Permintaan tulis: tolak lintas situs (CSRF, pertahanan berlapis) lalu batasi laju. */

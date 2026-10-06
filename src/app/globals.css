@@ -157,6 +157,16 @@ body {
   }
 }
 
+/* Isian Form RM terkunci (FINAL/BATAL): kontrol nonaktif tetap terbaca penuh,
+   bukan pudar seperti tombol nonaktif biasa. */
+fieldset.isian-terkunci :disabled {
+  opacity: 1;
+  cursor: default;
+}
+fieldset.isian-terkunci [aria-label="Kosongkan"] {
+  display: none;
+}
+
 /* =========================================================================
    PRINT — layout kertas untuk cetakan (resume medik, laporan).
    ========================================================================= */

@@ -30,6 +30,9 @@ export type IsianForm = {
   updatedAt: string;
 };
 
+/** Ringkasan isian aktif satu form untuk daftar / profil pasien. */
+export type RingkasIsian = { id: string; status: StatusIsian; rev: number; updatedAt: string };
+
 export type RevisiIsian = {
   rev: number;
   aksi: AksiIsian;
@@ -43,6 +46,18 @@ export type RiwayatIsian = {
   revisi: RevisiIsian[];
   /** Hasil pemeriksaan segel HMAC berantai + kecocokan isian dengan revisi terakhir. */
   integritas: { utuh: boolean; masalah: string[] };
+};
+
+/** Izin pengguna atas halaman isian (dihitung server, dipakai UI untuk tombol). */
+export type IzinIsian = {
+  /** Simpan draf, finalkan, batalkan draf (`form-rm` update). */
+  ubah: boolean;
+  /** Buka koreksi / batalkan isian FINAL (`form-rm.kelola` update). */
+  kelola: boolean;
+  /** Buat isian baru setelah dibatalkan (`form-rm` create). */
+  buat: boolean;
+  /** Cetak (`form-rm` print). */
+  cetak: boolean;
 };
 
 /** Pelaku aksi (dari sesi) + IP untuk audit. */

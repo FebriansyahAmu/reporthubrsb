@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
@@ -19,9 +18,6 @@ import {
   HeartOff,
   House,
   Info,
-  Loader2,
-  Printer,
-  Save,
   Siren,
   Stethoscope,
   Timer,
@@ -35,6 +31,9 @@ import { Input, Label } from "@/components/ui/Field";
 import { DateTimePicker, nowLocalDateTime } from "@/components/ui/DatePicker";
 import { Switch } from "@/components/ui/Switch";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
+import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
+import { BidangIsian } from "@/features/form-rm/isian/kunci";
+import { useIsian } from "@/features/form-rm/isian/useIsian";
 import {
   EMERGENCY_OPTS,
   KECELAKAAN_OPTS,
@@ -52,13 +51,8 @@ import {
   type TriaseKriteria,
 } from "@/features/form-rm/triase.constants";
 import { cn } from "@/lib/cn";
-import type {
-  FormRmHeader,
-  FormRmSaved,
-  TriaseForm,
-  TriasePrefill,
-  TriaseSimrs,
-} from "@/server/modules/form-rm/form-rm.types";
+import type { FormRmHeader, TriaseForm, TriaseSimrs } from "@/server/modules/form-rm/form-rm.types";
+import type { IsianForm, IzinIsian } from "@/server/modules/form-rm/isian.types";
 
 /* ------------------------------------------------------------------ warna */
 
@@ -112,47 +106,33 @@ const SECTIONS = [
 
 /* ------------------------------------------------------------------- view */
 
-export function TriaseFormView({
-  nopen,
-  header,
-  prefill,
-  simrs,
-  initialSaved,
-}: {
-  nopen: string;
-  header: FormRmHeader;
-  prefill: TriasePrefill | null;
-  simrs: TriaseSimrs | null;
-  initialSaved: FormRmSaved<TriaseForm> | null;
-}) {
-  const [form, setForm] = useState<TriaseForm>(() => {
-    const base = emptyTriaseForm();
-    if (initialSaved?.data) {
-      Object.assign(base, initialSaved.data);
-      base.catatan = [0, 1, 2, 3, 4].map((i) => initialSaved.data.catatan?.[i] ?? "");
-      return base;
-    }
-    if (prefill) Object.assign(base, prefill);
-    // Tanpa triase SIMRS: waktu datang = masuk kunjungan (jam dinding).
-    if (!base.kedatanganWaktu) base.kedatanganWaktu = header.masuk.slice(0, 16);
-    if (!base.waktuTriase) base.waktuTriase = base.kedatanganWaktu;
-    return base;
-  });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [tersimpan, setTersimpan] = useState(!!initialSaved);
-  const [savedAt, setSavedAt] = useState<string | null>(initialSaved?.updatedAt ?? null);
-  const [dirty, setDirty] = useState(false);
-  const [tab, setTab] = useState<TriaseKat>(1);
+/** Data tersimpan → state UI: catatan selalu 5 kolom (Kategori I–V). */
+function siapkan(data: unknown): TriaseForm {
+  const f: TriaseForm = { ...emptyTriaseForm(), ...(data as TriaseForm) };
+  return { ...f, catatan: [0, 1, 2, 3, 4].map((i) => f.catatan?.[i] ?? "") };
+}
 
-  const set = <K extends keyof TriaseForm>(key: K, value: TriaseForm[K]) => {
+export function TriaseFormView({
+  isian,
+  header,
+  simrs,
+  izin,
+}: {
+  isian: IsianForm;
+  header: FormRmHeader;
+  /** Ringkasan triase yang tercatat di SIMRS (rujukan baca-saja). */
+  simrs: TriaseSimrs | null;
+  izin: IzinIsian;
+}) {
+  // `kendali` (bukan `k`): `k` dipakai sebagai item kategori di banyak .map().
+  const kendali = useIsian(isian, izin, siapkan);
+  const { form, setForm } = kendali;
+  // Tab tablet/HP dibuka di kategori hasil (berguna saat isian sudah FINAL).
+  const [tab, setTab] = useState<TriaseKat>(() => hitungKategori(siapkan(isian.data)) ?? 1);
+
+  const set = <K extends keyof TriaseForm>(key: K, value: TriaseForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
-    setDirty(true);
-  };
-  const patch = (fn: (f: TriaseForm) => TriaseForm) => {
-    setForm(fn);
-    setDirty(true);
-  };
+  const patch = (fn: (f: TriaseForm) => TriaseForm) => setForm(fn);
   const toggleKriteria = (id: string) =>
     patch((f) => ({
       ...f,
@@ -178,44 +158,27 @@ export function TriaseFormView({
   };
   const jumlahSelesai = Object.values(selesai).filter(Boolean).length;
 
-  async function handleSave() {
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/form-rm/triase/${nopen}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          data: form,
-          header: { norm: header.norm, nama: header.nama, ruang: header.ruang },
-        }),
-      });
-      const json = (await res.json().catch(() => null)) as
-        | { data?: FormRmSaved<TriaseForm>; error?: { message?: string } }
-        | null;
-      if (!res.ok || !json?.data) throw new Error(json?.error?.message || "Gagal menyimpan formulir");
-      setTersimpan(true);
-      setSavedAt(json.data.updatedAt);
-      setDirty(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Gagal menyimpan");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   const berbedaDariSimrs =
     simrs?.kategori != null && kategori !== null && simrs.kategori !== kategori;
 
   return (
-    <div className="space-y-5 pb-28">
-      {!initialSaved && prefill && (
+    <IsianFrame
+      kendali={kendali}
+      aksen={
+        kategori ? (
+          <KatPill kat={kategori} compact />
+        ) : form.doa ? (
+          <span className="rounded-full bg-fg px-2 py-0.5 text-xs font-semibold text-surface">DOA</span>
+        ) : null
+      }
+    >
+      {kendali.isian.rev === 1 && kendali.isian.asal.length > 0 && (
         <div className="flex items-start gap-2 rounded-[var(--radius-md)] border border-brand/30 bg-brand-soft px-3 py-2.5 text-[13px] text-brand-soft-fg">
           <Check className="mt-0.5 size-4 shrink-0" />
           <span>
-            Sebagian data <b>terisi otomatis dari triase SIMRS</b> (waktu &amp; cara datang, jenis kasus,
-            tanda vital, petugas). Periksa dan sesuaikan sebelum menyimpan. Kriteria pemeriksaan tetap
-            dicentang oleh petugas.
+            Sebagian data <b>terisi otomatis dari SIMRS</b> saat isian dibuat (waktu &amp; cara datang, jenis
+            kasus, tanda vital, petugas). Periksa dan sesuaikan. Kriteria pemeriksaan tetap dicentang oleh
+            petugas.
           </span>
         </div>
       )}
@@ -296,204 +259,208 @@ export function TriaseFormView({
       </nav>
 
       {/* 1 & 2 — Kedatangan + Jenis Kasus */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <SectionCard id="kedatangan" no={1} title="Kedatangan" done={selesai.kedatangan}>
-          <div className="space-y-4">
-            <div className="sm:max-w-sm">
-              <Label>Tanggal &amp; Pukul Kedatangan (WITA)</Label>
-              <DateTimePicker value={form.kedatanganWaktu} onChange={(v) => set("kedatanganWaktu", v)} />
+      <BidangIsian>
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+          <SectionCard id="kedatangan" no={1} title="Kedatangan" done={selesai.kedatangan}>
+            <div className="space-y-4">
+              <div className="sm:max-w-sm">
+                <Label>Tanggal &amp; Pukul Kedatangan (WITA)</Label>
+                <DateTimePicker value={form.kedatanganWaktu} onChange={(v) => set("kedatanganWaktu", v)} />
+              </div>
+              <div>
+                <Label>Cara Datang</Label>
+                {/* xl: kartu setengah lebar → 2 kolom agar label tak terjepit */}
+                <div role="radiogroup" aria-label="Cara datang" className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
+                  {CARA_DATANG.map(({ v, icon }) => (
+                    <ChoiceTile
+                      key={v}
+                      icon={icon}
+                      label={v}
+                      active={form.caraDatang === v}
+                      onClick={() =>
+                        patch((f) => ({
+                          ...f,
+                          caraDatang: f.caraDatang === v ? "" : v,
+                          caraDatangLain: v === "Lain-lain" ? f.caraDatangLain : "",
+                        }))
+                      }
+                    />
+                  ))}
+                </div>
+                <AnimatePresence initial={false}>
+                  {form.caraDatang === "Lain-lain" && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <Input
+                        autoFocus
+                        className="mt-2"
+                        value={form.caraDatangLain}
+                        onChange={(e) => set("caraDatangLain", e.target.value)}
+                        placeholder="Sebutkan cara datang (mis. rujukan puskesmas)"
+                        aria-label="Cara datang lain-lain"
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
-            <div>
-              <Label>Cara Datang</Label>
-              {/* xl: kartu setengah lebar → 2 kolom agar label tak terjepit */}
-              <div role="radiogroup" aria-label="Cara datang" className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
-                {CARA_DATANG.map(({ v, icon }) => (
-                  <ChoiceTile
-                    key={v}
-                    icon={icon}
-                    label={v}
-                    active={form.caraDatang === v}
-                    onClick={() =>
+          </SectionCard>
+
+          <SectionCard id="kasus" no={2} title="Jenis Kasus" done={selesai.kasus}>
+            <div className="space-y-4">
+              <div role="radiogroup" aria-label="Jenis kasus" className="grid grid-cols-2 gap-2">
+                <ChoiceTile
+                  icon={Stethoscope}
+                  label="Non Trauma"
+                  active={form.kasus === "Non Trauma"}
+                  onClick={() =>
+                    patch((f) => ({ ...f, kasus: f.kasus === "Non Trauma" ? "" : "Non Trauma", kecelakaan: [] }))
+                  }
+                />
+                <ChoiceTile
+                  icon={Bone}
+                  label="Trauma"
+                  active={form.kasus === "Trauma"}
+                  onClick={() => patch((f) => ({ ...f, kasus: f.kasus === "Trauma" ? "" : "Trauma", kecelakaan: [] }))}
+                />
+              </div>
+              <div>
+                <Label>Kecelakaan</Label>
+                <div className="flex flex-wrap gap-2">
+                  {KECELAKAAN_OPTS.map((o) => {
+                    const Icon = KECELAKAAN_ICON[o];
+                    const on = form.kecelakaan.includes(o);
+                    return (
+                      <Chip
+                        key={o}
+                        active={on}
+                        onClick={() =>
+                          patch((f) => {
+                            const kecelakaan = on ? f.kecelakaan.filter((x) => x !== o) : [...f.kecelakaan, o];
+                            // Kecelakaan selalu kasus trauma.
+                            return { ...f, kecelakaan, kasus: kecelakaan.length ? "Trauma" : f.kasus };
+                          })
+                        }
+                      >
+                        <Icon className="size-3.5" />
+                        {o.replace("Kecelakaan ", "")}
+                      </Chip>
+                    );
+                  })}
+                </div>
+                <p className="mt-1.5 text-[11px] text-fg-subtle">Memilih jenis kecelakaan otomatis menandai kasus sebagai Trauma.</p>
+              </div>
+              <div
+                className={cn(
+                  "rounded-[var(--radius-md)] border p-3 transition-colors",
+                  form.doa ? "border-fg/40 bg-fg/[0.04]" : "border-border",
+                )}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={cn(
+                        "flex size-9 items-center justify-center rounded-[var(--radius-md)]",
+                        form.doa ? "bg-fg text-surface" : "bg-surface-2 text-fg-subtle",
+                      )}
+                    >
+                      <HeartOff className="size-4.5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-fg">DOA (Death on Arrival)</p>
+                      <p className="text-xs text-fg-muted">Pasien meninggal saat tiba di IGD.</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={form.doa}
+                    tone="danger"
+                    label="DOA (Death on Arrival)"
+                    onChange={(v) =>
                       patch((f) => ({
                         ...f,
-                        caraDatang: f.caraDatang === v ? "" : v,
-                        caraDatangLain: v === "Lain-lain" ? f.caraDatangLain : "",
+                        doa: v,
+                        doaWaktu: v ? f.doaWaktu || f.kedatanganWaktu || nowLocalDateTime() : "",
                       }))
                     }
                   />
-                ))}
-              </div>
-              <AnimatePresence initial={false}>
-                {form.caraDatang === "Lain-lain" && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <Input
-                      autoFocus
-                      className="mt-2"
-                      value={form.caraDatangLain}
-                      onChange={(e) => set("caraDatangLain", e.target.value)}
-                      placeholder="Sebutkan cara datang (mis. rujukan puskesmas)"
-                      aria-label="Cara datang lain-lain"
-                    />
-                  </motion.div>
+                </div>
+                {form.doa && (
+                  <div className="mt-3 sm:max-w-sm">
+                    <Label>Pukul DOA (WITA)</Label>
+                    <DateTimePicker value={form.doaWaktu} onChange={(v) => set("doaWaktu", v)} />
+                  </div>
                 )}
-              </AnimatePresence>
-            </div>
-          </div>
-        </SectionCard>
-
-        <SectionCard id="kasus" no={2} title="Jenis Kasus" done={selesai.kasus}>
-          <div className="space-y-4">
-            <div role="radiogroup" aria-label="Jenis kasus" className="grid grid-cols-2 gap-2">
-              <ChoiceTile
-                icon={Stethoscope}
-                label="Non Trauma"
-                active={form.kasus === "Non Trauma"}
-                onClick={() =>
-                  patch((f) => ({ ...f, kasus: f.kasus === "Non Trauma" ? "" : "Non Trauma", kecelakaan: [] }))
-                }
-              />
-              <ChoiceTile
-                icon={Bone}
-                label="Trauma"
-                active={form.kasus === "Trauma"}
-                onClick={() => patch((f) => ({ ...f, kasus: f.kasus === "Trauma" ? "" : "Trauma", kecelakaan: [] }))}
-              />
-            </div>
-            <div>
-              <Label>Kecelakaan</Label>
-              <div className="flex flex-wrap gap-2">
-                {KECELAKAAN_OPTS.map((o) => {
-                  const Icon = KECELAKAAN_ICON[o];
-                  const on = form.kecelakaan.includes(o);
-                  return (
-                    <Chip
-                      key={o}
-                      active={on}
-                      onClick={() =>
-                        patch((f) => {
-                          const kecelakaan = on ? f.kecelakaan.filter((x) => x !== o) : [...f.kecelakaan, o];
-                          // Kecelakaan selalu kasus trauma.
-                          return { ...f, kecelakaan, kasus: kecelakaan.length ? "Trauma" : f.kasus };
-                        })
-                      }
-                    >
-                      <Icon className="size-3.5" />
-                      {o.replace("Kecelakaan ", "")}
-                    </Chip>
-                  );
-                })}
               </div>
-              <p className="mt-1.5 text-[11px] text-fg-subtle">Memilih jenis kecelakaan otomatis menandai kasus sebagai Trauma.</p>
             </div>
-            <div
-              className={cn(
-                "rounded-[var(--radius-md)] border p-3 transition-colors",
-                form.doa ? "border-fg/40 bg-fg/[0.04]" : "border-border",
-              )}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className={cn(
-                      "flex size-9 items-center justify-center rounded-[var(--radius-md)]",
-                      form.doa ? "bg-fg text-surface" : "bg-surface-2 text-fg-subtle",
-                    )}
-                  >
-                    <HeartOff className="size-4.5" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-fg">DOA (Death on Arrival)</p>
-                    <p className="text-xs text-fg-muted">Pasien meninggal saat tiba di IGD.</p>
-                  </div>
-                </div>
-                <Switch
-                  checked={form.doa}
-                  tone="danger"
-                  label="DOA (Death on Arrival)"
-                  onChange={(v) =>
-                    patch((f) => ({
-                      ...f,
-                      doa: v,
-                      doaWaktu: v ? f.doaWaktu || f.kedatanganWaktu || nowLocalDateTime() : "",
-                    }))
-                  }
-                />
-              </div>
-              {form.doa && (
-                <div className="mt-3 sm:max-w-sm">
-                  <Label>Pukul DOA (WITA)</Label>
-                  <DateTimePicker value={form.doaWaktu} onChange={(v) => set("doaWaktu", v)} />
-                </div>
-              )}
-            </div>
-          </div>
-        </SectionCard>
-      </div>
+          </SectionCard>
+        </div>
+      </BidangIsian>
 
       {/* 3 — Tanda-tanda vital */}
-      <SectionCard
-        id="ttv"
-        no={3}
-        title="Tanda-Tanda Vital"
-        desc="Angka yang cocok dengan ambang formulir memunculkan saran kriteria di bagian Pemeriksaan."
-        done={selesai.ttv}
-      >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-          <VitalCard
-            label="Tekanan Darah"
-            unit="mmHg"
-            saranIds={saran.filter((s) => /^(Sistolik|Diastolik)/.test(s.alasan)).map((s) => s.id)}
-            warning={
-              diLuarRentang("tdSistolik", form.tdSistolik) || diLuarRentang("tdDiastolik", form.tdDiastolik)
-            }
-          >
-            <div className="flex items-center gap-1.5">
-              <VitalInput
-                aria-label="Tekanan darah sistolik"
-                value={form.tdSistolik}
-                onChange={(v) => set("tdSistolik", v)}
-                placeholder="120"
-              />
-              <span className="text-lg text-fg-subtle">/</span>
-              <VitalInput
-                aria-label="Tekanan darah diastolik"
-                value={form.tdDiastolik}
-                onChange={(v) => set("tdDiastolik", v)}
-                placeholder="80"
-              />
-            </div>
-          </VitalCard>
-          <VitalCard
-            label="Nadi"
-            unit="x/menit"
-            saranIds={saran.filter((s) => s.alasan.startsWith("Nadi")).map((s) => s.id)}
-            warning={diLuarRentang("nadi", form.nadi)}
-          >
-            <VitalInput aria-label="Nadi" value={form.nadi} onChange={(v) => set("nadi", v)} placeholder="80" />
-          </VitalCard>
-          <VitalCard label="Suhu" unit="°C" warning={diLuarRentang("suhu", form.suhu)}>
-            <VitalInput aria-label="Suhu" value={form.suhu} onChange={(v) => set("suhu", v)} placeholder="36.5" />
-          </VitalCard>
-          <VitalCard label="Saturasi O₂" unit="%" warning={diLuarRentang("saturasi", form.saturasi)}>
-            <VitalInput aria-label="Saturasi oksigen" value={form.saturasi} onChange={(v) => set("saturasi", v)} placeholder="98" />
-          </VitalCard>
-          <VitalCard
-            label="Pernapasan"
-            unit="x/menit"
-            saranIds={saran.filter((s) => s.alasan.startsWith("Pernapasan")).map((s) => s.id)}
-            warning={diLuarRentang("pernapasan", form.pernapasan)}
-          >
-            <VitalInput aria-label="Pernapasan" value={form.pernapasan} onChange={(v) => set("pernapasan", v)} placeholder="20" />
-          </VitalCard>
-        </div>
-      </SectionCard>
+      <BidangIsian>
+        <SectionCard
+          id="ttv"
+          no={3}
+          title="Tanda-Tanda Vital"
+          desc="Angka yang cocok dengan ambang formulir memunculkan saran kriteria di bagian Pemeriksaan."
+          done={selesai.ttv}
+        >
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+            <VitalCard
+              label="Tekanan Darah"
+              unit="mmHg"
+              saranIds={saran.filter((s) => /^(Sistolik|Diastolik)/.test(s.alasan)).map((s) => s.id)}
+              warning={
+                diLuarRentang("tdSistolik", form.tdSistolik) || diLuarRentang("tdDiastolik", form.tdDiastolik)
+              }
+            >
+              <div className="flex items-center gap-1.5">
+                <VitalInput
+                  aria-label="Tekanan darah sistolik"
+                  value={form.tdSistolik}
+                  onChange={(v) => set("tdSistolik", v)}
+                  placeholder="120"
+                />
+                <span className="text-lg text-fg-subtle">/</span>
+                <VitalInput
+                  aria-label="Tekanan darah diastolik"
+                  value={form.tdDiastolik}
+                  onChange={(v) => set("tdDiastolik", v)}
+                  placeholder="80"
+                />
+              </div>
+            </VitalCard>
+            <VitalCard
+              label="Nadi"
+              unit="x/menit"
+              saranIds={saran.filter((s) => s.alasan.startsWith("Nadi")).map((s) => s.id)}
+              warning={diLuarRentang("nadi", form.nadi)}
+            >
+              <VitalInput aria-label="Nadi" value={form.nadi} onChange={(v) => set("nadi", v)} placeholder="80" />
+            </VitalCard>
+            <VitalCard label="Suhu" unit="°C" warning={diLuarRentang("suhu", form.suhu)}>
+              <VitalInput aria-label="Suhu" value={form.suhu} onChange={(v) => set("suhu", v)} placeholder="36.5" />
+            </VitalCard>
+            <VitalCard label="Saturasi O₂" unit="%" warning={diLuarRentang("saturasi", form.saturasi)}>
+              <VitalInput aria-label="Saturasi oksigen" value={form.saturasi} onChange={(v) => set("saturasi", v)} placeholder="98" />
+            </VitalCard>
+            <VitalCard
+              label="Pernapasan"
+              unit="x/menit"
+              saranIds={saran.filter((s) => s.alasan.startsWith("Pernapasan")).map((s) => s.id)}
+              warning={diLuarRentang("pernapasan", form.pernapasan)}
+            >
+              <VitalInput aria-label="Pernapasan" value={form.pernapasan} onChange={(v) => set("pernapasan", v)} placeholder="20" />
+            </VitalCard>
+          </div>
+        </SectionCard>
+      </BidangIsian>
 
-      {/* 4 — Pemeriksaan (matriks kategori) */}
+      {/* 4 — Pemeriksaan (matriks kategori). Tab kategori di luar BidangIsian: tetap bisa dipilih saat terkunci. */}
       <SectionCard
         id="pemeriksaan"
         no={4}
@@ -502,66 +469,68 @@ export function TriaseFormView({
         done={selesai.pemeriksaan}
         action={kategori ? <KatPill kat={kategori} prefix="Hasil" /> : null}
       >
-        <SaranBar
-          saran={saran}
-          saranBelum={saranBelum}
-          onApply={(id) => toggleKriteria(id)}
-          onApplyAll={() =>
-            patch((f) => ({ ...f, kriteria: [...new Set([...f.kriteria, ...saranBelum.map((s) => s.id)])] }))
-          }
-        />
+        <BidangIsian>
+          <SaranBar
+            saran={saran}
+            saranBelum={saranBelum}
+            onApply={(id) => toggleKriteria(id)}
+            onApplyAll={() =>
+              patch((f) => ({ ...f, kriteria: [...new Set([...f.kriteria, ...saranBelum.map((s) => s.id)])] }))
+            }
+          />
 
-        {/* Desktop lebar: matriks 1:1 seperti kertas */}
-        <div className="mt-4 hidden overflow-hidden rounded-[var(--radius-md)] border border-border xl:block">
-          <div className="grid grid-cols-[8.5rem_repeat(5,minmax(0,1fr))]">
-            <div className="flex items-end border-b border-border bg-surface-2/60 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">
-              Pemeriksaan
+          {/* Desktop lebar: matriks 1:1 seperti kertas */}
+          <div className="mt-4 hidden overflow-hidden rounded-[var(--radius-md)] border border-border xl:block">
+            <div className="grid grid-cols-[8.5rem_repeat(5,minmax(0,1fr))]">
+              <div className="flex items-end border-b border-border bg-surface-2/60 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">
+                Pemeriksaan
+              </div>
+              {TRIASE_KATEGORI.map((k) => (
+                <KatHeaderCell key={k.no} kat={k.no} n={perKat[k.no - 1]} hasil={kategori === k.no} />
+              ))}
+
+              {(["a", "b", "c"] as TriaseAspekKey[]).map((a) => (
+                <MatrixRow key={a} aspek={a} dipilih={dipilih} saranMap={saranMap} onToggle={toggleKriteria} />
+              ))}
+
+              <RowLabel>Kesadaran</RowLabel>
+              {TRIASE_KATEGORI.map((k) => (
+                <div key={k.no} className="flex items-center justify-center border-b border-l border-border p-2">
+                  <GcsPill
+                    kat={k.no}
+                    selected={form.kesadaran === String(k.no)}
+                    onClick={() => set("kesadaran", form.kesadaran === String(k.no) ? "" : String(k.no))}
+                  />
+                </div>
+              ))}
+
+              <MatrixRow aspek="d" dipilih={dipilih} saranMap={saranMap} onToggle={toggleKriteria} />
+
+              <RowLabel>Catatan</RowLabel>
+              {TRIASE_KATEGORI.map((k, i) => (
+                <div key={k.no} className="border-b border-l border-border p-1.5">
+                  <textarea
+                    rows={2}
+                    value={form.catatan[i] ?? ""}
+                    onChange={(e) => set("catatan", form.catatan.map((c, j) => (j === i ? e.target.value : c)))}
+                    placeholder="Catatan…"
+                    aria-label={`Catatan ${k.label}`}
+                    className="block w-full resize-y rounded-[var(--radius-sm)] border border-transparent bg-transparent px-1.5 py-1 text-[13px] text-fg placeholder:text-fg-subtle hover:border-border focus-visible:border-brand focus-visible:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring/40"
+                  />
+                </div>
+              ))}
+
+              <RowLabel icon={Timer} last={false}>Waktu Respon</RowLabel>
+              {TRIASE_KATEGORI.map((k) => (
+                <InfoCell key={k.no} kat={k.no} aktif={kategori === k.no} teks={k.respon} />
+              ))}
+              <RowLabel icon={BedDouble} last>Observasi</RowLabel>
+              {TRIASE_KATEGORI.map((k) => (
+                <InfoCell key={k.no} kat={k.no} aktif={kategori === k.no} teks={k.observasi} last />
+              ))}
             </div>
-            {TRIASE_KATEGORI.map((k) => (
-              <KatHeaderCell key={k.no} kat={k.no} n={perKat[k.no - 1]} hasil={kategori === k.no} />
-            ))}
-
-            {(["a", "b", "c"] as TriaseAspekKey[]).map((a) => (
-              <MatrixRow key={a} aspek={a} dipilih={dipilih} saranMap={saranMap} onToggle={toggleKriteria} />
-            ))}
-
-            <RowLabel>Kesadaran</RowLabel>
-            {TRIASE_KATEGORI.map((k) => (
-              <div key={k.no} className="flex items-center justify-center border-b border-l border-border p-2">
-                <GcsPill
-                  kat={k.no}
-                  selected={form.kesadaran === String(k.no)}
-                  onClick={() => set("kesadaran", form.kesadaran === String(k.no) ? "" : String(k.no))}
-                />
-              </div>
-            ))}
-
-            <MatrixRow aspek="d" dipilih={dipilih} saranMap={saranMap} onToggle={toggleKriteria} />
-
-            <RowLabel>Catatan</RowLabel>
-            {TRIASE_KATEGORI.map((k, i) => (
-              <div key={k.no} className="border-b border-l border-border p-1.5">
-                <textarea
-                  rows={2}
-                  value={form.catatan[i] ?? ""}
-                  onChange={(e) => set("catatan", form.catatan.map((c, j) => (j === i ? e.target.value : c)))}
-                  placeholder="Catatan…"
-                  aria-label={`Catatan ${k.label}`}
-                  className="block w-full resize-y rounded-[var(--radius-sm)] border border-transparent bg-transparent px-1.5 py-1 text-[13px] text-fg placeholder:text-fg-subtle hover:border-border focus-visible:border-brand focus-visible:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring/40"
-                />
-              </div>
-            ))}
-
-            <RowLabel icon={Timer} last={false}>Waktu Respon</RowLabel>
-            {TRIASE_KATEGORI.map((k) => (
-              <InfoCell key={k.no} kat={k.no} aktif={kategori === k.no} teks={k.respon} />
-            ))}
-            <RowLabel icon={BedDouble} last>Observasi</RowLabel>
-            {TRIASE_KATEGORI.map((k) => (
-              <InfoCell key={k.no} kat={k.no} aktif={kategori === k.no} teks={k.observasi} last />
-            ))}
           </div>
-        </div>
+        </BidangIsian>
 
         {/* Tablet/HP: tab per kategori */}
         <div className="mt-4 xl:hidden">
@@ -597,147 +566,104 @@ export function TriaseFormView({
             })}
           </div>
 
-          <div id="triase-tabpanel" role="tabpanel" className="mt-3 space-y-4">
-            <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-1 rounded-[var(--radius-md)] px-3 py-2 text-[13px]", TONE[tab].soft)}>
-              <span className={cn("font-semibold", TONE[tab].text)}>{TRIASE_KATEGORI[tab - 1].label}</span>
-              <span className="inline-flex items-center gap-1 text-fg-muted">
-                <Timer className="size-3.5" /> {TRIASE_KATEGORI[tab - 1].respon}
-              </span>
-              <span className="inline-flex items-center gap-1 text-fg-muted">
-                <BedDouble className="size-3.5" /> {TRIASE_KATEGORI[tab - 1].observasi}
-              </span>
-            </div>
-            {TRIASE_ASPEK.map((a) => (
-              <div key={a.key} className="space-y-4">
-                <AspekGroup
-                  label={a.label}
-                  en={a.en}
-                  items={kriteriaSel(a.key, tab)}
-                  dipilih={dipilih}
-                  saranMap={saranMap}
-                  onToggle={toggleKriteria}
-                />
-                {a.key === "c" && (
-                  <div>
-                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-fg-subtle">Kesadaran</p>
-                    <div role="radiogroup" aria-label="Kesadaran (GCS)">
-                      <GcsPill
-                        kat={tab}
-                        selected={form.kesadaran === String(tab)}
-                        onClick={() => set("kesadaran", form.kesadaran === String(tab) ? "" : String(tab))}
-                      />
-                    </div>
-                  </div>
-                )}
+          <BidangIsian>
+            <div id="triase-tabpanel" role="tabpanel" className="mt-3 space-y-4">
+              <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-1 rounded-[var(--radius-md)] px-3 py-2 text-[13px]", TONE[tab].soft)}>
+                <span className={cn("font-semibold", TONE[tab].text)}>{TRIASE_KATEGORI[tab - 1].label}</span>
+                <span className="inline-flex items-center gap-1 text-fg-muted">
+                  <Timer className="size-3.5" /> {TRIASE_KATEGORI[tab - 1].respon}
+                </span>
+                <span className="inline-flex items-center gap-1 text-fg-muted">
+                  <BedDouble className="size-3.5" /> {TRIASE_KATEGORI[tab - 1].observasi}
+                </span>
               </div>
-            ))}
-            <div>
-              <Label>Catatan {TRIASE_KATEGORI[tab - 1].label}</Label>
-              <textarea
-                rows={2}
-                value={form.catatan[tab - 1] ?? ""}
-                onChange={(e) => set("catatan", form.catatan.map((c, j) => (j === tab - 1 ? e.target.value : c)))}
-                placeholder="Catatan…"
-                className="w-full rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-              />
+              {TRIASE_ASPEK.map((a) => (
+                <div key={a.key} className="space-y-4">
+                  <AspekGroup
+                    label={a.label}
+                    en={a.en}
+                    items={kriteriaSel(a.key, tab)}
+                    dipilih={dipilih}
+                    saranMap={saranMap}
+                    onToggle={toggleKriteria}
+                  />
+                  {a.key === "c" && (
+                    <div>
+                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-fg-subtle">Kesadaran</p>
+                      <div role="radiogroup" aria-label="Kesadaran (GCS)">
+                        <GcsPill
+                          kat={tab}
+                          selected={form.kesadaran === String(tab)}
+                          onClick={() => set("kesadaran", form.kesadaran === String(tab) ? "" : String(tab))}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div>
+                <Label>Catatan {TRIASE_KATEGORI[tab - 1].label}</Label>
+                <textarea
+                  rows={2}
+                  value={form.catatan[tab - 1] ?? ""}
+                  onChange={(e) => set("catatan", form.catatan.map((c, j) => (j === tab - 1 ? e.target.value : c)))}
+                  placeholder="Catatan…"
+                  className="w-full rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+                />
+              </div>
             </div>
-          </div>
+          </BidangIsian>
         </div>
       </SectionCard>
 
       {/* 5 — Hasil, emergency, petugas & TTD */}
-      <SectionCard id="hasil" no={5} title="Hasil Triase & Tanda Tangan" done={selesai.hasil}>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div className="space-y-4">
-            <HasilPanel kategori={kategori} perKat={perKat} doa={form.doa} />
-            <div>
-              <Label>Status Kegawatan</Label>
-              <div role="radiogroup" aria-label="Status kegawatan" className="grid grid-cols-2 gap-2">
-                {EMERGENCY_OPTS.map((o) => (
-                  <ChoiceTile
-                    key={o}
-                    icon={o === "True Emergency" ? Siren : Activity}
-                    label={o}
-                    active={form.emergency === o}
-                    onClick={() => set("emergency", form.emergency === o ? "" : o)}
-                  />
-                ))}
+      <BidangIsian>
+        <SectionCard id="hasil" no={5} title="Hasil Triase & Tanda Tangan" done={selesai.hasil}>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div className="space-y-4">
+              <HasilPanel kategori={kategori} perKat={perKat} doa={form.doa} />
+              <div>
+                <Label>Status Kegawatan</Label>
+                <div role="radiogroup" aria-label="Status kegawatan" className="grid grid-cols-2 gap-2">
+                  {EMERGENCY_OPTS.map((o) => (
+                    <ChoiceTile
+                      key={o}
+                      icon={o === "True Emergency" ? Siren : Activity}
+                      label={o}
+                      active={form.emergency === o}
+                      onClick={() => set("emergency", form.emergency === o ? "" : o)}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-          <div className="space-y-3 rounded-[var(--radius-md)] border border-border bg-surface-2/30 p-3">
-            <p className="text-sm font-semibold text-fg">Dokter / Perawat</p>
-            <div>
-              <Label>Tanggal &amp; Pukul Triase (WITA)</Label>
-              <DateTimePicker value={form.waktuTriase} onChange={(v) => set("waktuTriase", v)} />
-            </div>
-            <div>
-              <Label htmlFor="triase-petugas">Nama Jelas</Label>
-              <Input
-                id="triase-petugas"
-                value={form.petugasNama}
-                onChange={(e) => set("petugasNama", e.target.value)}
-                placeholder="Nama dokter / perawat"
+            <div className="space-y-3 rounded-[var(--radius-md)] border border-border bg-surface-2/30 p-3">
+              <p className="text-sm font-semibold text-fg">Dokter / Perawat</p>
+              <div>
+                <Label>Tanggal &amp; Pukul Triase (WITA)</Label>
+                <DateTimePicker value={form.waktuTriase} onChange={(v) => set("waktuTriase", v)} />
+              </div>
+              <div>
+                <Label htmlFor="triase-petugas">Nama Jelas</Label>
+                <Input
+                  id="triase-petugas"
+                  value={form.petugasNama}
+                  onChange={(e) => set("petugasNama", e.target.value)}
+                  placeholder="Nama dokter / perawat"
+                />
+              </div>
+              <SignaturePad
+                label="Tanda Tangan"
+                value={form.petugasTtd}
+                onChange={(v) => set("petugasTtd", v)}
+                context={[header.nama, "Triase RM.04 — Dokter/Perawat"].filter(Boolean).join(" · ")}
               />
             </div>
-            <SignaturePad
-              label="Tanda Tangan"
-              value={form.petugasTtd}
-              onChange={(v) => set("petugasTtd", v)}
-              context={[header.nama, "Triase RM.04 — Dokter/Perawat"].filter(Boolean).join(" · ")}
-            />
           </div>
-        </div>
-      </SectionCard>
+        </SectionCard>
 
-      {/* Action bar */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 lg:px-8">
-          <div className="flex min-w-0 items-center gap-2.5 text-xs text-fg-muted">
-            {kategori ? (
-              <KatPill kat={kategori} compact />
-            ) : form.doa ? (
-              <span className="rounded-full bg-fg px-2 py-0.5 text-xs font-semibold text-surface">DOA</span>
-            ) : null}
-            <span className="min-w-0 truncate">
-              {error ? (
-                <span className="text-danger">{error}</span>
-              ) : dirty ? (
-                <span className="text-warning">Ada perubahan belum disimpan</span>
-              ) : tersimpan ? (
-                <span className="inline-flex items-center gap-1.5 text-success">
-                  <Check className="size-3.5" />
-                  Tersimpan{savedAt ? ` · ${fmtWaktu(savedAt)}` : ""}
-                </span>
-              ) : (
-                <span>Belum disimpan</span>
-              )}
-            </span>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {tersimpan && (
-              <Link
-                href={`/print/form-rm/triase/${nopen}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={dirty ? "Cetak memakai data yang terakhir disimpan" : undefined}
-                className="inline-flex h-10 items-center gap-1.5 rounded-[var(--radius-md)] border border-border bg-surface px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2"
-              >
-                <Printer className="size-4" />
-                Cetak
-              </Link>
-            )}
-            <Button
-              onClick={handleSave}
-              disabled={saving}
-              icon={saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-            >
-              {saving ? "Menyimpan…" : "Simpan"}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
+      </BidangIsian>
+    </IsianFrame>
   );
 }
 
@@ -745,8 +671,6 @@ export function TriaseFormView({
 
 const fmtTanggal = (iso: string) =>
   new Date(iso).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
-const fmtWaktu = (iso: string) =>
-  new Date(iso).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 /** "YYYY-MM-DDTHH:mm" (jam dinding) → "29 Sep 08.05". */
 function fmtLokal(s: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(s);

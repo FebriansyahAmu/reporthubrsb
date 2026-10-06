@@ -1,14 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
-import { Check, Loader2, Printer, QrCode, Save } from "lucide-react";
+import { useMemo } from "react";
+import { Check, QrCode } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Field";
 import { DatePicker, DateTimePicker, nowLocalDateTime } from "@/components/ui/DatePicker";
 import { SelectOther } from "@/components/ui/Select";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
+import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
+import { BidangIsian } from "@/features/form-rm/isian/kunci";
+import { useIsian } from "@/features/form-rm/isian/useIsian";
 import { cn } from "@/lib/cn";
 import {
   BACA_TULIS_OPTS,
@@ -31,26 +32,25 @@ import type {
   EdukasiForm,
   EdukasiPersiapan,
   FormRmHeader,
-  FormRmSaved,
 } from "@/server/modules/form-rm/form-rm.types";
+import type { IsianForm, IzinIsian } from "@/server/modules/form-rm/isian.types";
+
+const siapkan = (data: unknown): EdukasiForm => ({ ...emptyEdukasiForm(), ...(data as EdukasiForm) });
 
 export function EdukasiFormView({
-  nopen,
+  isian,
   header,
-  initialSaved,
+  izin,
 }: {
-  nopen: string;
+  isian: IsianForm;
   header: FormRmHeader;
-  initialSaved: FormRmSaved<EdukasiForm> | null;
+  izin: IzinIsian;
 }) {
-  const [form, setForm] = useState<EdukasiForm>(initialSaved?.data ?? emptyEdukasiForm());
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [tersimpan, setTersimpan] = useState(!!initialSaved);
-  const [savedAt, setSavedAt] = useState<string | null>(initialSaved?.updatedAt ?? null);
+  const k = useIsian(isian, izin, siapkan);
+  const { form, setForm } = k;
 
   const topikByKategori = useMemo(
-    () => new Map(EDUKASI_KATEGORI.map((k) => [k.key, k.topik])),
+    () => new Map(EDUKASI_KATEGORI.map((kat) => [kat.key, kat.topik])),
     [],
   );
 
@@ -64,31 +64,8 @@ export function EdukasiFormView({
     }));
   }
 
-  async function handleSave() {
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/form-rm/edukasi/${nopen}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          data: form,
-          header: { norm: header.norm, nama: header.nama, ruang: header.ruang },
-        }),
-      });
-      if (!res.ok) throw new Error("Gagal menyimpan formulir");
-      const json = (await res.json()) as { data: FormRmSaved<EdukasiForm> };
-      setTersimpan(true);
-      setSavedAt(json.data.updatedAt);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Gagal menyimpan");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
-    <div className="space-y-5 pb-24">
+    <IsianFrame kendali={k}>
       {/* Identitas pasien (read-only dari SIMRS) */}
       <Card className="p-4">
         <div className="grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-3">
@@ -103,134 +80,98 @@ export function EdukasiFormView({
         </div>
       </Card>
 
-      {/* PERSIAPAN EDUKASI */}
-      <Section title="Persiapan Edukasi" desc="Kondisi & kesiapan pasien/keluarga menerima edukasi.">
-        <div className="grid grid-cols-1 gap-x-8 gap-y-5 lg:grid-cols-2">
-          <CheckField
-            label="Bahasa"
-            options={BAHASA_OPTS}
-            values={form.persiapan.bahasa}
-            onToggle={(v) => patchPersiapan({ bahasa: toggle(form.persiapan.bahasa, v) })}
-            other={form.persiapan.bahasaLain}
-            onOther={(v) => patchPersiapan({ bahasaLain: v })}
-          />
-          <RadioField
-            label="Kebutuhan Penerjemah"
-            options={["Ya", "Tidak"]}
-            value={form.persiapan.penerjemah}
-            onChange={(v) => patchPersiapan({ penerjemah: v as EdukasiPersiapan["penerjemah"] })}
-          />
-          <RadioField
-            label="Pendidikan Pasien"
-            options={PENDIDIKAN_OPTS}
-            value={form.persiapan.pendidikan}
-            onChange={(v) => patchPersiapan({ pendidikan: form.persiapan.pendidikan === v ? "" : v })}
-            other={form.persiapan.pendidikanLain}
-            onOther={(v) => patchPersiapan({ pendidikanLain: v })}
-          />
-          <RadioField
-            label="Baca & Tulis"
-            options={BACA_TULIS_OPTS}
-            value={form.persiapan.bacaTulis}
-            onChange={(v) => patchPersiapan({ bacaTulis: v as EdukasiPersiapan["bacaTulis"] })}
-          />
-          <CheckField
-            label="Pilihan Tipe Pembelajaran"
-            options={TIPE_BELAJAR_OPTS}
-            values={form.persiapan.tipePembelajaran}
-            onToggle={(v) => patchPersiapan({ tipePembelajaran: toggle(form.persiapan.tipePembelajaran, v) })}
-          />
-          <RadioField
-            label="Kesediaan Menerima Edukasi"
-            options={KESEDIAAN_OPTS}
-            value={form.persiapan.kesediaan}
-            onChange={(v) => patchPersiapan({ kesediaan: v as EdukasiPersiapan["kesediaan"] })}
-          />
-          <div className="lg:col-span-2">
+      <BidangIsian className="space-y-5">
+        {/* PERSIAPAN EDUKASI */}
+        <Section title="Persiapan Edukasi" desc="Kondisi & kesiapan pasien/keluarga menerima edukasi.">
+          <div className="grid grid-cols-1 gap-x-8 gap-y-5 lg:grid-cols-2">
             <CheckField
-              label="Hambatan Edukasi"
-              options={HAMBATAN_OPTS}
-              values={form.persiapan.hambatan}
-              onToggle={(v) => patchPersiapan({ hambatan: toggle(form.persiapan.hambatan, v) })}
-              other={form.persiapan.hambatanLain}
-              onOther={(v) => patchPersiapan({ hambatanLain: v })}
-              columns
+              label="Bahasa"
+              options={BAHASA_OPTS}
+              values={form.persiapan.bahasa}
+              onToggle={(v) => patchPersiapan({ bahasa: toggle(form.persiapan.bahasa, v) })}
+              other={form.persiapan.bahasaLain}
+              onOther={(v) => patchPersiapan({ bahasaLain: v })}
             />
-          </div>
-        </div>
-      </Section>
-
-      {/* KEBUTUHAN EDUKASI */}
-      <div>
-        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-fg-subtle">
-          Kebutuhan Edukasi
-        </h2>
-        <p className="mb-3 text-xs text-fg-muted">
-          Aktifkan kategori yang benar-benar diberikan, lalu lengkapi rinciannya.
-        </p>
-        <div className="space-y-3">
-          {form.entries.map((entry, i) => (
-            <EntryCard
-              key={entry.kategori}
-              entry={entry}
-              topik={topikByKategori.get(entry.kategori) ?? []}
-              patientName={header.nama}
-              reuseTtd={form.entries.find((e, j) => j !== i && e.sasaranTtd)?.sasaranTtd ?? ""}
-              onPatch={(p) => patchEntry(i, p)}
+            <RadioField
+              label="Kebutuhan Penerjemah"
+              options={["Ya", "Tidak"]}
+              value={form.persiapan.penerjemah}
+              onChange={(v) => patchPersiapan({ penerjemah: v as EdukasiPersiapan["penerjemah"] })}
             />
-          ))}
-        </div>
-      </div>
-
-      {/* Catatan */}
-      <Section title="Catatan Tambahan" desc="Opsional.">
-        <textarea
-          rows={3}
-          value={form.catatan}
-          onChange={(e) => setForm((f) => ({ ...f, catatan: e.target.value }))}
-          placeholder="Catatan edukasi tambahan…"
-          className="w-full rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-        />
-      </Section>
-
-      {/* Action bar */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 lg:px-8">
-          <div className="min-w-0 text-xs text-fg-muted">
-            {error ? (
-              <span className="text-danger">{error}</span>
-            ) : tersimpan ? (
-              <span className="inline-flex items-center gap-1.5 text-success">
-                <Check className="size-3.5" />
-                Tersimpan{savedAt ? ` · ${fmtWaktu(savedAt)}` : ""}
-              </span>
-            ) : (
-              <span>Belum disimpan</span>
-            )}
+            <RadioField
+              label="Pendidikan Pasien"
+              options={PENDIDIKAN_OPTS}
+              value={form.persiapan.pendidikan}
+              onChange={(v) => patchPersiapan({ pendidikan: form.persiapan.pendidikan === v ? "" : v })}
+              other={form.persiapan.pendidikanLain}
+              onOther={(v) => patchPersiapan({ pendidikanLain: v })}
+            />
+            <RadioField
+              label="Baca & Tulis"
+              options={BACA_TULIS_OPTS}
+              value={form.persiapan.bacaTulis}
+              onChange={(v) => patchPersiapan({ bacaTulis: v as EdukasiPersiapan["bacaTulis"] })}
+            />
+            <CheckField
+              label="Pilihan Tipe Pembelajaran"
+              options={TIPE_BELAJAR_OPTS}
+              values={form.persiapan.tipePembelajaran}
+              onToggle={(v) => patchPersiapan({ tipePembelajaran: toggle(form.persiapan.tipePembelajaran, v) })}
+            />
+            <RadioField
+              label="Kesediaan Menerima Edukasi"
+              options={KESEDIAAN_OPTS}
+              value={form.persiapan.kesediaan}
+              onChange={(v) => patchPersiapan({ kesediaan: v as EdukasiPersiapan["kesediaan"] })}
+            />
+            <div className="lg:col-span-2">
+              <CheckField
+                label="Hambatan Edukasi"
+                options={HAMBATAN_OPTS}
+                values={form.persiapan.hambatan}
+                onToggle={(v) => patchPersiapan({ hambatan: toggle(form.persiapan.hambatan, v) })}
+                other={form.persiapan.hambatanLain}
+                onOther={(v) => patchPersiapan({ hambatanLain: v })}
+                columns
+              />
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            {tersimpan && (
-              <Link
-                href={`/print/form-rm/edukasi/${nopen}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-10 items-center gap-1.5 rounded-[var(--radius-md)] border border-border bg-surface px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-2"
-              >
-                <Printer className="size-4" />
-                Cetak
-              </Link>
-            )}
-            <Button
-              onClick={handleSave}
-              disabled={saving}
-              icon={saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-            >
-              {saving ? "Menyimpan…" : "Simpan"}
-            </Button>
+        </Section>
+
+        {/* KEBUTUHAN EDUKASI */}
+        <div>
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-fg-subtle">
+            Kebutuhan Edukasi
+          </h2>
+          <p className="mb-3 text-xs text-fg-muted">
+            Aktifkan kategori yang benar-benar diberikan, lalu lengkapi rinciannya.
+          </p>
+          <div className="space-y-3">
+            {form.entries.map((entry, i) => (
+              <EntryCard
+                key={entry.kategori}
+                entry={entry}
+                topik={topikByKategori.get(entry.kategori) ?? []}
+                patientName={header.nama}
+                reuseTtd={form.entries.find((e, j) => j !== i && e.sasaranTtd)?.sasaranTtd ?? ""}
+                onPatch={(p) => patchEntry(i, p)}
+              />
+            ))}
           </div>
         </div>
-      </div>
-    </div>
+
+        {/* Catatan */}
+        <Section title="Catatan Tambahan" desc="Opsional.">
+          <textarea
+            rows={3}
+            value={form.catatan}
+            onChange={(e) => setForm((f) => ({ ...f, catatan: e.target.value }))}
+            placeholder="Catatan edukasi tambahan…"
+            className="w-full rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+          />
+        </Section>
+      </BidangIsian>
+    </IsianFrame>
   );
 }
 
@@ -409,8 +350,6 @@ function toggle(arr: string[], v: string): string[] {
 
 const fmtTanggal = (iso: string) =>
   new Date(iso).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
-const fmtWaktu = (iso: string) =>
-  new Date(iso).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
 function Section({
   title,

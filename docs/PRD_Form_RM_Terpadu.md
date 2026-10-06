@@ -4,8 +4,8 @@
 
 **Project:** ReportHub (`reporthubrsb`) · Modul **Form RM** (`form-rm`)
 **Organisasi:** UPTD RSUD Bolaang Mongondow Timur
-**Versi:** 0.2 — K1, K5, K7 diputuskan (§15)
-**Tanggal:** 6 Oktober 2026 · **Status:** F0 Langkah 1 (fondasi backend) selesai — lihat §16
+**Versi:** 0.3 — K1, K5, K7 diputuskan; K4 ditunda (§15)
+**Tanggal:** 6 Oktober 2026 · **Status:** F0 selesai (Langkah 1 fondasi backend + Langkah 2 cutover UI) — lihat §16
 **Sifat data SIMGOS:** **FULL READ-ONLY.** Hanya `SELECT` / `information_schema`. Tidak ada DDL/DML, tidak menambah atau mengubah tabel maupun stored procedure apa pun di SIMGOS. Semua isian form, tanda tangan, dan riwayat disimpan di DB aplikasi `reporthub`.
 
 ---
@@ -539,7 +539,7 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 | Fase | Isi | Kriteria selesai |
 | --- | --- | --- |
 | **F0 Langkah 1 — Fondasi backend** ✅ | Registri 4 form; skema strict bersama; DDL `form_rm_isian`/`ttd`/`revisi`; API generik (buat-atau-buka, simpan ber-`rev`, transisi, riwayat + segel HMAC, TTD terpisah, audit); isi otomatis di server; perbaikan `clientIp`; cek Origin/`Sec-Fetch-Site`; batas laju & ukuran; Vitest; suite keamanan. UI lama tetap memakai tabel lama | Suite keamanan & E2E lulus di build produksi; UI lama tetap jalan |
-| **F0 Langkah 2 — Cutover** | Migrasi 10 baris `form_rm` + ekstraksi TTD (status awal DRAF, K5); 4 view memakai API isian (status DRAF/FINAL, finalkan, koreksi, riwayat); cetak per isian; rute lama dialihkan; `form_rm` lama read-only | 4 form lama berjalan di rute baru dengan data utuh |
+| **F0 Langkah 2 — Cutover** ✅ | Migrasi baris `form_rm` + ekstraksi TTD (status awal DRAF, K5) lewat aplikasi; 4 view memakai API isian (status DRAF/FINAL/BATAL, finalkan, koreksi, batal, riwayat); cetak per isian; rute lama dialihkan; API simpan lama dihapus (`form_rm` hanya dibaca untuk migrasi) | 4 form lama berjalan di rute baru dengan data utuh |
 | **F1 — Katalog & pemilih pasien** | Katalog per kategori; pemilih pasien per sasaran; alur pasien lebih dulu; kelengkapan dari `wajibUntuk`; RBAC per kategori | Alur form → pasien → isian berjalan untuk 4 form; hitungan kelengkapan cocok dengan SQL independen |
 | **F2 — Pustaka isi otomatis** | Sumber §8.3 + episode IGD asal; tanda asal kolom; "Muat ulang dari SIMRS" dengan perbandingan; RM.21 terisi dari `edukasi_pasien_keluarga` | Pemetaan cocok 100 % dengan SQL independen pada sampel 30 hari; ≥ 80 % kolom yang datanya tersedia terisi |
 | **F3 — Mesin form deklaratif** | Renderer form & cetak generik; skor terhitung; tabel berulang; batch pertama form baru (sesuai K1) | Form baru cukup ditambah dengan satu berkas definisi; cetak sesuai kertas |
@@ -557,7 +557,7 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 | Skema SIMGOS berubah saat pembaruan vendor → sumber isi otomatis rusak | Satu tempat per sumber; kegagalan sumber tidak menggagalkan form; uji silang berkala |
 | Data asesmen RI kosong karena tercatat di episode IGD | Sumber `episodeIgdAsal` |
 | Petugas menerima isi otomatis tanpa memeriksa | Tanda "SIMRS" jelas; finalkan wajib lolos validasi |
-| Migrasi merusak data lama | Hanya 10 baris; cadangan; skrip idempoten; perbandingan sebelum/sesudah |
+| Migrasi merusak data lama | Tabel lama hanya dibaca; migrasi idempoten (dilewati bila isian sudah ada); diuji dengan baris sintetis + snapshot sebelum/sesudah; data lama nyata dicek read-only (11/11 lolos skema, 7/7 TTD lolos normalisasi) |
 
 ---
 
@@ -568,7 +568,7 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 | K1 | Daftar Formulir RM resmi RS (nomor, judul, kategori) dan urutan prioritas | ✅ **Diputuskan:** mulai dengan 4 form yang ada; form lain menyusul setelah tersedia |
 | K2 | Peran pengisi per kategori, dan siapa yang boleh membuka isian FINAL | Pengisi = peran kategori; membuka FINAL = Instalasi RM (sementara: modul `form-rm.kelola`) |
 | K3 | Kebutuhan perangkat untuk Tauri (cetak langsung, pad TTD, e-KTP, kiosk) | Bila tidak ada → PWA |
-| K4 | Apakah server produksi sudah HTTPS | Wajib untuk PWA, kamera, dan Tauri |
+| K4 | Apakah server produksi sudah HTTPS | ⏸ **Ditunda** (6 Okt 2026): dimitigasi kemudian. Rekomendasi: sertifikat Let's Encrypt via DNS-01 untuk nama host LAN di reverse proxy; wajib sebelum PWA/Tauri/kamera |
 | K5 | Status awal 10 isian lama setelah migrasi | ✅ Mengikuti rekomendasi: DRAF (diterapkan di Langkah 2) |
 | K6 | Keluar otomatis saat idle di PC bersama | 15 menit |
 | K7 | Menambah Vitest sebagai runner unit test | ✅ Mengikuti rekomendasi: Vitest 3 (v5 butuh `@types/node` ≥ 22; proyek masih ^20) |
@@ -612,8 +612,38 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 - **Penanganan:** upgrade ke **Next 16.3.8**. Regresi QR publik lulus 74/74 (API, produksi) dan 23/23 (UI, tanpa pelanggaran CSP).
 - **Sisa advisory high:** rantai CLI Prisma, `mariadb` 3.4 di dalam adapter Prisma, exceljs/brace-expansion, dan postcss saat build. Semuanya tidak terjangkau dari input pengguna saat runtime; ditindaklanjuti terpisah.
 
+### F0 Langkah 2 — Cutover UI (6 Okt 2026)
+
+**Rute:**
+- `/form-rm/isian/[id]` — halaman isian (satu URL per isian; pembukaan diaudit). Tampilan dipilih di server sesuai kode form.
+- `/print/form-rm/isian/[id]` — cetak per isian (izin `form-rm` print, diaudit). Kertas dari registri; tanda air **DRAF** / **DIBATALKAN** untuk isian non-FINAL; kaki halaman (margin `@page`) memuat ID isian, status + rev, 8 karakter segel revisi terakhir, dan waktu cetak WITA. TTD disisipkan server sebagai data-URL.
+- `/form-rm/[nopen]` — profil pasien: status tiap form (Belum ada / Draf / Final). Tombol **Isi Form** = POST buat-atau-buka (isian hanya dibuat oleh aksi eksplisit, tidak pernah oleh GET).
+- **Rute lama** `/form-rm/<nopen>/<jenis>` dan `/print/form-rm/<jenis>/<nopen>` dialihkan (307) ke isian aktif; tanpa isian → profil pasien / pesan "belum diisi". `loading.tsx` profil dipindah ke route group `(profil)` agar pengalihan & 404 rute lama berupa status HTTP asli (bukan meta-tag hasil streaming).
+- API simpan lama `/api/form-rm/<jenis>/<nopen>` beserta servis/amplopnya **dihapus**.
+
+**UI bersama** (`src/features/form-rm/isian/`):
+- `useIsian` — state form, simpan ber-`rev` (Ctrl+S), transisi, penanda perubahan + peringatan `beforeunload`, penggantian TTD data-URL → referensi server tanpa menimpa suntingan yang terjadi selama menyimpan (`petaTtd.ts`, murni & diuji).
+- `IsianFrame` — pemberitahuan status (FINAL terkunci, BATAL + "Buat isian baru", baca-saja, konflik rev + "Muat ulang"), bilah aksi (Riwayat, Cetak, Batalkan, Simpan, Finalkan, Buka koreksi — sesuai izin), dialog finalisasi (syarat FINAL dicek di klien, diulang di server) dan dialog alasan (≥ 5 karakter), panel riwayat + hasil pemeriksaan segel.
+- **Kunci kolom:** `<BidangIsian>` = `<fieldset disabled>` saat FINAL/BATAL/tanpa izin ubah; kontrol tetap terbaca penuh. Tab kategori triase sengaja di luar kunci (tetap bisa dipilih saat FINAL). `setForm` juga menolak perubahan saat terkunci (pengaman kedua). SignaturePad menampilkan gambar saja saat terkunci.
+- Daftar pasien: chip status per form (Final ✓ / Draf ✎ / belum); **Lengkap = semua form FINAL** (`kelengkapan.ts`, murni & diuji).
+
+**Migrasi data lama (K5 → DRAF), lewat aplikasi** — bukan skrip `.mjs`, agar memakai kode yang sama dengan simpan biasa (skema strict, normalisasi PNG, pemisahan TTD):
+- `pindahkanBarisLama`: kunci usang dibuang, TTD diekstrak ke `form_rm_ttd`, identitas dari SIMGOS (cadangan: kolom lama), `created_at`/`updated_at` lama dipertahankan, username lama → id pengguna, audit `form-rm.isian.pindah-lama`. Dilewati bila form itu sudah punya isian (status apa pun) → aman diulang.
+- **Otomatis saat dibuka:** buat-atau-buka yang belum pernah punya isian memakai data lama (bukan isi otomatis) → data lama tak pernah tertutup isian baru. Data lama tak sah → 409 yang jelas, isian tidak dibuat.
+- **Sekaligus:** banner di `/form-rm` khusus pengelola RM (`form-rm.kelola`) + `POST /api/form-rm/data-lama` (CSRF + laju). Jumlah tertunda dihitung dari baris lama tanpa isian.
+- Tabel `form_rm` hanya dibaca. Hapus setelah semua dipindah + dicadangkan (satu rilis kemudian).
+
+**Perbaikan race buat-isian:** urutan isian baru kini diambil dari snapshot **awal** (sebelum isi otomatis yang lambat), sehingga permintaan bersamaan pasti bentrok di kunci unik; sebelumnya ada celah dua isian aktif untuk form tidak berulang bila satu permintaan selesai di tengah isi otomatis permintaan lain.
+
+**Hasil uji (dev & build produksi):**
+- **Unit test:** 88/88 (baru: pemetaan TTD pasca-simpan, kelengkapan, `srcTtd`).
+- **E2E Langkah 1 (regresi):** 83/83 — skrip kini mengecualikan NOPEN yang punya data lama/isian nyata; API lama terverifikasi 404.
+- **E2E Langkah 2:** 56/56 — halaman & izin, rute lama (307/404, GET tanpa efek), cetak (tanda air, segel, TTD tersisip, XSS ter-escape, audit, izin print), migrasi baris **sintetis** (kunci usang, TTD, identitas, waktu lama, idempoten, 6 paralel → 1 migrasi, data tak sah → 409, batal tidak memicu migrasi ulang), pindah massal (403 tanpa kelola / CSRF; sukses **tidak** diuji karena akan memindahkan data nyata), race (8 & 6 paralel → satu isian aktif), log tanpa 500/PHI, data lama nyata identik.
+- **UI (Chrome headless):** 29/29 — Isi Form → sunting → Ctrl+S → syarat FINAL → TTD gambar → finalkan → terkunci → riwayat segel utuh → buka koreksi (alasan) → konflik rev → `beforeunload` → batal → buat isian baru; triase FINAL di tablet; cetak; tanpa error JS.
+- **Regresi QR publik (produksi):** 74/74.
+
 ## 17. Sumber
 
-- Kode: `src/server/modules/form-rm/*`, `src/features/form-rm/*`, `src/app/(dashboard)/form-rm/*`, `prisma/app/schema.prisma` (model `FormRm`), `src/server/lib/request.ts`.
+- Kode: `src/server/modules/form-rm/*`, `src/features/form-rm/*` (termasuk `isian/`), `src/app/(dashboard)/form-rm/*`, `src/app/print/form-rm/*`, `src/app/api/form-rm/*`, `prisma/app/schema.prisma` (model `FormRm*`), `src/server/lib/request.ts`.
 - Penelusuran read-only SIMGOS dan `reporthub`, 6 Oktober 2026.
 - [Announcing Tauri 2.12](https://v2.tauri.app/blog/tauri-2.12/) · [Tauri releases](https://v2.tauri.app/release/tauri/)

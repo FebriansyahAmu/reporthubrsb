@@ -1,6 +1,4 @@
 import "server-only";
-import type { z } from "zod";
-import { getAppDb } from "@/server/db/app.client";
 import { isSimgosConfigured } from "@/server/lib/env";
 import { hitungUmur } from "@/lib/format";
 import { queryKunjunganRange } from "@/server/modules/pelayanan/pelayanan.dal";
@@ -13,102 +11,24 @@ import {
   type DiagnosaRow,
   type TriaseSimgosRow,
 } from "./form-rm.dal";
-import { EDUKASI_JENIS } from "@/features/form-rm/edukasi.constants";
-import { CONSENT_JENIS } from "@/features/form-rm/consent.constants";
-import { TRIASE_JENIS } from "@/features/form-rm/triase.constants";
 import {
-  RINGKASAN_JENIS,
   matchAgama,
   matchPekerjaan,
   matchPendidikan,
   matchPerkawinan,
 } from "@/features/form-rm/ringkasan.constants";
-import {
-  bersihkanDataLama,
-  consentFormSchema,
-  edukasiFormSchema,
-  ringkasanFormSchema,
-  triaseFormSchema,
-} from "@/features/form-rm/skema";
+import { kelengkapanDari } from "@/features/form-rm/kelengkapan";
+import { isianAktifPerNopen } from "./isian.cari";
 import type {
-  ConsentContext,
-  ConsentForm,
-  EdukasiContext,
-  EdukasiForm,
   FormRmHeader,
-  FormRmKelengkapan,
   FormRmListResult,
   FormRmPatient,
-  FormRmSaved,
-  RingkasanContext,
-  RingkasanForm,
   RingkasanPrefill,
-  TriaseContext,
-  TriaseForm,
   TriasePrefill,
   TriaseSimrs,
 } from "./form-rm.types";
 
 const PAGE_SIZE = 12;
-
-/** Jenis form RM wajib yang dihitung untuk "lengkap". */
-const FORM_RM_JENIS = [TRIASE_JENIS, RINGKASAN_JENIS, EDUKASI_JENIS, CONSENT_JENIS] as const;
-
-const EMPTY_KELENGKAPAN: FormRmKelengkapan = {
-  triase: false,
-  ringkasan: false,
-  edukasi: false,
-  consent: false,
-  terisi: 0,
-  total: FORM_RM_JENIS.length,
-  lengkap: false,
-};
-
-/**
- * Peta NOPEN → kelengkapan form RM (reporthub), satu query batch untuk semua
- * NOPEN. Pasien tanpa satu pun form → tidak muncul di query (dianggap 0/3).
- */
-async function getKelengkapanMap(
-  nopens: string[],
-): Promise<Map<string, FormRmKelengkapan>> {
-  const map = new Map<string, FormRmKelengkapan>();
-  if (nopens.length === 0) return map;
-
-  const rows = await getAppDb().formRm.findMany({
-    where: { nopen: { in: nopens }, jenis: { in: [...FORM_RM_JENIS] } },
-    select: { nopen: true, jenis: true },
-  });
-
-  const byNopen = new Map<string, Set<string>>();
-  for (const r of rows) {
-    const set = byNopen.get(r.nopen) ?? new Set<string>();
-    set.add(r.jenis);
-    byNopen.set(r.nopen, set);
-  }
-
-  for (const nopen of nopens) {
-    const set = byNopen.get(nopen);
-    if (!set) {
-      map.set(nopen, EMPTY_KELENGKAPAN);
-      continue;
-    }
-    const triase = set.has(TRIASE_JENIS);
-    const ringkasan = set.has(RINGKASAN_JENIS);
-    const edukasi = set.has(EDUKASI_JENIS);
-    const consent = set.has(CONSENT_JENIS);
-    const terisi = [triase, ringkasan, edukasi, consent].filter(Boolean).length;
-    map.set(nopen, {
-      triase,
-      ringkasan,
-      edukasi,
-      consent,
-      terisi,
-      total: FORM_RM_JENIS.length,
-      lengkap: terisi === FORM_RM_JENIS.length,
-    });
-  }
-  return map;
-}
 
 export type FormRmListArgs = {
   from: string;
@@ -167,12 +87,12 @@ export async function getFormRmList(a: FormRmListArgs): Promise<FormRmListResult
     ? igd.filter((it) => `${it.nama} ${it.norm} ${it.ruang}`.toLowerCase().includes(q))
     : igd;
 
-  // Kelengkapan form RM (reporthub) untuk seluruh hasil filter → penanda per kartu
-  // + ringkasan "lengkap" akurat lintas halaman. Satu query batch.
-  const kelengkapanMap = await getKelengkapanMap(searched.map((it) => it.nopen));
+  // Kelengkapan form RM (isian aktif di reporthub) untuk seluruh hasil filter →
+  // penanda per kartu + ringkasan "lengkap" akurat lintas halaman. Satu query batch.
+  const isianMap = await isianAktifPerNopen(searched.map((it) => it.nopen));
   const enriched: FormRmPatient[] = searched.map((it) => ({
     ...it,
-    kelengkapan: kelengkapanMap.get(it.nopen) ?? EMPTY_KELENGKAPAN,
+    kelengkapan: kelengkapanDari(isianMap.get(it.nopen) ?? {}),
   }));
   const lengkapCount = enriched.reduce((n, it) => n + (it.kelengkapan.lengkap ? 1 : 0), 0);
 
@@ -214,58 +134,6 @@ export async function getFormRmHeader(nopen: string): Promise<FormRmHeader | nul
     masuk: toIso(h.MASUK) ?? new Date().toISOString(),
     nik: h.NIK?.trim() || "",
   };
-}
-
-/**
- * Rekaman form RM tersimpan (tabel lama `form_rm`) untuk (NOPEN, jenis), atau
- * null. Data dibersihkan dari kunci yang sudah tidak dikenal skema strict, agar
- * UI bisa menyimpan ulang tanpa ditolak.
- */
-async function getFormRmRecord<T>(
-  nopen: string,
-  jenis: string,
-  skema: z.ZodType,
-): Promise<FormRmSaved<T> | null> {
-  const rec = await getAppDb().formRm.findUnique({
-    where: { nopen_jenis: { nopen, jenis } },
-  });
-  if (!rec) return null;
-  return {
-    nopen: rec.nopen,
-    jenis: rec.jenis,
-    data: (bersihkanDataLama(skema, rec.data) ?? rec.data) as T,
-    updatedAt: rec.updatedAt.toISOString(),
-    updatedBy: rec.updatedBy ?? null,
-  };
-}
-
-/** true bila (NOPEN, jenis) sudah punya form tersimpan. */
-export async function formRmExists(nopen: string, jenis: string): Promise<boolean> {
-  const rec = await getAppDb().formRm.findUnique({
-    where: { nopen_jenis: { nopen, jenis } },
-    select: { id: true },
-  });
-  return rec != null;
-}
-
-/** Konteks form Edukasi: rekaman tersimpan (bila ada) + header pasien SIMGOS. */
-export async function getEdukasiContext(nopen: string): Promise<EdukasiContext | null> {
-  const [saved, header] = await Promise.all([
-    getFormRmRecord<EdukasiForm>(nopen, EDUKASI_JENIS, edukasiFormSchema),
-    getFormRmHeader(nopen),
-  ]);
-  if (!header) return null;
-  return { saved, header };
-}
-
-/** Konteks form General Consent (RM.03): rekaman tersimpan + header pasien SIMGOS. */
-export async function getConsentContext(nopen: string): Promise<ConsentContext | null> {
-  const [saved, header] = await Promise.all([
-    getFormRmRecord<ConsentForm>(nopen, CONSENT_JENIS, consentFormSchema),
-    getFormRmHeader(nopen),
-  ]);
-  if (!header) return null;
-  return { saved, header };
 }
 
 // --- RM.01 Ringkasan Masuk & Keluar --------------------------------------
@@ -374,16 +242,6 @@ export async function prefillRingkasan(nopen: string, header: FormRmHeader): Pro
   };
 }
 
-/** Konteks form RM.01: rekaman tersimpan + header pasien + prefill SIMGOS siap-isi. */
-export async function getRingkasanContext(nopen: string): Promise<RingkasanContext | null> {
-  const [saved, header] = await Promise.all([
-    getFormRmRecord<RingkasanForm>(nopen, RINGKASAN_JENIS, ringkasanFormSchema),
-    getFormRmHeader(nopen),
-  ]);
-  if (!header) return null;
-  return { saved, header, prefill: await prefillRingkasan(nopen, header) };
-}
-
 // --- RM.04 Triase IGD ------------------------------------------------------
 
 const bersih = (s: string | null | undefined) => (s ?? "").trim();
@@ -469,60 +327,4 @@ export async function bacaTriaseSimrs(
   if (!isSimgosConfigured()) return null;
   const row = await queryTriaseSimgos(nopen).catch(() => null);
   return row ? petaTriaseSimgos(row) : null;
-}
-
-/**
- * Konteks form Triase (RM.04): rekaman tersimpan + header pasien + prefill & rujukan
- * dari triase SIMRS. `simrs: false` melewati query triase SIMGOS (mis. untuk cetak).
- */
-export async function getTriaseContext(
-  nopen: string,
-  opts: { simrs?: boolean } = {},
-): Promise<TriaseContext | null> {
-  const [saved, header, peta] = await Promise.all([
-    getFormRmRecord<TriaseForm>(nopen, TRIASE_JENIS, triaseFormSchema),
-    getFormRmHeader(nopen),
-    opts.simrs === false ? Promise.resolve(null) : bacaTriaseSimrs(nopen),
-  ]);
-  if (!header) return null;
-  return { saved, header, prefill: peta?.prefill ?? null, simrs: peta?.simrs ?? null };
-}
-
-export type FormRmHeaderInput = { norm?: string; nama?: string; ruang?: string };
-
-/** Simpan/replace form RM (upsert per NOPEN+jenis) di DB reporthub. */
-export async function saveFormRm<T extends object>(
-  nopen: string,
-  jenis: string,
-  data: T,
-  header: FormRmHeaderInput,
-  userId: string | null,
-): Promise<FormRmSaved<T>> {
-  const rec = await getAppDb().formRm.upsert({
-    where: { nopen_jenis: { nopen, jenis } },
-    create: {
-      nopen,
-      jenis,
-      norm: header.norm ?? null,
-      namaPasien: header.nama ?? null,
-      ruang: header.ruang ?? null,
-      data: data as unknown as object,
-      createdBy: userId,
-      updatedBy: userId,
-    },
-    update: {
-      norm: header.norm ?? null,
-      namaPasien: header.nama ?? null,
-      ruang: header.ruang ?? null,
-      data: data as unknown as object,
-      updatedBy: userId,
-    },
-  });
-  return {
-    nopen: rec.nopen,
-    jenis: rec.jenis,
-    data: rec.data as unknown as T,
-    updatedAt: rec.updatedAt.toISOString(),
-    updatedBy: rec.updatedBy ?? null,
-  };
 }

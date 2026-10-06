@@ -3,19 +3,22 @@
  * reporthub). Type-only → aman diimpor client & server.
  */
 import type { PageMeta } from "@/lib/types";
+import type { KodeForm } from "@/features/form-rm/registry";
 import type { KategoriKunjungan } from "@/server/modules/pelayanan/pelayanan.types";
 
-/** Kelengkapan 4 form RM wajib (RM.04 Triase, RM.01 Ringkasan, RM.21 Edukasi, RM.03 Consent). */
+/** Status satu form untuk pasien: isian aktif DRAF/FINAL, atau belum ada. */
+export type StatusFormPasien = "KOSONG" | "DRAF" | "FINAL";
+
+/** Kelengkapan form RM pasien (semua form di registri). */
 export type FormRmKelengkapan = {
-  triase: boolean;
-  ringkasan: boolean;
-  edukasi: boolean;
-  consent: boolean;
-  /** Jumlah form yang sudah terisi (0..4). */
+  status: Record<KodeForm, StatusFormPasien>;
+  /** Jumlah form yang punya isian aktif (DRAF/FINAL). */
   terisi: number;
-  /** Total form wajib (4). */
+  /** Jumlah form yang sudah FINAL. */
+  final: number;
+  /** Total form di registri. */
   total: number;
-  /** true bila semua form wajib sudah terisi. */
+  /** true bila semua form sudah FINAL. */
   lengkap: boolean;
 };
 
@@ -114,21 +117,6 @@ export type EdukasiForm = {
   catatan: string;
 };
 
-/** Rekaman form RM tersimpan + metadata. */
-export type FormRmSaved<T = EdukasiForm> = {
-  nopen: string;
-  jenis: string;
-  data: T;
-  updatedAt: string;
-  updatedBy: string | null;
-};
-
-/** Respons GET form Edukasi: rekaman tersimpan (bila ada) + header pasien. */
-export type EdukasiContext = {
-  saved: FormRmSaved<EdukasiForm> | null;
-  header: FormRmHeader;
-};
-
 // ---------------------------------------------------------------------------
 // Persetujuan Umum Rawat Inap / General Consent (RM.03)
 // ---------------------------------------------------------------------------
@@ -163,12 +151,6 @@ export type ConsentForm = {
   petugasTtd: string;
   /** Tanggal tanda tangan (ISO "YYYY-MM-DD"). */
   tanggalTtd: string;
-};
-
-/** Respons GET form Consent: rekaman tersimpan (bila ada) + header pasien. */
-export type ConsentContext = {
-  saved: FormRmSaved<ConsentForm> | null;
-  header: FormRmHeader;
 };
 
 // ---------------------------------------------------------------------------
@@ -253,10 +235,7 @@ export type RingkasanForm = {
   dokterKematianTtd: string;
 };
 
-/**
- * Nilai prefill RM.01 dari SIMGOS (sudah diformat siap-isi). Dipakai hanya saat
- * form belum pernah disimpan; setelah disimpan, isian dari reporthub yang dipakai.
- */
+/** Nilai isi otomatis RM.01 dari SIMGOS (sudah diformat siap-isi), dipakai saat isian dibuat. */
 export type RingkasanPrefill = {
   alamat: string;
   golDarah: string;
@@ -276,13 +255,6 @@ export type RingkasanPrefill = {
   diagnosaUtamaKode: string;
   diagnosaSekunder: string;
   diagnosaSekunderKode: string;
-};
-
-/** Respons GET form Ringkasan (RM.01): rekaman tersimpan + header + prefill SIMGOS. */
-export type RingkasanContext = {
-  saved: FormRmSaved<RingkasanForm> | null;
-  header: FormRmHeader;
-  prefill: RingkasanPrefill;
 };
 
 // ---------------------------------------------------------------------------
@@ -327,7 +299,7 @@ export type TriaseForm = {
   petugasTtd: string;
 };
 
-/** Nilai prefill RM.04 dari triase SIMGOS (`medicalrecord.triage`), hanya untuk form baru. */
+/** Nilai isi otomatis RM.04 dari triase SIMGOS (`medicalrecord.triage`), dipakai saat isian dibuat. */
 export type TriasePrefill = Pick<
   TriaseForm,
   | "kedatanganWaktu"
@@ -358,12 +330,4 @@ export type TriaseSimrs = {
   zona: string;
   keluhan: string;
   petugas: string;
-};
-
-/** Respons GET form Triase (RM.04): rekaman tersimpan + header + prefill & rujukan SIMRS. */
-export type TriaseContext = {
-  saved: FormRmSaved<TriaseForm> | null;
-  header: FormRmHeader;
-  prefill: TriasePrefill | null;
-  simrs: TriaseSimrs | null;
 };

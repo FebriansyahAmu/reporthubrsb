@@ -26,6 +26,12 @@ export const refTtd = (id: string) => `ttd:${id}`;
 export const idDariRefTtd = (v: string): string | null => (TTD_REF_RE.test(v) ? v.slice(4) : null);
 export const adalahDataUrlTtd = (v: string) => v.startsWith(TTD_DATA_URL_PREFIX);
 
+/** Nilai TTD → `src` gambar: referensi tersimpan dimuat dari API, data-URL baru apa adanya. */
+export function srcTtd(v: string): string {
+  const id = idDariRefTtd(v);
+  return id ? `/api/form-rm/ttd/${id}` : v;
+}
+
 /** "" (belum ditandatangani) | PNG data-URL baru | referensi TTD tersimpan. */
 export const ttdSchema = z
   .string()
