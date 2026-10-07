@@ -1,6 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { PrintToolbar } from "@/components/report/PrintToolbar";
 import { ConsentDocument } from "@/features/form-rm/ConsentDocument";
+import { DokumenDeklaratif } from "@/features/form-rm/DokumenDeklaratif";
+import type { DataDeklaratif } from "@/features/form-rm/deklaratif";
 import { EdukasiDocument } from "@/features/form-rm/EdukasiDocument";
 import { RingkasanDocument } from "@/features/form-rm/RingkasanDocument";
 import { TriaseDocument } from "@/features/form-rm/TriaseDocument";
@@ -111,5 +113,10 @@ async function Dokumen({ isian, header }: { isian: IsianForm; header: FormRmHead
       return <RingkasanDocument header={header} data={isian.data as RingkasanForm} />;
     case "RM.03":
       return <ConsentDocument header={header} data={isian.data as ConsentForm} />;
+    default: {
+      // Form deklaratif: dokumen cetak generik dari struktur registri.
+      const def = definisiForm(isian.kode);
+      return def?.struktur ? <DokumenDeklaratif def={def} header={header} data={isian.data as DataDeklaratif} /> : null;
+    }
   }
 }

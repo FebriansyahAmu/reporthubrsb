@@ -202,6 +202,36 @@ export async function queryEdukasi(nopen: string): Promise<EdukasiRow | null> {
   return rows[0] ?? null;
 }
 
+/* ------------------------------------------------------------------ morse */
+
+/** Pengkajian risiko jatuh Morse PERTAMA episode (kode referensi JENIS 186–191; 0 = tak diisi). */
+export type MorseRow = {
+  /** "YYYY-MM-DDTHH:mm" jam dinding. */
+  WAKTU: string | null;
+  RIWAYAT_JATUH: Id;
+  DIAGNOSIS: Id;
+  ALAT_BANTU: Id;
+  HEPARIN: Id;
+  GAYA_BERJALAN: Id;
+  KESADARAN: Id;
+  /** Nama pengguna SIMGOS penginput (hanya kolom NAMA). */
+  PETUGAS: string | null;
+};
+
+export async function queryMorse(nopen: string): Promise<MorseRow | null> {
+  const sql = `
+    SELECT ${CAP} DATE_FORMAT(m.TANGGAL, '%Y-%m-%dT%H:%i') AS WAKTU,
+      m.RIWAYAT_JATUH, m.DIAGNOSIS, m.ALAT_BANTU, m.HEPARIN, m.GAYA_BERJALAN, m.KESADARAN,
+      (SELECT u.NAMA FROM ${SIMGOS_DB.APLIKASI}.pengguna u WHERE u.ID = m.OLEH LIMIT 1) AS PETUGAS
+    FROM ${MR}.penilaian_skala_morse m
+    JOIN ${P}.kunjungan k ON k.NOMOR = m.KUNJUNGAN
+    WHERE k.NOPEN = ? AND m.STATUS <> 0
+    ORDER BY m.TANGGAL ASC, m.ID ASC
+    LIMIT 1`;
+  const rows = await getSimgos().$queryRawUnsafe<MorseRow[]>(sql, nopen);
+  return rows[0] ?? null;
+}
+
 /* -------------------------------------------------------- episode IGD asal */
 
 /** Episode IGD asal pasien rawat inap: lewat SPRI, atau (cadangan) pendaftaran IGD ≤ 24 jam sebelumnya. */

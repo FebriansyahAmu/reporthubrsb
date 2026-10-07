@@ -2,7 +2,7 @@ import { terisi, type SumberId } from "@/features/form-rm/asal";
 import type { KodeForm } from "@/features/form-rm/registry";
 import type { DiagnosaRow, TriaseSimgosRow } from "./form-rm.dal";
 import type { FormRmHeader, TriaseForm, TriaseSimrs } from "./form-rm.types";
-import type { EdukasiRow, EpisodeRow, KeluargaRow, PulangRow, SosialRow } from "./isian.sumber.dal";
+import type { EdukasiRow, EpisodeRow, KeluargaRow, MorseRow, PulangRow, SosialRow } from "./isian.sumber.dal";
 
 /**
  * PEMETAAN ISI OTOMATIS (PRD §8.3) — fungsi MURNI: baris sumber SIMGOS → nilai
@@ -20,6 +20,7 @@ export type TipeSumber = {
   pulang: PulangRow;
   triase: TriaseSimgosRow;
   edukasi: EdukasiRow;
+  morse: MorseRow;
 };
 
 /** Hasil sumber yang ADA datanya (sumber kosong / gagal tidak dicantumkan). */
@@ -423,9 +424,48 @@ export function ringkasTriase(r: TriaseSimgosRow): TriaseSimrs {
   };
 }
 
+/* ------------------------------------------------------------------ morse */
+
+/** Kode referensi SIMGOS (JENIS 186–191) → nilai opsi form Morse. 0 = tak diisi. */
+const MORSE_KODE = {
+  riwayatJatuh: { 1: "tidak", 2: "ya" },
+  diagnosisSekunder: { 1: "tidak", 2: "ya" },
+  alatBantu: { 1: "tidakAda", 2: "tongkat", 3: "furnitur" },
+  terapiIntravena: { 1: "tidak", 2: "ya" },
+  gayaBerjalan: { 1: "lemah", 2: "terganggu" },
+  statusMental: { 1: "baik", 2: "lupa" },
+} as const satisfies Record<string, Record<number, string>>;
+
+/**
+ * Pengkajian Morse pertama SIMRS → baris pengkajian awal (baris 1). Referensi
+ * SIMGOS tak punya kode "normal" untuk gaya berjalan; isian SIMRS yang terisi
+ * lengkap kecuali gaya berjalan (429 baris) = normal (skor 0, sama seperti
+ * prosedur SIMGOS `grafikSkalaMorse` yang menghitung kode kosong sebagai 0).
+ */
+export function petaMorse(r: MorseRow): Record<string, unknown> {
+  const ambil = <K extends keyof typeof MORSE_KODE>(k: K, v: Id): string =>
+    (MORSE_KODE[k] as Record<number, string>)[kode(v) ?? -1] ?? "";
+  const nilai = {
+    riwayatJatuh: ambil("riwayatJatuh", r.RIWAYAT_JATUH),
+    diagnosisSekunder: ambil("diagnosisSekunder", r.DIAGNOSIS),
+    alatBantu: ambil("alatBantu", r.ALAT_BANTU),
+    terapiIntravena: ambil("terapiIntravena", r.HEPARIN),
+    gayaBerjalan: ambil("gayaBerjalan", r.GAYA_BERJALAN),
+    statusMental: ambil("statusMental", r.KESADARAN),
+  };
+  const lainTerisi = [nilai.riwayatJatuh, nilai.diagnosisSekunder, nilai.alatBantu, nilai.terapiIntravena, nilai.statusMental].every(Boolean);
+  if (!nilai.gayaBerjalan && kode(r.GAYA_BERJALAN) === 0 && lainTerisi) nilai.gayaBerjalan = "normal";
+  return {
+    "pengkajian.0.waktu": waktu(r.WAKTU),
+    ...Object.fromEntries(Object.entries(nilai).map(([k, v]) => [`pengkajian.0.${k}`, v])),
+    "pengkajian.0.petugasNama": bersih(r.PETUGAS),
+  };
+}
+
 /* ----------------------------------------------------------- peta per form */
 
-export const PETA_FORM: Readonly<Record<KodeForm, PetaForm>> = {
+/** Form tanpa entri = tanpa isi otomatis (form deklaratif boleh tak memakai SIMRS). */
+export const PETA_FORM: Readonly<Partial<Record<KodeForm, PetaForm>>> = {
   "RM.04": {
     sumber: ["identitas", "triase"],
     petakan(h) {
@@ -494,6 +534,14 @@ export const PETA_FORM: Readonly<Record<KodeForm, PetaForm>> = {
     },
     bawaan(d, hariIni) {
       d.tanggalTtd = hariIni;
+    },
+  },
+  "RM.MORSE": {
+    sumber: ["morse"],
+    petakan(h) {
+      const out: NilaiSimrs = {};
+      if (h.morse) isi(out, "morse", petaMorse(h.morse));
+      return out;
     },
   },
 };

@@ -3,7 +3,15 @@ import type { SumberId } from "@/features/form-rm/asal";
 import { queryDiagnosaByNopen, queryTriaseSimgos } from "./form-rm.dal";
 import type { FormRmHeader } from "./form-rm.types";
 import type { HasilSumber, TipeSumber } from "./isian.petakan";
-import { queryEdukasi, queryEpisode, queryIgdAsal, queryKeluarga, queryPulang, querySosial } from "./isian.sumber.dal";
+import {
+  queryEdukasi,
+  queryEpisode,
+  queryIgdAsal,
+  queryKeluarga,
+  queryMorse,
+  queryPulang,
+  querySosial,
+} from "./isian.sumber.dal";
 
 /**
  * PUSTAKA SUMBER ISI OTOMATIS (PRD §8.3). Setiap sumber unik diambil sekali,
@@ -34,6 +42,7 @@ const SUMBER: { readonly [S in SumberId]: DefSumber<S> } = {
   pulang: { igdAsal: false, ambil: (k) => queryPulang(k.nopen) },
   triase: { igdAsal: true, ambil: (k) => queryTriaseSimgos(k.nopen) },
   edukasi: { igdAsal: true, ambil: (k) => queryEdukasi(k.nopen) },
+  morse: { igdAsal: true, ambil: (k) => queryMorse(k.nopen) },
 };
 
 /** Jalankan `fn` atas `items` dengan paling banyak `batas` sekaligus; urutan hasil = urutan masukan. */

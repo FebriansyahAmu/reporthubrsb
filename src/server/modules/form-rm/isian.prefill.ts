@@ -4,7 +4,7 @@ import { ambilPath, pasangPath, type AsalIsian, type SumberId } from "@/features
 import type { DefinisiForm } from "@/features/form-rm/registry";
 import { pangkasTeksPanjang } from "@/features/form-rm/skema";
 import type { FormRmHeader } from "./form-rm.types";
-import { PETA_FORM } from "./isian.petakan";
+import { PETA_FORM, type PetaForm } from "./isian.petakan";
 import { ambilSumber, type IgdAsal, type StatusSumber } from "./isian.sumber";
 
 /**
@@ -24,8 +24,11 @@ export type HasilIsiOtomatis = {
   igdAsal: IgdAsal | null;
 };
 
+/** Form tanpa pemetaan SIMRS: isian kosong saja. */
+const TANPA_PETA = { sumber: [], petakan: () => ({}) } as const satisfies PetaForm;
+
 export async function isiOtomatis(def: DefinisiForm, nopen: string, header: FormRmHeader): Promise<HasilIsiOtomatis> {
-  const peta = PETA_FORM[def.kode];
+  const peta: PetaForm = PETA_FORM[def.kode] ?? TANPA_PETA;
   const sumber = await ambilSumber(peta.sumber, nopen, header);
   const nilai = peta.petakan(sumber.hasil);
 

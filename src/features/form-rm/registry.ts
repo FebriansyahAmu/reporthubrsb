@@ -1,7 +1,9 @@
 import type { z } from "zod";
 import type { BagianSimrs } from "./asal";
 import { emptyConsentForm, CONSENT_JENIS } from "./consent.constants";
+import type { StrukturDeklaratif } from "./deklaratif";
 import { emptyEdukasiForm, EDUKASI_JENIS } from "./edukasi.constants";
+import { morse } from "./forms/morse";
 import { emptyRingkasanForm, RINGKASAN_JENIS } from "./ringkasan.constants";
 import { emptyTriaseForm, hitungKategori, TRIASE_JENIS } from "./triase.constants";
 import { KATEGORI_FORM, type KategoriForm } from "./kategori";
@@ -9,14 +11,20 @@ import { consentFormSchema, edukasiFormSchema, ringkasanFormSchema, triaseFormSc
 
 /**
  * REGISTRI FORM RM — sumber kebenaran daftar formulir (di kode, bukan DB; pola
- * sama dengan katalog modul RBAC). Menambah formulir = menambah satu definisi.
- * Murni & aman untuk klien; isi otomatis dari SIMRS ada di server
- * (`server/modules/form-rm/isian.prefill.ts`).
+ * sama dengan katalog modul RBAC). Murni & aman untuk klien; isi otomatis dari
+ * SIMRS ada di server (`server/modules/form-rm/isian.petakan.ts`).
+ *
+ * Menambah form DEKLARATIF (PRD §8.2): satu berkas definisi di `forms/`, lalu
+ * daftarkan kodenya di KODE_FORM, DEFINISI_FORM, dan `tampilan.ts` (TypeScript
+ * menolak bila salah satu terlewat). Renderer form & cetak generik dipakai
+ * otomatis. Form KHUSUS (tampilan & cetak ditulis tangan) tetap didefinisikan
+ * di bawah.
  */
 
 export { KATEGORI_FORM, type KategoriForm };
 
-export const KODE_FORM = ["RM.04", "RM.21", "RM.01", "RM.03"] as const;
+/** "RM.MORSE" = kode sementara — diganti nomor RM resmi dari templat RS sebelum dipakai di produksi. */
+export const KODE_FORM = ["RM.04", "RM.21", "RM.01", "RM.03", "RM.MORSE"] as const;
 export type KodeForm = (typeof KODE_FORM)[number];
 
 /** EPISODE = satu isian per pendaftaran (NOPEN); KUNJUNGAN = per kunjungan ruang. */
@@ -49,8 +57,10 @@ export type PetaSlotTtd = (nilai: string, slot: string) => string;
 
 export type DefinisiForm<T extends object = object> = {
   readonly kode: KodeForm;
-  /** Nilai kolom `form_rm.jenis` lama — penaut migrasi & rute lama. */
-  readonly jenisLama: string;
+  /** Nilai kolom `form_rm.jenis` lama — penaut migrasi & rute lama (hanya 4 form awal). */
+  readonly jenisLama?: string;
+  /** Ada = form deklaratif (renderer form & cetak generik); tidak ada = form khusus. */
+  readonly struktur?: StrukturDeklaratif;
   /** Naik bila struktur/tata letak berubah; isian lama tetap memakai versinya. */
   readonly versi: number;
   readonly judul: string;
@@ -360,10 +370,10 @@ const consent: DefinisiForm<z.output<typeof consentFormSchema>> = {
 };
 
 /** Urutan = urutan tampil di katalog. */
-export const DEFINISI_FORM: readonly DefinisiForm[] = [triase, edukasi, ringkasan, consent];
+export const DEFINISI_FORM: readonly DefinisiForm[] = [triase, edukasi, ringkasan, consent, morse];
 
 const BY_KODE = new Map(DEFINISI_FORM.map((d) => [d.kode, d]));
-const BY_JENIS_LAMA = new Map(DEFINISI_FORM.map((d) => [d.jenisLama, d]));
+const BY_JENIS_LAMA = new Map(DEFINISI_FORM.flatMap((d) => (d.jenisLama ? [[d.jenisLama, d] as const] : [])));
 
 export const definisiForm = (kode: string): DefinisiForm | undefined => BY_KODE.get(kode as KodeForm);
 export const definisiDariJenisLama = (jenis: string): DefinisiForm | undefined => BY_JENIS_LAMA.get(jenis);

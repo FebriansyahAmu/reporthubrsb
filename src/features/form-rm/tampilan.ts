@@ -1,7 +1,10 @@
-import { FileHeart, FileText, GraduationCap, Siren, type LucideIcon } from "lucide-react";
+import { FileHeart, FileText, GraduationCap, ShieldAlert, Siren, type LucideIcon } from "lucide-react";
 import type { KodeForm } from "./registry";
 
-/** Metadata tampilan per form (label ringkas, keterangan, ikon) — pelengkap registri. */
+/**
+ * Metadata tampilan per form (label ringkas, keterangan, ikon) — pelengkap
+ * registri. Terpisah dari registri agar katalog & daftar tak memuat skema form.
+ */
 export const TAMPILAN_FORM: Record<KodeForm, { singkat: string; label: string; keterangan: string; ikon: LucideIcon }> = {
   "RM.04": {
     singkat: "Triase",
@@ -26,5 +29,11 @@ export const TAMPILAN_FORM: Record<KodeForm, { singkat: string; label: string; k
     label: "Persetujuan Umum (General Consent)",
     keterangan: "Persetujuan umum rawat inap pasien.",
     ikon: FileHeart,
+  },
+  "RM.MORSE": {
+    singkat: "Risiko Jatuh",
+    label: "Risiko Jatuh Dewasa (Skala Morse)",
+    keterangan: "Pengkajian awal & ulang risiko jatuh dengan skor Morse otomatis.",
+    ikon: ShieldAlert,
   },
 };

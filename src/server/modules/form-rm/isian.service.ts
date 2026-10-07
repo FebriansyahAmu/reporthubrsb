@@ -163,7 +163,8 @@ export async function bukaAtauBuatIsian(
   const awal = await terakhir();
   if (!def.berulang && awal && awal.status !== "BATAL") return { isian: keDto(awal), baru: false };
 
-  if (!awal) {
+  // Data tabel lama hanya ada untuk 4 form awal (punya `jenisLama`).
+  if (!awal && def.jenisLama) {
     const lama = await db.formRm.findUnique({ where: { nopen_jenis: { nopen: input.nopen, jenis: def.jenisLama } } });
     if (lama) {
       const h = await pindahkanBarisLama(lama, aktor);

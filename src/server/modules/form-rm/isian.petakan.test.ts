@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { pasangPath } from "@/features/form-rm/asal";
 import { EDUKASI_KATEGORI, HAMBATAN_OPTS, PENDIDIKAN_OPTS as PENDIDIKAN_RM21_OPTS } from "@/features/form-rm/edukasi.constants";
 import { KELAS_OPTS } from "@/features/form-rm/consent.constants";
-import { DEFINISI_FORM } from "@/features/form-rm/registry";
+import { DEFINISI_FORM, type KodeForm } from "@/features/form-rm/registry";
 import {
   AGAMA_OPTS,
   CARA_MASUK_OPTS,
@@ -32,11 +32,13 @@ import {
   petaJenisPelayanan,
   petaKeluarga,
   petaPendidikan,
+  petaMorse,
   petaPerkawinan,
   ringkasDiagnosa,
   type HasilSumber,
+  type PetaForm,
 } from "./isian.petakan";
-import type { EdukasiRow, EpisodeRow, KeluargaRow, SosialRow } from "./isian.sumber.dal";
+import type { EdukasiRow, EpisodeRow, KeluargaRow, MorseRow, SosialRow } from "./isian.sumber.dal";
 
 /* ------------------------------------------------------- baris sintetis */
 
@@ -143,7 +145,19 @@ const triase: TriaseSimgosRow = {
   PENGGUNA: "admin",
 };
 
+const morseRow: MorseRow = {
+  WAKTU: "2026-10-07T08:20",
+  RIWAYAT_JATUH: 2,
+  DIAGNOSIS: 1,
+  ALAT_BANTU: 3,
+  HEPARIN: 2,
+  GAYA_BERJALAN: 0,
+  KESADARAN: 2,
+  PETUGAS: "Ns. Morse",
+};
+
 const lengkap: HasilSumber = {
+  morse: morseRow,
   identitas: header,
   sosial,
   keluarga,
@@ -260,9 +274,37 @@ describe("pemetaan referensi SIMGOS per ID", () => {
 
 /* ------------------------------------------------------------ per form */
 
+/** Form ber-kolom SIMRS wajib punya pemetaan. */
+const petaWajib = (kode: KodeForm): PetaForm => {
+  const p = PETA_FORM[kode];
+  if (!p) throw new Error(`Form ${kode} tanpa pemetaan SIMRS`);
+  return p;
+};
+
 describe("peta isi otomatis per form", () => {
-  it.each(DEFINISI_FORM.map((d) => [d.kode, d] as const))("%s: hanya kolom terdeklarasi, sumbernya dipakai form, hasil lolos skema", (_k, d) => {
-    const peta = PETA_FORM[d.kode];
+  it("setiap form berkolom SIMRS punya pemetaan", () => {
+    for (const d of DEFINISI_FORM) if (d.simrs.length > 0) expect(PETA_FORM[d.kode], d.kode).toBeDefined();
+  });
+
+  it("Morse: kode referensi SIMGOS → opsi; gaya berjalan 0 = normal hanya bila faktor lain terisi", () => {
+    expect(petaMorse(morseRow)).toEqual({
+      "pengkajian.0.waktu": "2026-10-07T08:20",
+      "pengkajian.0.riwayatJatuh": "ya",
+      "pengkajian.0.diagnosisSekunder": "tidak",
+      "pengkajian.0.alatBantu": "furnitur",
+      "pengkajian.0.terapiIntravena": "ya",
+      "pengkajian.0.gayaBerjalan": "normal",
+      "pengkajian.0.statusMental": "lupa",
+      "pengkajian.0.petugasNama": "Ns. Morse",
+    });
+    const sebagian = petaMorse({ ...morseRow, DIAGNOSIS: 0 });
+    expect(sebagian["pengkajian.0.diagnosisSekunder"]).toBe("");
+    expect(sebagian["pengkajian.0.gayaBerjalan"]).toBe("");
+    expect(petaMorse({ ...morseRow, GAYA_BERJALAN: 2 })["pengkajian.0.gayaBerjalan"]).toBe("terganggu");
+  });
+
+  it.each(DEFINISI_FORM.filter((d) => d.simrs.length > 0).map((d) => [d.kode, d] as const))("%s: hanya kolom terdeklarasi, sumbernya dipakai form, hasil lolos skema", (_k, d) => {
+    const peta = petaWajib(d.kode);
     const kolom = new Map(d.simrs.flatMap((b) => b.kolom.map((k) => [k.path, k] as const)));
     for (const k of kolom.values()) expect(peta.sumber, k.path).toContain(k.sumber);
 
@@ -278,13 +320,13 @@ describe("peta isi otomatis per form", () => {
     expect(d.skema.safeParse(data).success).toBe(true);
   });
 
-  it.each(DEFINISI_FORM.map((d) => [d.kode, d] as const))("%s: tanpa sumber → tanpa kolom", (_k, d) => {
-    expect(PETA_FORM[d.kode].petakan({})).toEqual({});
+  it.each(DEFINISI_FORM.filter((d) => d.simrs.length > 0).map((d) => [d.kode, d] as const))("%s: tanpa sumber → tanpa kolom", (_k, d) => {
+    expect(petaWajib(d.kode).petakan({})).toEqual({});
   });
 
   it("RM.01: seluruh kolom terdeklarasi terisi bila SIMRS lengkap", () => {
     const d = DEFINISI_FORM.find((x) => x.kode === "RM.01")!;
-    const nilai = PETA_FORM["RM.01"].petakan(lengkap);
+    const nilai = petaWajib("RM.01").petakan(lengkap);
     const kosong = d.simrs.flatMap((b) => b.kolom.map((k) => k.path)).filter((p) => !(p in nilai));
     // pendidikanLain kosong karena pendidikan punya padanan opsi.
     expect(kosong).toEqual(["pendidikanLain"]);
@@ -302,17 +344,17 @@ describe("peta isi otomatis per form", () => {
   });
 
   it("RM.04: triase menimpa waktu masuk; tanpa triase → waktu masuk kunjungan (sumber identitas)", () => {
-    const dgn = PETA_FORM["RM.04"].petakan(lengkap);
+    const dgn = petaWajib("RM.04").petakan(lengkap);
     expect(dgn.kedatanganWaktu).toEqual({ nilai: "2026-10-07T08:05", sumber: "triase" });
     expect(dgn.kecelakaan.nilai).toEqual(["Kecelakaan Lalu Lintas"]);
     expect(dgn.tdSistolik.nilai).toBe("120");
     expect(dgn.petugasNama.nilai).toBe("Ns. Uji");
-    const tanpa = PETA_FORM["RM.04"].petakan({ identitas: header });
+    const tanpa = petaWajib("RM.04").petakan({ identitas: header });
     expect(tanpa).toEqual({ kedatanganWaktu: { nilai: "2026-10-07T08:04", sumber: "identitas" } });
   });
 
   it("RM.21: kesediaan 0 tidak diisi (bukan bukti penolakan); penerjemah 0 → Tidak", () => {
-    const n = PETA_FORM["RM.21"].petakan({ sosial, edukasi: { ...nolEdukasi(), KESEDIAAN: 0 } });
+    const n = petaWajib("RM.21").petakan({ sosial, edukasi: { ...nolEdukasi(), KESEDIAAN: 0 } });
     expect(n["persiapan.kesediaan"]).toBeUndefined();
     expect(n["persiapan.penerjemah"].nilai).toBe("Tidak");
     expect(n["persiapan.hambatan"].nilai).toEqual(["Tidak Ada"]);
@@ -321,7 +363,7 @@ describe("peta isi otomatis per form", () => {
   });
 
   it("RM.03: identitas + kelas kamar rawat inap", () => {
-    const n = PETA_FORM["RM.03"].petakan({ identitas: header, episode });
+    const n = petaWajib("RM.03").petakan({ identitas: header, episode });
     expect(Object.fromEntries(Object.entries(n).map(([p, v]) => [p, v.nilai]))).toEqual({
       nik: header.nik,
       waktuPendaftaran: "2026-10-07T08:04",
@@ -329,7 +371,7 @@ describe("peta isi otomatis per form", () => {
       pasienNama: "PASIEN UJI",
       kelas: "Kelas III",
     });
-    expect(PETA_FORM["RM.03"].petakan({ identitas: { ...header, nama: "—", ruang: "—", nik: "" } })).toEqual({
+    expect(petaWajib("RM.03").petakan({ identitas: { ...header, nama: "—", ruang: "—", nik: "" } })).toEqual({
       waktuPendaftaran: { nilai: "2026-10-07T08:04", sumber: "identitas" },
     });
   });

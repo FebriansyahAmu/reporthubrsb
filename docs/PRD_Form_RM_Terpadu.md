@@ -4,8 +4,8 @@
 
 **Project:** ReportHub (`reporthubrsb`) · Modul **Form RM** (`form-rm`)
 **Organisasi:** UPTD RSUD Bolaang Mongondow Timur
-**Versi:** 0.4 — K1, K5, K7 diputuskan; K4 ditunda; K8 baru (§15)
-**Tanggal:** 7 Oktober 2026 · **Status:** F0 selesai (Langkah 1 fondasi backend + Langkah 2 cutover UI); F1 selesai (katalog, pemilih pasien, RBAC per kategori) — lihat §16
+**Versi:** 0.5 — K1, K5, K7 diputuskan; K4 ditunda; K8 terbuka; K9–K10 baru (§15)
+**Tanggal:** 7 Oktober 2026 · **Status:** F0, F1, F2 selesai; F3 selesai dengan pilot Risiko Jatuh Morse (isi & cetak menunggu templat resmi RS, K10) — lihat §16
 **Sifat data SIMGOS:** **FULL READ-ONLY.** Hanya `SELECT` / `information_schema`. Tidak ada DDL/DML, tidak menambah atau mengubah tabel maupun stored procedure apa pun di SIMGOS. Semua isian form, tanda tangan, dan riwayat disimpan di DB aplikasi `reporthub`.
 
 ---
@@ -33,20 +33,21 @@ Tujuan terukur:
 
 ## 2. Kondisi Sekarang (penelusuran kode, 6 Okt 2026)
 
-| Aspek | Kondisi | Dampak |
-| --- | --- | --- |
-| Sasaran pasien | Daftar disaring `kategori === "IGD"` (`form-rm.service.ts`); badge "IGD" ditulis tetap; modul RBAC bernama "Form RM (Admisi)" | Unit lain tidak bisa memakai |
-| Cara menambah form | ±8 berkas per form (konstanta, tipe, skema, service, API, halaman, view, dokumen cetak, halaman cetak); daftar kartu & kelengkapan ditulis tetap | Tidak terkelola untuk puluhan form |
-| Penyimpanan | Tabel `form_rm`, unik `(nopen, jenis)`, isi di kolom JSON `data` | Form berulang (informed consent per tindakan, transfer) tidak bisa disimpan |
-| Simpan | `upsert` menimpa tanpa versi | Dua petugas menyunting bersamaan → satu hilang tanpa peringatan |
-| Jejak | Modul tidak memanggil `writeAudit`; tidak ada riwayat isi | Tidak memenuhi prinsip keutuhan rekam medis elektronik |
-| Status | Tidak ada DRAF/FINAL | Form bisa diubah kapan pun, termasuk setelah dicetak dan ditandatangani |
-| Identitas pasien | `norm`, `nama`, `ruang` yang disimpan **dikirim browser** (field `header` di skema simpan) | Bisa dipalsukan; seharusnya ditentukan server |
-| Tanda tangan | PNG data-URL **di dalam JSON** isian (consent rata-rata 39 KB, maks 118 KB) | JSON membengkak; riwayat akan menggandakan gambar TTD |
-| IP audit (lintas aplikasi) | `clientIp()` memakai X-Forwarded-For **paling kiri** | IP di audit bisa dipalsukan klien |
-| Pengujian | Hanya `eslint` dan skrip E2E ad-hoc; tidak ada runner unit test | Logika murni (skor, pemetaan) tidak teruji otomatis |
+| Aspek                      | Kondisi                                                                                                                                          | Dampak                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| Sasaran pasien             | Daftar disaring `kategori === "IGD"` (`form-rm.service.ts`); badge "IGD" ditulis tetap; modul RBAC bernama "Form RM (Admisi)"                    | Unit lain tidak bisa memakai                                                |
+| Cara menambah form         | ±8 berkas per form (konstanta, tipe, skema, service, API, halaman, view, dokumen cetak, halaman cetak); daftar kartu & kelengkapan ditulis tetap | Tidak terkelola untuk puluhan form                                          |
+| Penyimpanan                | Tabel `form_rm`, unik `(nopen, jenis)`, isi di kolom JSON `data`                                                                                 | Form berulang (informed consent per tindakan, transfer) tidak bisa disimpan |
+| Simpan                     | `upsert` menimpa tanpa versi                                                                                                                     | Dua petugas menyunting bersamaan → satu hilang tanpa peringatan             |
+| Jejak                      | Modul tidak memanggil `writeAudit`; tidak ada riwayat isi                                                                                        | Tidak memenuhi prinsip keutuhan rekam medis elektronik                      |
+| Status                     | Tidak ada DRAF/FINAL                                                                                                                             | Form bisa diubah kapan pun, termasuk setelah dicetak dan ditandatangani     |
+| Identitas pasien           | `norm`, `nama`, `ruang` yang disimpan **dikirim browser** (field `header` di skema simpan)                                                       | Bisa dipalsukan; seharusnya ditentukan server                               |
+| Tanda tangan               | PNG data-URL **di dalam JSON** isian (consent rata-rata 39 KB, maks 118 KB)                                                                      | JSON membengkak; riwayat akan menggandakan gambar TTD                       |
+| IP audit (lintas aplikasi) | `clientIp()` memakai X-Forwarded-For **paling kiri**                                                                                             | IP di audit bisa dipalsukan klien                                           |
+| Pengujian                  | Hanya `eslint` dan skrip E2E ad-hoc; tidak ada runner unit test                                                                                  | Logika murni (skor, pemetaan) tidak teruji otomatis                         |
 
 Yang sudah baik dan dipertahankan:
+
 - isi otomatis SIMRS untuk RM.01, RM.03 (NIK), dan RM.04 — hanya saat form baru, bertanda "SIMRS", tetap bisa disunting;
 - `SignaturePad` dan alur TTD via HP;
 - cetak 1:1 per kertas (A4/F4);
@@ -60,11 +61,11 @@ Isi `reporthub.form_rm` saat ini: **10 baris** (consent 6, edukasi 2, ringkasan 
 
 ### 3.1. Volume (30 hari terakhir)
 
-| Jenis kunjungan | Ruangan aktif | NOPEN 30 hari | Sedang dirawat |
-| --- | --- | ---: | ---: |
-| Rawat jalan | 12 klinik | 145 | 1 |
-| IGD | 4 (Bedah, IRDA, IRDO, Non Bedah) | 232 | 6 |
-| Rawat inap | 12 (termasuk ICU, ICCU, NICU, Obgyn) | 192 | 21 |
+| Jenis kunjungan | Ruangan aktif                        | NOPEN 30 hari | Sedang dirawat |
+| --------------- | ------------------------------------ | ------------: | -------------: |
+| Rawat jalan     | 12 klinik                            |           145 |              1 |
+| IGD             | 4 (Bedah, IRDA, IRDO, Non Bedah)     |           232 |              6 |
+| Rawat inap      | 12 (termasuk ICU, ICCU, NICU, Obgyn) |           192 |             21 |
 
 Ruangan lain: Ruang OK, Laboratorium Sentral, Unit Radiologi, Farmasi. Total pasien 4.914; 4.889 di antaranya punya NIK.
 
@@ -74,16 +75,17 @@ Artinya: daftar di pemilih pasien **kecil** (puluhan per hari). Penyaringan di s
 
 Tabel `medicalrecord` di bawah berkunci `KUNJUNGAN` dan **terindeks** pada kolom itu. Cakupan = persentase NOPEN 30 hari yang punya minimal satu baris.
 
-| Sumber | Tabel | RJ | IGD | RI | Dipakai untuk |
-| --- | --- | ---: | ---: | ---: | --- |
-| Keluhan utama | `keluhan_utama` | 37 % | 94 % | 82 % | asesmen awal, triase |
-| Tanda vital | `tanda_vital` | 44 % | 92 % | 91 % | triase, asesmen, transfer |
-| Edukasi pasien & keluarga (hambatan, bahasa, kebutuhan) | `edukasi_pasien_keluarga` | 25 % | 78 % | 3 % | **RM.21** (belum dipakai) |
-| Nyeri | `penilaian_nyeri` | 6 % | 69 % | 3 % | asesmen |
-| Risiko jatuh (Morse) | `penilaian_skala_morse` | 5 % | 68 % | 3 % | asesmen keperawatan |
-| Alergi | `riwayat_alergi` | 0 % | 56 % | 17 % | asesmen, pra-anestesi, SSC |
+| Sumber                                                  | Tabel                     |   RJ |  IGD |   RI | Dipakai untuk              |
+| ------------------------------------------------------- | ------------------------- | ---: | ---: | ---: | -------------------------- |
+| Keluhan utama                                           | `keluhan_utama`           | 37 % | 94 % | 82 % | asesmen awal, triase       |
+| Tanda vital                                             | `tanda_vital`             | 44 % | 92 % | 91 % | triase, asesmen, transfer  |
+| Edukasi pasien & keluarga (hambatan, bahasa, kebutuhan) | `edukasi_pasien_keluarga` | 25 % | 78 % |  3 % | **RM.21** (belum dipakai)  |
+| Nyeri                                                   | `penilaian_nyeri`         |  6 % | 69 % |  3 % | asesmen                    |
+| Risiko jatuh (Morse)                                    | `penilaian_skala_morse`   |  5 % | 68 % |  3 % | asesmen keperawatan        |
+| Alergi                                                  | `riwayat_alergi`          |  0 % | 56 % | 17 % | asesmen, pra-anestesi, SSC |
 
 Sumber lain yang juga tersedia:
+
 - identitas, alamat, data sosial, dan NIK (`master.pasien`, `referensi`, `kartu_identitas_pasien`);
 - episode: masuk/keluar, ruang, DPJP, penjamin (`pendaftaran.*`);
 - diagnosa ICD-10 (`diagnosa`, berkunci NOPEN);
@@ -96,15 +98,15 @@ Sumber lain yang juga tersedia:
 
 SIMGOS menyediakan tabel untuk formulir berikut, tetapi isinya **0 baris** (dihitung `COUNT(*)`). Formulir ini kemungkinan besar masih diisi di kertas, sehingga menjadi kandidat prioritas. Perlu konfirmasi Instalasi RM (keputusan K1).
 
-| Formulir | Tabel SIMGOS (acuan struktur) |
-| --- | --- |
-| Persetujuan tindakan kedokteran | `persetujuan_tindakan_dokter*` |
-| Persetujuan transfusi darah | `persetujuan_pemberian_transfusi_darah` |
-| Surgical Safety Checklist (sign in, time out, sign out) | `surgical_safety_checklist_*` |
-| Asesmen pra-anestesi/sedasi, persiapan anestesi | `pra_anastesi_sedasi`, `persiapan_anastesi` |
-| Lembar transfer pasien antar-ruang | `lembar_transfer_pasien` |
-| Riwayat obstetri & ginekologi | `obstetri`, `riwayat_obstetri`, `riwayat_gynekologi` |
-| Risiko jatuh anak (Humpty Dumpty) | `penilaian_skala_humpty_dumpty` |
+| Formulir                                                | Tabel SIMGOS (acuan struktur)                        |
+| ------------------------------------------------------- | ---------------------------------------------------- |
+| Persetujuan tindakan kedokteran                         | `persetujuan_tindakan_dokter*`                       |
+| Persetujuan transfusi darah                             | `persetujuan_pemberian_transfusi_darah`              |
+| Surgical Safety Checklist (sign in, time out, sign out) | `surgical_safety_checklist_*`                        |
+| Asesmen pra-anestesi/sedasi, persiapan anestesi         | `pra_anastesi_sedasi`, `persiapan_anastesi`          |
+| Lembar transfer pasien antar-ruang                      | `lembar_transfer_pasien`                             |
+| Riwayat obstetri & ginekologi                           | `obstetri`, `riwayat_obstetri`, `riwayat_gynekologi` |
+| Risiko jatuh anak (Humpty Dumpty)                       | `penilaian_skala_humpty_dumpty`                      |
 
 Hampir kosong: rekonsiliasi obat saat transfer (2) dan pulang (5), skrining perencanaan pulang (45), edukasi end of life (6).
 
@@ -114,20 +116,21 @@ Struktur kolom tabel-tabel ini boleh dipakai sebagai acuan isi formulir. **Aplik
 
 ## 4. Pengguna & Peran
 
-| Peran | Kebutuhan utama |
-| --- | --- |
-| Admisi / pendaftaran | General consent, identitas, ringkasan masuk |
-| Perawat / bidan | Triase, asesmen keperawatan, edukasi, transfer, Surgical Safety Checklist |
-| Dokter (DPJP, anestesi, bedah) | Asesmen medis, informed consent, pra-anestesi |
-| Petugas Instalasi RM | Memantau kelengkapan, membuka isian FINAL untuk koreksi, membatalkan isian salah-pasien |
-| Admin | Hak akses per kategori |
-| Pasien / wali | Bukan pengguna aplikasi; hanya menandatangani (di layar atau via HP) |
+| Peran                          | Kebutuhan utama                                                                         |
+| ------------------------------ | --------------------------------------------------------------------------------------- |
+| Admisi / pendaftaran           | General consent, identitas, ringkasan masuk                                             |
+| Perawat / bidan                | Triase, asesmen keperawatan, edukasi, transfer, Surgical Safety Checklist               |
+| Dokter (DPJP, anestesi, bedah) | Asesmen medis, informed consent, pra-anestesi                                           |
+| Petugas Instalasi RM           | Memantau kelengkapan, membuka isian FINAL untuk koreksi, membatalkan isian salah-pasien |
+| Admin                          | Hak akses per kategori                                                                  |
+| Pasien / wali                  | Bukan pengguna aplikasi; hanya menandatangani (di layar atau via HP)                    |
 
 ---
 
 ## 5. Ruang Lingkup
 
 **Termasuk:**
+
 - katalog per kategori;
 - alur form lebih dulu dan pasien lebih dulu;
 - pemilih pasien per sasaran form;
@@ -141,6 +144,7 @@ Struktur kolom tabel-tabel ini boleh dipakai sebagai acuan isi formulir. **Aplik
 - klien desktop Tauri atau PWA (opsional, §12).
 
 **Tidak termasuk:**
+
 - Menulis ke SIMGOS dalam bentuk apa pun.
 - Tanda tangan elektronik tersertifikasi (BSrE/PSrE). TTD gambar dengan jejak audit tetap dipakai; TTE tersertifikasi menjadi fase terpisah bila diwajibkan.
 - Form builder di database (pengguna menyusun form sendiri).
@@ -174,6 +178,7 @@ flowchart LR
   - transfer → pasien rawat inap yang sedang dirawat.
 
   Untuk pasien di luar daftar itu tersedia pencarian No.RM, nama, atau NIK (minimal 3 karakter). Setiap baris menunjukkan status isian form tersebut: belum ada, DRAF, atau FINAL.
+
 - **Isian yang sudah ada.** Untuk form tidak berulang, memilih pasien yang sudah punya isian **membuka isian itu**, bukan membuat isian ganda.
 
 ### 6.2. Alur pasien lebih dulu (dipertahankan)
@@ -215,31 +220,32 @@ stateDiagram-v2
 
 **Keputusan K1 (6 Okt 2026):** katalog awal = **4 formulir yang sudah ada** (RM.04, RM.21, RM.01, RM.03). Formulir lain ditambahkan setelah tersedia. Tabel di bawah adalah usulan pengelompokan jangka panjang, disusun dari formulir yang sudah ada, ruangan aktif, dan tabel SIMGOS (§3.3):
 
-| Kategori | Contoh formulir | Cakupan | Status |
-| --- | --- | --- | --- |
+| Kategori                   | Contoh formulir                                                                                                         | Cakupan                               | Status    |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | --------- |
 | Administrasi & Persetujuan | RM.03 General Consent; persetujuan/penolakan tindakan kedokteran; persetujuan transfusi; pulang atas permintaan sendiri | episode / **berulang** (per tindakan) | RM.03 ada |
-| Gawat Darurat | RM.04 Triase IGD; asesmen awal IGD | kunjungan IGD | RM.04 ada |
-| Rawat Jalan | asesmen awal rawat jalan | kunjungan klinik | baru |
-| Rawat Inap | asesmen awal medis & keperawatan; lembar transfer; perencanaan pulang; rekonsiliasi obat | episode / **berulang** (transfer) | baru |
-| Kamar Operasi & Anestesi | Surgical Safety Checklist; asesmen pra-anestesi/sedasi | kunjungan OK / berulang | baru |
-| Kebidanan & Neonatus | asesmen obstetri; riwayat kehamilan | episode | baru |
-| Edukasi | RM.21 Edukasi Pasien & Keluarga Terintegrasi | episode | RM.21 ada |
-| Ringkasan & Pemulangan | RM.01 Ringkasan Masuk & Keluar | episode | RM.01 ada |
+| Gawat Darurat              | RM.04 Triase IGD; asesmen awal IGD                                                                                      | kunjungan IGD                         | RM.04 ada |
+| Asesmen Keperawatan        | Pengkajian risiko jatuh dewasa (Morse); risiko jatuh anak (Humpty Dumpty); asesmen nyeri                                | episode (pengkajian ulang dalam tabel) | Morse pilot (F3) |
+| Rawat Jalan                | asesmen awal rawat jalan                                                                                                | kunjungan klinik                      | baru      |
+| Rawat Inap                 | asesmen awal medis & keperawatan; lembar transfer; perencanaan pulang; rekonsiliasi obat                                | episode / **berulang** (transfer)     | baru      |
+| Kamar Operasi & Anestesi   | Surgical Safety Checklist; asesmen pra-anestesi/sedasi                                                                  | kunjungan OK / berulang               | baru      |
+| Kebidanan & Neonatus       | asesmen obstetri; riwayat kehamilan                                                                                     | episode                               | baru      |
+| Edukasi                    | RM.21 Edukasi Pasien & Keluarga Terintegrasi                                                                            | episode                               | RM.21 ada |
+| Ringkasan & Pemulangan     | RM.01 Ringkasan Masuk & Keluar                                                                                          | episode                               | RM.01 ada |
 
 Atribut setiap definisi form:
 
-| Atribut | Contoh | Fungsi |
-| --- | --- | --- |
-| `kode`, `judul`, `kategori` | `RM.04`, Triase IGD, Gawat Darurat | katalog & cetak |
-| `versi` | `1` | isian lama tetap dicetak dengan tata letak versinya |
-| `cakupan` | `EPISODE` / `KUNJUNGAN` | kunci subjek isian |
-| `berulang` | `false` | boleh lebih dari satu isian per subjek |
-| `sasaran` | jenis kunjungan 2 (IGD), atau ruangan tertentu | penyaring pemilih pasien |
-| `izin` | kunci RBAC kategori | siapa boleh melihat, mengisi, memfinalkan |
-| `wajibUntuk` | episode IGD (daftar jenis kunjungan) | hitungan kelengkapan |
-| `skema` | Zod `.strict()` | validasi simpan & finalkan |
-| `isiOtomatis` | daftar sumber + pemetaan kolom | pustaka §8.3 |
-| `kertas` | A4 / F4, potret / lanskap | cetak |
+| Atribut                     | Contoh                                         | Fungsi                                              |
+| --------------------------- | ---------------------------------------------- | --------------------------------------------------- |
+| `kode`, `judul`, `kategori` | `RM.04`, Triase IGD, Gawat Darurat             | katalog & cetak                                     |
+| `versi`                     | `1`                                            | isian lama tetap dicetak dengan tata letak versinya |
+| `cakupan`                   | `EPISODE` / `KUNJUNGAN`                        | kunci subjek isian                                  |
+| `berulang`                  | `false`                                        | boleh lebih dari satu isian per subjek              |
+| `sasaran`                   | jenis kunjungan 2 (IGD), atau ruangan tertentu | penyaring pemilih pasien                            |
+| `izin`                      | kunci RBAC kategori                            | siapa boleh melihat, mengisi, memfinalkan           |
+| `wajibUntuk`                | episode IGD (daftar jenis kunjungan)           | hitungan kelengkapan                                |
+| `skema`                     | Zod `.strict()`                                | validasi simpan & finalkan                          |
+| `isiOtomatis`               | daftar sumber + pemetaan kolom                 | pustaka §8.3                                        |
+| `kertas`                    | A4 / F4, potret / lanskap                      | cetak                                               |
 
 ---
 
@@ -248,35 +254,37 @@ Atribut setiap definisi form:
 ### 8.1. Registri form
 
 Satu berkas definisi per form di `src/features/form-rm/forms/<kode>/`, didaftarkan di satu registri (pola sama dengan katalog modul RBAC).
+
 - **Bagian murni** (metadata, skema, tata letak) aman dipakai di klien.
 - **Bagian server** (pemetaan isi otomatis) berada di `src/server/modules/form-rm/` dan hanya diimpor server.
 
 ```ts
 // Sketsa — bukan kode final.
 type DefinisiForm<T> = {
-  kode: string;               // "RM.04"
+  kode: string; // "RM.04"
   versi: number;
   judul: string;
   kategori: KategoriForm;
   cakupan: "EPISODE" | "KUNJUNGAN";
   berulang: boolean;
-  sasaran: SasaranPasien;     // jenis kunjungan / ruangan
+  sasaran: SasaranPasien; // jenis kunjungan / ruangan
   wajibUntuk?: SasaranPasien;
-  skema: z.ZodType<T>;        // .strict(); tipe isian = z.infer
+  skema: z.ZodType<T>; // .strict(); tipe isian = z.infer
   kosong: () => T;
   kertas: Kertas;
-  tampilan: () => Promise<KomponenForm<T>>;  // dimuat dinamis (code splitting)
+  tampilan: () => Promise<KomponenForm<T>>; // dimuat dinamis (code splitting)
   cetak: () => Promise<KomponenCetak<T>>;
 };
 
 // Server-only, terpisah dari definisi di atas.
 type IsiOtomatisForm<T> = {
   sumber: SumberId[];
-  petakan: (hasil: HasilSumber) => Partial<T>;  // murni, diuji unit
+  petakan: (hasil: HasilSumber) => Partial<T>; // murni, diuji unit
 };
 ```
 
 Registri divalidasi oleh unit test:
+
 - kode unik;
 - kategori dikenal;
 - sumber isi otomatis terdaftar;
@@ -291,36 +299,36 @@ Registri divalidasi oleh unit test:
 
 - **Sumber.** Satu sumber = satu fungsi DAL berisi satu query berparameter, berkunci NOPEN/KUNJUNGAN yang terindeks dan dibatasi `MAX_EXECUTION_TIME`. Hasilnya bertipe dan boleh `null`.
 - **Sumber awal:** `identitas`, `sosial`, `episode`, `diagnosa`, `tandaVital`, `keluhan`, `alergi`, `nyeri`, `risikoJatuh`, `edukasi`, `triase`, `statusFungsional`, `anamnesis`, `episodeIgdAsal`.
-- **Pemakaian oleh form.** Form hanya *menyebut* sumber yang dipakainya. Service mengambil setiap sumber unik sekali, paralel terbatas (maks 4 sekaligus), lewat client SIMGOS singleton yang sudah ada.
+- **Pemakaian oleh form.** Form hanya _menyebut_ sumber yang dipakainya. Service mengambil setiap sumber unik sekali, paralel terbatas (maks 4 sekaligus), lewat client SIMGOS singleton yang sudah ada.
 - **Penormal bersama.** Penormal nilai referensi SIMGOS ke opsi form (mis. `matchAgama`, `matchPekerjaan`) dipindah ke pustaka bersama.
 - **Uji silang.** Setiap pemetaan diuji silang dengan SQL independen pada data nyata (pola Verifikasi Klaim).
 
 ### 8.4. Rute & API
 
-| Rute | Fungsi |
-| --- | --- |
-| `/form-rm` | katalog per kategori |
-| `/form-rm/f/[kode]` | pemilih pasien untuk form itu |
-| `/form-rm/isian/[id]` | halaman isian (satu URL per isian) |
+| Rute                                          | Fungsi                                           |
+| --------------------------------------------- | ------------------------------------------------ |
+| `/form-rm`                                    | katalog per kategori                             |
+| `/form-rm/f/[kode]`                           | pemilih pasien untuk form itu                    |
+| `/form-rm/isian/[id]`                         | halaman isian (satu URL per isian)               |
 | `/form-rm/pasien` · `/form-rm/pasien/[nopen]` | alur pasien lebih dulu (daftar · profil episode) |
-| `/print/form-rm/isian/[id]` | cetak, dengan tata letak sesuai versi isian |
+| `/print/form-rm/isian/[id]`                   | cetak, dengan tata letak sesuai versi isian      |
 
-| API | Izin | Keterangan |
-| --- | --- | --- |
-| `GET /api/form-rm/katalog` | view | form yang boleh diakses + hitungan draf |
-| `GET /api/form-rm/f/[kode]/pasien?q=&halaman=` | view kategori | daftar pasien sasaran + status isian |
-| `POST /api/form-rm/isian` `{kode, nopen, kunjungan?}` | create kategori | buat-atau-buka; isi otomatis dijalankan di server |
-| `GET /api/form-rm/isian/[id]` | view kategori | isian + asal kolom |
-| `PATCH /api/form-rm/isian/[id]` `{rev, data}` | update kategori | simpan draf; `rev` usang → 409 |
-| `POST /api/form-rm/isian/[id]/aksi` `{aksi, rev, alasan?}` | update kategori / kelola | `FINALKAN`, `BUKA_KOREKSI`, `BATALKAN` |
-| `GET /api/form-rm/isian/[id]/riwayat` | view kategori | revisi + hasil pemeriksaan integritas |
-| `GET /api/form-rm/ttd/[id]` | view kategori | gambar TTD; `no-store`, `nosniff`, CSP `sandbox` |
+| API                                                        | Izin                     | Keterangan                                        |
+| ---------------------------------------------------------- | ------------------------ | ------------------------------------------------- |
+| `GET /api/form-rm/katalog`                                 | view                     | form yang boleh diakses + hitungan draf           |
+| `GET /api/form-rm/f/[kode]/pasien?q=&halaman=`             | view kategori            | daftar pasien sasaran + status isian              |
+| `POST /api/form-rm/isian` `{kode, nopen, kunjungan?}`      | create kategori          | buat-atau-buka; isi otomatis dijalankan di server |
+| `GET /api/form-rm/isian/[id]`                              | view kategori            | isian + asal kolom                                |
+| `PATCH /api/form-rm/isian/[id]` `{rev, data}`              | update kategori          | simpan draf; `rev` usang → 409                    |
+| `POST /api/form-rm/isian/[id]/aksi` `{aksi, rev, alasan?}` | update kategori / kelola | `FINALKAN`, `BUKA_KOREKSI`, `BATALKAN`            |
+| `GET /api/form-rm/isian/[id]/riwayat`                      | view kategori            | revisi + hasil pemeriksaan integritas             |
+| `GET /api/form-rm/ttd/[id]`                                | view kategori            | gambar TTD; `no-store`, `nosniff`, CSP `sandbox`  |
 
 **TTD tanpa endpoint unggah terpisah** (diputuskan saat implementasi): klien tetap mengirim TTD baru sebagai PNG data-URL di dalam `data` saat simpan. Server menormalkan PNG, menyimpannya di `form_rm_ttd`, lalu menggantinya dengan referensi `ttd:<id>`. Referensi yang dikirim balik wajib milik isian yang sama; referensi ke isian lain → 422.
 
 - **RBAC.** Satu modul per kategori (`form-rm.<kategori>`) dengan aksi yang sudah ada (`view`, `create`, `update`, `print`). Membuka atau membatalkan isian FINAL memakai modul terpisah `form-rm.kelola` (Instalasi RM). Tipe `ModuleAction` tidak perlu ditambah.
-  - *Diputuskan saat implementasi F1:* modul lama `form-rm` dipertahankan sebagai **"Semua Kategori"** agar grant yang sudah ada di produksi tidak hilang (tanpa migrasi data peran). `view` adalah dasar: aksi lain pada sebuah kategori hanya berlaku bila `view` kategori itu juga dimiliki.
-  - *Katalog dirender server* (registri di memori + satu kelompok query hitungan draf), sehingga `GET /api/form-rm/katalog` tidak dibuat.
+  - _Diputuskan saat implementasi F1:_ modul lama `form-rm` dipertahankan sebagai **"Semua Kategori"** agar grant yang sudah ada di produksi tidak hilang (tanpa migrasi data peran). `view` adalah dasar: aksi lain pada sebuah kategori hanya berlaku bila `view` kategori itu juga dimiliki.
+  - _Katalog dirender server_ (registri di memori + satu kelompok query hitungan draf), sehingga `GET /api/form-rm/katalog` tidak dibuat.
 - **Rute lama** (`/form-rm/[nopen]/edukasi`, dst.) dialihkan ke rute baru agar tautan lama tetap jalan.
 
 ### 8.5. Model data (DB `reporthub` saja)
@@ -404,15 +412,16 @@ CREATE TABLE form_rm_ttd (
 
 ## 9. Kinerja & Optimasi
 
-| Operasi | Target p95 | Cara |
-| --- | --- | --- |
-| Buka katalog | < 300 ms | registri di memori + 1 query hitungan draf |
-| Daftar pasien sasaran | < 500 ms | query rentang terindeks + 1 query batch status isian |
-| Buat isian + isi otomatis | < 1,5 s | sumber unik, paralel ≤ 4, query terindeks, `MAX_EXECUTION_TIME` |
-| Simpan draf | < 300 ms | satu update bersyarat |
-| Cetak | < 2 s | data dari `reporthub`; TTD dengan ETag |
+| Operasi                   | Target p95 | Cara                                                            |
+| ------------------------- | ---------- | --------------------------------------------------------------- |
+| Buka katalog              | < 300 ms   | registri di memori + 1 query hitungan draf                      |
+| Daftar pasien sasaran     | < 500 ms   | query rentang terindeks + 1 query batch status isian            |
+| Buat isian + isi otomatis | < 1,5 s    | sumber unik, paralel ≤ 4, query terindeks, `MAX_EXECUTION_TIME` |
+| Simpan draf               | < 300 ms   | satu update bersyarat                                           |
+| Cetak                     | < 2 s      | data dari `reporthub`; TTD dengan ETag                          |
 
 Tambahan:
+
 - **Code splitting.** Komponen form dan cetak dimuat dinamis per kode, sehingga halaman katalog tidak membawa JavaScript puluhan form.
 - **Simpan otomatis yang hemat.** Debounce 3 detik setelah berhenti mengetik, hanya bila ada perubahan, dan hanya satu permintaan berjalan sekaligus.
 - **Batas ukuran.** JSON isian ≤ 256 KB. TTD ≤ 300 KB dan ≤ 1500 × 600 px setelah diproses.
@@ -432,21 +441,21 @@ Data yang ditangani adalah rekam medis, yang termasuk **data pribadi spesifik** 
 
 ### 10.2. Ancaman & kontrol
 
-| Ancaman | Kontrol |
-| --- | --- |
-| Akses isian tanpa hak (IDOR) | Izin dicek per **kategori form** di service untuk setiap baca/tulis isian, TTD, dan riwayat berdasarkan ID; isian dari kategori yang tidak diberikan → 404 seragam |
-| Pemalsuan identitas pasien | Identitas diambil server dari SIMGOS; skema simpan tidak menerima field identitas |
-| Mass assignment / data liar | Skema Zod `strictObject` di semua tingkat; kunci tak dikenal → 422; `__proto__` dibuang Zod (tak pernah tersimpan, prototype tak tercemar — dikunci unit test); batas panjang setiap kolom |
-| XSS tersimpan | Semua teks dirender React (ter-escape); tanpa `dangerouslySetInnerHTML` di form, cetak, maupun riwayat |
-| TTD berbahaya | Hanya PNG: tanda tangan berkas, CRC, IHDR & urutan chunk divalidasi; berkas **disusun ulang** hanya dari IHDR/PLTE/tRNS/IDAT/IEND (teks, metadata, data sesudah IEND dibuang); batas dimensi & ukuran; disajikan `image/png` + `nosniff` + CSP `sandbox` |
-| Lost update | `rev` + update bersyarat → 409 dengan pesan jelas |
-| Mengubah isian FINAL | Update bersyarat `status = 'DRAF'`; transisi eksplisit; rantai hash mendeteksi manipulasi di DB |
-| CSRF | Cookie `SameSite=Lax` (sudah) ditambah **cek `Origin` / `Sec-Fetch-Site`** untuk semua metode yang mengubah data |
-| Pemalsuan IP audit | `clientIp()` diganti: X-Real-IP dari nginx, lalu X-Forwarded-For paling kanan (pola QR publik) |
-| Banjir permintaan | Batas laju simpan per pengguna (mis. 60/menit) dan pencarian pasien; batas ukuran body |
-| Kebocoran lewat error / log | `fail()` seragam; log tanpa isi form, nama, atau diagnosa; metadata audit hanya id isian, kode form, NOPEN, status |
-| PC bersama di loket/bangsal | `no-store`; token akses 15 menit (sudah); keluar otomatis saat idle (K6) |
-| Injeksi SQL ke SIMGOS | Query berparameter; tanpa identifier dinamis; sumber isi otomatis berupa whitelist di registri; user DB hanya SELECT |
+| Ancaman                      | Kontrol                                                                                                                                                                                                                                                  |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Akses isian tanpa hak (IDOR) | Izin dicek per **kategori form** di service untuk setiap baca/tulis isian, TTD, dan riwayat berdasarkan ID; isian dari kategori yang tidak diberikan → 404 seragam                                                                                       |
+| Pemalsuan identitas pasien   | Identitas diambil server dari SIMGOS; skema simpan tidak menerima field identitas                                                                                                                                                                        |
+| Mass assignment / data liar  | Skema Zod `strictObject` di semua tingkat; kunci tak dikenal → 422; `__proto__` dibuang Zod (tak pernah tersimpan, prototype tak tercemar — dikunci unit test); batas panjang setiap kolom                                                               |
+| XSS tersimpan                | Semua teks dirender React (ter-escape); tanpa `dangerouslySetInnerHTML` di form, cetak, maupun riwayat                                                                                                                                                   |
+| TTD berbahaya                | Hanya PNG: tanda tangan berkas, CRC, IHDR & urutan chunk divalidasi; berkas **disusun ulang** hanya dari IHDR/PLTE/tRNS/IDAT/IEND (teks, metadata, data sesudah IEND dibuang); batas dimensi & ukuran; disajikan `image/png` + `nosniff` + CSP `sandbox` |
+| Lost update                  | `rev` + update bersyarat → 409 dengan pesan jelas                                                                                                                                                                                                        |
+| Mengubah isian FINAL         | Update bersyarat `status = 'DRAF'`; transisi eksplisit; rantai hash mendeteksi manipulasi di DB                                                                                                                                                          |
+| CSRF                         | Cookie `SameSite=Lax` (sudah) ditambah **cek `Origin` / `Sec-Fetch-Site`** untuk semua metode yang mengubah data                                                                                                                                         |
+| Pemalsuan IP audit           | `clientIp()` diganti: X-Real-IP dari nginx, lalu X-Forwarded-For paling kanan (pola QR publik)                                                                                                                                                           |
+| Banjir permintaan            | Batas laju simpan per pengguna (mis. 60/menit) dan pencarian pasien; batas ukuran body                                                                                                                                                                   |
+| Kebocoran lewat error / log  | `fail()` seragam; log tanpa isi form, nama, atau diagnosa; metadata audit hanya id isian, kode form, NOPEN, status                                                                                                                                       |
+| PC bersama di loket/bangsal  | `no-store`; token akses 15 menit (sudah); keluar otomatis saat idle (K6)                                                                                                                                                                                 |
+| Injeksi SQL ke SIMGOS        | Query berparameter; tanpa identifier dinamis; sumber isi otomatis berupa whitelist di registri; user DB hanya SELECT                                                                                                                                     |
 
 ### 10.3. Pengujian keamanan (wajib lulus di setiap fase)
 
@@ -480,7 +489,7 @@ Uji memakai DB nyata `reporthub` dengan **pembersihan terarah** dan snapshot seb
 - **Tanpa duplikasi per form.** Rute, API, simpan, cetak, dan kelengkapan dibuat generik; sebuah form hanya berupa definisi.
 - **Fungsi murni dipisah dari I/O.** Pemetaan isi otomatis, skor (Morse, GCS), state machine, dan hash kanonik diuji unit dengan **Vitest** (K7).
 - **State machine eksplisit.** Transisi bertipe; error domain memakai kelas yang sudah ada (`BusinessRuleError`, `ConflictError`, `NotFoundError`).
-- **Penamaan** Bahasa Indonesia, konsisten dengan kode yang ada. Komentar menjelaskan *mengapa*, bukan *apa*.
+- **Penamaan** Bahasa Indonesia, konsisten dengan kode yang ada. Komentar menjelaskan _mengapa_, bukan _apa_.
 - **Aksesibilitas:**
   - label terlihat;
   - navigasi keyboard dan fokus terlihat;
@@ -501,6 +510,7 @@ Uji memakai DB nyata `reporthub` dengan **pembersihan terarah** dan snapshot seb
 ### 12.1. Status Tauri
 
 Versi terbaru adalah **Tauri 2.12**, rilis 26 September 2026. Perubahan yang relevan:
+
 - dukungan **Windows 7 dihentikan**, karena installer WebView2 terbaru tidak lagi berjalan di Windows 7;
 - ada penangan izin webview baru (`on_permission_request`) untuk mengatur izin seperti kamera dan notifikasi secara terprogram.
 
@@ -524,13 +534,13 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 
 ### 12.4. Kapan layak
 
-| Kebutuhan | Tanpa Tauri | Dengan Tauri |
-| --- | --- | --- |
-| Jendela aplikasi sendiri, ikon di taskbar | PWA (butuh HTTPS) | ya |
-| Cetak langsung ke printer tertentu tanpa dialog | tidak bisa | bisa, perlu kode Rust untuk API cetak WebView2 |
-| Pad tanda tangan USB, pembaca e-KTP, sidik jari | terbatas (WebHID/WebUSB) | bisa lewat SDK native |
-| Mode kiosk di loket | sebagian (kebijakan Edge) | ya |
-| Kamera saat server masih http LAN | gagal (butuh HTTPS) | tetap gagal tanpa HTTPS |
+| Kebutuhan                                       | Tanpa Tauri               | Dengan Tauri                                   |
+| ----------------------------------------------- | ------------------------- | ---------------------------------------------- |
+| Jendela aplikasi sendiri, ikon di taskbar       | PWA (butuh HTTPS)         | ya                                             |
+| Cetak langsung ke printer tertentu tanpa dialog | tidak bisa                | bisa, perlu kode Rust untuk API cetak WebView2 |
+| Pad tanda tangan USB, pembaca e-KTP, sidik jari | terbatas (WebHID/WebUSB)  | bisa lewat SDK native                          |
+| Mode kiosk di loket                             | sebagian (kebijakan Edge) | ya                                             |
+| Kamera saat server masih http LAN               | gagal (butuh HTTPS)       | tetap gagal tanpa HTTPS                        |
 
 **Rekomendasi:** pasang HTTPS dulu, dengan PWA sebagai bawaan. Tauri dibangun di Fase F5 hanya bila K3 menyebut kebutuhan perangkat yang nyata.
 
@@ -538,43 +548,45 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 
 ## 13. Rencana Bertahap
 
-| Fase | Isi | Kriteria selesai |
-| --- | --- | --- |
-| **F0 Langkah 1 — Fondasi backend** ✅ | Registri 4 form; skema strict bersama; DDL `form_rm_isian`/`ttd`/`revisi`; API generik (buat-atau-buka, simpan ber-`rev`, transisi, riwayat + segel HMAC, TTD terpisah, audit); isi otomatis di server; perbaikan `clientIp`; cek Origin/`Sec-Fetch-Site`; batas laju & ukuran; Vitest; suite keamanan. UI lama tetap memakai tabel lama | Suite keamanan & E2E lulus di build produksi; UI lama tetap jalan |
-| **F0 Langkah 2 — Cutover** ✅ | Migrasi baris `form_rm` + ekstraksi TTD (status awal DRAF, K5) lewat aplikasi; 4 view memakai API isian (status DRAF/FINAL/BATAL, finalkan, koreksi, batal, riwayat); cetak per isian; rute lama dialihkan; API simpan lama dihapus (`form_rm` hanya dibaca untuk migrasi) | 4 form lama berjalan di rute baru dengan data utuh |
-| **F1 — Katalog & pemilih pasien** ✅ | Katalog per kategori; pemilih pasien per sasaran; alur pasien lebih dulu; kelengkapan dari `wajibUntuk`; RBAC per kategori | Alur form → pasien → isian berjalan untuk 4 form; hitungan kelengkapan cocok dengan SQL independen |
-| **F2 — Pustaka isi otomatis** | Sumber §8.3 + episode IGD asal; tanda asal kolom; "Muat ulang dari SIMRS" dengan perbandingan; RM.21 terisi dari `edukasi_pasien_keluarga` | Pemetaan cocok 100 % dengan SQL independen pada sampel 30 hari; ≥ 80 % kolom yang datanya tersedia terisi |
-| **F3 — Mesin form deklaratif** | Renderer form & cetak generik; skor terhitung; tabel berulang; batch pertama form baru (sesuai K1) | Form baru cukup ditambah dengan satu berkas definisi; cetak sesuai kertas |
-| **F4 — Perluasan per kategori** | Batch form berikutnya | Setiap batch: E2E dan suite keamanan lulus |
-| **F5 — Opsional: PWA / Tauri** | Manifest PWA (HTTPS) atau shell Tauri 2.12 sesuai K3 | Installer bertanda tangan, pembaruan otomatis, uji capability |
+| Fase                                  | Isi                                                                                                                                                                                                                                                                                                                                      | Kriteria selesai                                                                                          |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **F0 Langkah 1 — Fondasi backend** ✅ | Registri 4 form; skema strict bersama; DDL `form_rm_isian`/`ttd`/`revisi`; API generik (buat-atau-buka, simpan ber-`rev`, transisi, riwayat + segel HMAC, TTD terpisah, audit); isi otomatis di server; perbaikan `clientIp`; cek Origin/`Sec-Fetch-Site`; batas laju & ukuran; Vitest; suite keamanan. UI lama tetap memakai tabel lama | Suite keamanan & E2E lulus di build produksi; UI lama tetap jalan                                         |
+| **F0 Langkah 2 — Cutover** ✅         | Migrasi baris `form_rm` + ekstraksi TTD (status awal DRAF, K5) lewat aplikasi; 4 view memakai API isian (status DRAF/FINAL/BATAL, finalkan, koreksi, batal, riwayat); cetak per isian; rute lama dialihkan; API simpan lama dihapus (`form_rm` hanya dibaca untuk migrasi)                                                               | 4 form lama berjalan di rute baru dengan data utuh                                                        |
+| **F1 — Katalog & pemilih pasien** ✅  | Katalog per kategori; pemilih pasien per sasaran; alur pasien lebih dulu; kelengkapan dari `wajibUntuk`; RBAC per kategori                                                                                                                                                                                                               | Alur form → pasien → isian berjalan untuk 4 form; hitungan kelengkapan cocok dengan SQL independen        |
+| **F2 — Pustaka isi otomatis** ✅      | Sumber §8.3 + episode IGD asal; tanda asal kolom; "Muat ulang dari SIMRS" dengan perbandingan; RM.21 terisi dari `edukasi_pasien_keluarga`                                                                                                                                                                                               | Pemetaan cocok 100 % dengan SQL independen pada sampel 30 hari; ≥ 80 % kolom yang datanya tersedia terisi |
+| **F3 — Mesin form deklaratif** ✅     | Renderer form & cetak generik; skor terhitung; tabel berulang; batch pertama form baru (sesuai K1)                                                                                                                                                                                                                                       | Form baru cukup ditambah dengan satu berkas definisi; cetak sesuai kertas                                 |
+| **F4 — Perluasan per kategori**       | Batch form berikutnya                                                                                                                                                                                                                                                                                                                    | Setiap batch: E2E dan suite keamanan lulus                                                                |
+| **F5 — Opsional: PWA / Tauri**        | Manifest PWA (HTTPS) atau shell Tauri 2.12 sesuai K3                                                                                                                                                                                                                                                                                     | Installer bertanda tangan, pembaruan otomatis, uji capability                                             |
 
 ---
 
 ## 14. Risiko & Mitigasi
 
-| Risiko | Mitigasi |
-| --- | --- |
-| Daftar form resmi belum ada → katalog salah susun | Putuskan K1 sebelum F1; kategori di registri mudah diubah |
-| Tata letak cetak tiap form berbeda → mesin deklaratif tidak cukup | Jalur form khusus tetap tersedia |
-| Skema SIMGOS berubah saat pembaruan vendor → sumber isi otomatis rusak | Satu tempat per sumber; kegagalan sumber tidak menggagalkan form; uji silang berkala |
-| Data asesmen RI kosong karena tercatat di episode IGD | Sumber `episodeIgdAsal` |
-| Petugas menerima isi otomatis tanpa memeriksa | Tanda "SIMRS" jelas; finalkan wajib lolos validasi |
-| Migrasi merusak data lama | Tabel lama hanya dibaca; migrasi idempoten (dilewati bila isian sudah ada); diuji dengan baris sintetis + snapshot sebelum/sesudah; data lama nyata dicek read-only (11/11 lolos skema, 7/7 TTD lolos normalisasi) |
+| Risiko                                                                 | Mitigasi                                                                                                                                                                                                           |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Daftar form resmi belum ada → katalog salah susun                      | Putuskan K1 sebelum F1; kategori di registri mudah diubah                                                                                                                                                          |
+| Tata letak cetak tiap form berbeda → mesin deklaratif tidak cukup      | Jalur form khusus tetap tersedia                                                                                                                                                                                   |
+| Skema SIMGOS berubah saat pembaruan vendor → sumber isi otomatis rusak | Satu tempat per sumber; kegagalan sumber tidak menggagalkan form; uji silang berkala                                                                                                                               |
+| Data asesmen RI kosong karena tercatat di episode IGD                  | Sumber `episodeIgdAsal`                                                                                                                                                                                            |
+| Petugas menerima isi otomatis tanpa memeriksa                          | Tanda "SIMRS" jelas; finalkan wajib lolos validasi                                                                                                                                                                 |
+| Migrasi merusak data lama                                              | Tabel lama hanya dibaca; migrasi idempoten (dilewati bila isian sudah ada); diuji dengan baris sintetis + snapshot sebelum/sesudah; data lama nyata dicek read-only (11/11 lolos skema, 7/7 TTD lolos normalisasi) |
 
 ---
 
 ## 15. Keputusan Terbuka
 
-| # | Pertanyaan | Rekomendasi |
-| --- | --- | --- |
-| K1 | Daftar Formulir RM resmi RS (nomor, judul, kategori) dan urutan prioritas | ✅ **Diputuskan:** mulai dengan 4 form yang ada; form lain menyusul setelah tersedia |
-| K2 | Peran pengisi per kategori, dan siapa yang boleh membuka isian FINAL | Pengisi = peran kategori; membuka FINAL = Instalasi RM (sementara: modul `form-rm.kelola`) |
-| K3 | Kebutuhan perangkat untuk Tauri (cetak langsung, pad TTD, e-KTP, kiosk) | Bila tidak ada → PWA |
-| K4 | Apakah server produksi sudah HTTPS | ⏸ **Ditunda** (6 Okt 2026): dimitigasi kemudian. Rekomendasi: sertifikat Let's Encrypt via DNS-01 untuk nama host LAN di reverse proxy; wajib sebelum PWA/Tauri/kamera |
-| K5 | Status awal 10 isian lama setelah migrasi | ✅ Mengikuti rekomendasi: DRAF (diterapkan di Langkah 2) |
-| K6 | Keluar otomatis saat idle di PC bersama | 15 menit |
-| K7 | Menambah Vitest sebagai runner unit test | ✅ Mengikuti rekomendasi: Vitest 3 (v5 butuh `@types/node` ≥ 22; proyek masih ^20) |
-| K8 | Pasien IGD yang lanjut rawat inap mendapat **NOPEN baru** di SIMGOS (552 dari 566 episode RI dalam 90 hari; tak satu pun berbagi NOPEN dengan leg IGD). RM.21/RM.01/RM.03 diisi di episode mana — IGD (praktik sekarang) atau rawat inap? | Sementara: tetap di episode IGD (sasaran & wajib = IGD, sama dengan sebelum F1). Pindah ke episode RI = ubah `sasaran`/`wajibUntuk` di registri; menaut episode IGD asal (SPRI) masuk F2 |
+| #   | Pertanyaan                                                                                                                                                                                                                                | Rekomendasi                                                                                                                                                                              |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| K1  | Daftar Formulir RM resmi RS (nomor, judul, kategori) dan urutan prioritas                                                                                                                                                                 | ✅ **Diputuskan:** mulai dengan 4 form yang ada; form lain menyusul setelah tersedia                                                                                                     |
+| K2  | Peran pengisi per kategori, dan siapa yang boleh membuka isian FINAL                                                                                                                                                                      | Pengisi = peran kategori; membuka FINAL = Instalasi RM (sementara: modul `form-rm.kelola`)                                                                                               |
+| K3  | Kebutuhan perangkat untuk Tauri (cetak langsung, pad TTD, e-KTP, kiosk)                                                                                                                                                                   | Bila tidak ada → PWA                                                                                                                                                                     |
+| K4  | Apakah server produksi sudah HTTPS                                                                                                                                                                                                        | ⏸ **Ditunda** (6 Okt 2026): dimitigasi kemudian. Rekomendasi: sertifikat Let's Encrypt via DNS-01 untuk nama host LAN di reverse proxy; wajib sebelum PWA/Tauri/kamera                   |
+| K5  | Status awal 10 isian lama setelah migrasi                                                                                                                                                                                                 | ✅ Mengikuti rekomendasi: DRAF (diterapkan di Langkah 2)                                                                                                                                 |
+| K6  | Keluar otomatis saat idle di PC bersama                                                                                                                                                                                                   | 15 menit                                                                                                                                                                                 |
+| K7  | Menambah Vitest sebagai runner unit test                                                                                                                                                                                                  | ✅ Mengikuti rekomendasi: Vitest 3 (v5 butuh `@types/node` ≥ 22; proyek masih ^20)                                                                                                       |
+| K8  | Pasien IGD yang lanjut rawat inap mendapat **NOPEN baru** di SIMGOS (552 dari 566 episode RI dalam 90 hari; tak satu pun berbagi NOPEN dengan leg IGD). RM.21/RM.01/RM.03 diisi di episode mana — IGD (praktik sekarang) atau rawat inap? | Sementara: tetap di episode IGD (sasaran & wajib = IGD, sama dengan sebelum F1). Pindah ke episode RI = ubah `sasaran`/`wajibUntuk` di registri; sejak F2 sumber asesmen episode RI otomatis diambil dari episode IGD asal (SPRI / pendaftaran IGD ≤ 24 jam) |
+| K9  | Apakah Risiko Jatuh Morse **wajib** (dihitung di kelengkapan) — untuk episode IGD, rawat inap, atau keduanya? | Sementara tidak wajib (`wajibUntuk: []`) agar hitungan kelengkapan tidak berubah; cukup ubah satu baris di berkas definisi |
+| K10 | Templat resmi formulir Risiko Jatuh RS: nomor RM, ambang kategori, daftar intervensi, tata letak cetak | Pilot memakai kode sementara `RM.MORSE`, ambang 0–24 / 25–44 / ≥ 45, dan intervensi standar; disesuaikan 1:1 setelah templat diterima — **wajib sebelum dipakai di produksi** |
 
 ---
 
@@ -583,6 +595,7 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 ### F0 Langkah 1 — Fondasi backend (6 Okt 2026)
 
 **Yang dibangun:**
+
 - **Registri form:** `src/features/form-rm/registry.ts` (4 definisi: metadata, skema, isian kosong, peta slot TTD, syarat FINAL).
 - **Skema strict bersama:** `src/features/form-rm/skema.ts`.
 - **Mesin status:** `src/features/form-rm/isian.status.ts`.
@@ -593,12 +606,14 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 - **Modul RBAC** `form-rm.kelola`.
 
 **Syarat FINAL awal (dapat diubah per form di registri):**
+
 - **RM.04:** kategori triase, waktu triase, nama petugas, dan TTD petugas.
 - **RM.21:** minimal satu edukasi aktif; tiap entri aktif berisi edukator, tanggal/jam, dan TTD sasaran.
 - **RM.01:** nama dan TTD dokter yang merawat; bila ada sebab kematian, juga I.a serta nama dan TTD dokter pemberi keterangan.
 - **RM.03:** nama dan TTD pasien/penanggung jawab, nama dan TTD petugas, serta tanggal.
 
 **Hasil uji:**
+
 - **Unit test:** 78/78 (Vitest).
 - **E2E + keamanan API isian:** 83/83 di dev dan 83/83 di build produksi. Cakupannya mengikuti §10.3:
   - matriks izin, IDOR TTD, dan fuzz strict;
@@ -612,12 +627,14 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 - **Data lama:** tabel `form_rm` identik sebelum dan sesudah uji. Kesepuluh rekaman lama lolos skema strict setelah dibersihkan dari kunci usang, dan halaman lama (daftar, detail, form, cetak) lulus 31/31.
 
 **Temuan keamanan di luar modul:** Next.js 16.2.10 memiliki advisory **kritis**, yaitu bypass proxy/middleware (GHSA-6gpp-xcg3-4w24) dan RCE pada Image Optimization (GHSA-2xp9-vwfh-vxw4). Aplikasi ini memakai keduanya.
+
 - **Penanganan:** upgrade ke **Next 16.3.8**. Regresi QR publik lulus 74/74 (API, produksi) dan 23/23 (UI, tanpa pelanggaran CSP).
 - **Sisa advisory high:** rantai CLI Prisma, `mariadb` 3.4 di dalam adapter Prisma, exceljs/brace-expansion, dan postcss saat build. Semuanya tidak terjangkau dari input pengguna saat runtime; ditindaklanjuti terpisah.
 
 ### F0 Langkah 2 — Cutover UI (6 Okt 2026)
 
 **Rute:**
+
 - `/form-rm/isian/[id]` — halaman isian (satu URL per isian; pembukaan diaudit). Tampilan dipilih di server sesuai kode form.
 - `/print/form-rm/isian/[id]` — cetak per isian (izin `form-rm` print, diaudit). Kertas dari registri; tanda air **DRAF** / **DIBATALKAN** untuk isian non-FINAL; kaki halaman (margin `@page`) memuat ID isian, status + rev, 8 karakter segel revisi terakhir, dan waktu cetak WITA. TTD disisipkan server sebagai data-URL.
 - `/form-rm/[nopen]` — profil pasien: status tiap form (Belum ada / Draf / Final). Tombol **Isi Form** = POST buat-atau-buka (isian hanya dibuat oleh aksi eksplisit, tidak pernah oleh GET).
@@ -625,12 +642,14 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 - API simpan lama `/api/form-rm/<jenis>/<nopen>` beserta servis/amplopnya **dihapus**.
 
 **UI bersama** (`src/features/form-rm/isian/`):
+
 - `useIsian` — state form, simpan ber-`rev` (Ctrl+S), transisi, penanda perubahan + peringatan `beforeunload`, penggantian TTD data-URL → referensi server tanpa menimpa suntingan yang terjadi selama menyimpan (`petaTtd.ts`, murni & diuji).
 - `IsianFrame` — pemberitahuan status (FINAL terkunci, BATAL + "Buat isian baru", baca-saja, konflik rev + "Muat ulang"), bilah aksi (Riwayat, Cetak, Batalkan, Simpan, Finalkan, Buka koreksi — sesuai izin), dialog finalisasi (syarat FINAL dicek di klien, diulang di server) dan dialog alasan (≥ 5 karakter), panel riwayat + hasil pemeriksaan segel.
 - **Kunci kolom:** `<BidangIsian>` = `<fieldset disabled>` saat FINAL/BATAL/tanpa izin ubah; kontrol tetap terbaca penuh. Tab kategori triase sengaja di luar kunci (tetap bisa dipilih saat FINAL). `setForm` juga menolak perubahan saat terkunci (pengaman kedua). SignaturePad menampilkan gambar saja saat terkunci.
 - Daftar pasien: chip status per form (Final ✓ / Draf ✎ / belum); **Lengkap = semua form FINAL** (`kelengkapan.ts`, murni & diuji).
 
 **Migrasi data lama (K5 → DRAF), lewat aplikasi** — bukan skrip `.mjs`, agar memakai kode yang sama dengan simpan biasa (skema strict, normalisasi PNG, pemisahan TTD):
+
 - `pindahkanBarisLama`: kunci usang dibuang, TTD diekstrak ke `form_rm_ttd`, identitas dari SIMGOS (cadangan: kolom lama), `created_at`/`updated_at` lama dipertahankan, username lama → id pengguna, audit `form-rm.isian.pindah-lama`. Dilewati bila form itu sudah punya isian (status apa pun) → aman diulang.
 - **Otomatis saat dibuka:** buat-atau-buka yang belum pernah punya isian memakai data lama (bukan isi otomatis) → data lama tak pernah tertutup isian baru. Data lama tak sah → 409 yang jelas, isian tidak dibuat.
 - **Sekaligus:** banner di `/form-rm` khusus pengelola RM (`form-rm.kelola`) + `POST /api/form-rm/data-lama` (CSRF + laju). Jumlah tertunda dihitung dari baris lama tanpa isian.
@@ -639,6 +658,7 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 **Perbaikan race buat-isian:** urutan isian baru kini diambil dari snapshot **awal** (sebelum isi otomatis yang lambat), sehingga permintaan bersamaan pasti bentrok di kunci unik; sebelumnya ada celah dua isian aktif untuk form tidak berulang bila satu permintaan selesai di tengah isi otomatis permintaan lain.
 
 **Hasil uji (dev & build produksi):**
+
 - **Unit test:** 88/88 (baru: pemetaan TTD pasca-simpan, kelengkapan, `srcTtd`).
 - **E2E Langkah 1 (regresi):** 83/83 — skrip kini mengecualikan NOPEN yang punya data lama/isian nyata; API lama terverifikasi 404.
 - **E2E Langkah 2:** 56/56 — halaman & izin, rute lama (307/404, GET tanpa efek), cetak (tanda air, segel, TTD tersisip, XSS ter-escape, audit, izin print), migrasi baris **sintetis** (kunci usang, TTD, identitas, waktu lama, idempoten, 6 paralel → 1 migrasi, data tak sah → 409, batal tidak memicu migrasi ulang), pindah massal (403 tanpa kelola / CSRF; sukses **tidak** diuji karena akan memindahkan data nyata), race (8 & 6 paralel → satu isian aktif), log tanpa 500/PHI, data lama nyata identik.
@@ -648,13 +668,14 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 ### F1 — Katalog, pemilih pasien, RBAC per kategori (7 Okt 2026)
 
 **Rute:**
+
 - `/form-rm` — katalog per kategori (hanya form yang boleh dilihat), pencarian kode/judul, hitungan draf (milik pengguna & seluruhnya). Banner pindah data lama tetap khusus `form-rm.kelola`.
 - `/form-rm/f/[kode]` — pemilih pasien satu form + strip **Draf Anda**. Bawaan: pasien aktif sesuai `sasaran`; kata kunci ≥ 3 karakter mencari No.RM / NIK / NOPEN (angka, persis) atau nama (huruf) di semua episode sasaran. Saring status isian (Belum diisi / Draf / Final, bercacah) dan ruangan. Baris berisian membuka isian itu (tak pernah isian ganda).
 - `/form-rm/pasien` — daftar per pasien (rentang tanggal, saring jenis kunjungan bila sasaran > 1 jenis, ruangan, cari). `/form-rm/pasien/[nopen]` — profil episode: form per kategori + tanda wajib + ringkasan kelengkapan.
 - **Rute lama:** `/form-rm/<nopen>` → 307 `/form-rm/pasien/<nopen>`; `/form-rm/<nopen>/<jenis>` hanya mengungkap ID isian bila kategori boleh dilihat (selain itu → profil).
 - **API baru:** `GET /api/form-rm/f/[kode]/pasien` (strict; kunci tak dikenal → 422; batas laju 60 pencarian/menit/pengguna). `GET /api/form-rm/list` kini per episode + `jenis`.
 
-**Registri:** `kategori.ts` (kategori + modul RBAC, tanpa skema → aman diimpor katalog modul & nav), `sasaran` `{ jenis, jendelaJam }` dan `wajibUntuk` (jenis kunjungan) per form. Konfigurasi awal (lihat K8): RM.04 → IGD 24 jam; RM.21/RM.01/RM.03 → IGD 7 hari; keempatnya wajib untuk episode IGD — identik dengan perilaku sebelum F1.
+**Registri:** `kategori.ts` (kategori + modul RBAC, tanpa skema → aman diimpor katalog modul & nav), `sasaran` `{ jenis, jendelaJam }` dan `wajibUntuk` (jenis kunjungan) per form. Konfigurasi awal (lihat K8): RM.04 → IGD 24 jam; RM.21/RM.01/RM.03 → IGD 7 hari; keempatnya wajib untuk episode IGD — identik dengan perilaku sebelum F1F.
 
 **Kelengkapan:** dihitung atas form yang boleh dilihat pengguna; hanya form **wajib** (jenis kunjungan episode cocok `wajibUntuk`, diambil dari SEMUA leg episode) yang dihitung; "Lengkap" = ada form wajib dan semuanya FINAL.
 
@@ -663,11 +684,55 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 **Perbaikan ikut:** umur di kepala form dihitung pada tanggal masuk episode (sebelumnya terpaku 23 Jul 2026 karena nilai bawaan `hitungUmur`); jam masuk di profil pasien tak lagi bergeser +8 jam; sidebar hanya menandai satu item aktif (prefix terpanjang).
 
 **Hasil uji (dev & build produksi):**
+
 - Unit 115/115 (baru: hak per kategori, tafsir kata kunci, pengelompokan episode, kelengkapan `wajibUntuk`, katalog modul RBAC).
 - E2E F1 103/103: matriks izin 8 peran (semua / satu kategori / hanya lihat / create tanpa view / kelola saja / modul lain / tanpa login); IDOR lintas kategori (isian, simpan, aksi, riwayat, TTD, halaman, cetak, rute lama) = 404 seragam; daftar aktif RM.04 & RM.01, saring ruangan, dan pencarian No.RM / NOPEN / NIK / nama **cocok SQL independen**; daftar per pasien 44/44 episode dan hitungan Lengkap/Belum lengkap (1/43, termasuk kasus keempat form FINAL) **cocok SQL independen**; fuzz 18 kasus → 422 tanpa 500; header no-store; banjir pencarian → 429; DAL statis hanya SELECT; audit tanpa PHI; data nyata identik sebelum/sesudah.
 - UI (Chrome headless) 29/29: katalog → pemilih → cari → Isi Form → isian → kembali (Draf Anda) → saring status; tablet 820 px & ponsel 390 px tanpa luapan horizontal, target sentuh ≥ 40 px; alur per pasien → profil; tanpa galat JS.
 - Regresi: E2E L1 83/83, L2 56/56, UI L2 29/29.
 - `/security-review` atas diff F1: tanpa temuan.
+
+### F2 — Pustaka isi otomatis (7 Okt 2026)
+
+**Pustaka sumber** (`src/server/modules/form-rm/isian.sumber*.ts`): 9 sumber — `identitas`, `sosial`, `keluarga`, `episode`, `diagnosa`, `pulang`, `triase`, `edukasi` (+ `morse` di F3). Satu sumber = satu query SELECT berparameter, berkunci NORM/NOPEN/KUNJUNGAN terindeks, `MAX_EXECUTION_TIME(3000)`; diambil sekali per pengisian, paralel ≤ 4; sumber gagal → status "gagal", kolomnya kosong, isian tetap dibuat.
+
+**Pemetaan murni** (`isian.petakan.ts`, diuji unit): kode referensi SIMGOS dipetakan **per ID** (agama, pendidikan, pekerjaan, status kawin, bahasa, kelas, cara/keadaan keluar), bukan pencocokan teks. Ini memperbaiki bug lama RM.01: pencocokan teks `includes("ma")` membuat "Tamat SD", "Diploma", dan "Strata I" terbaca **SLTA**. Keputusan pemetaan:
+
+- RM.21 `KESEDIAAN = 0` dibiarkan kosong (525 dari 535 baris bernilai 0 tetap berisi kebutuhan edukasi → kemungkinan nilai bawaan, bukan penolakan).
+- RM.01 "keluarga terdekat" diambil dari pasangan/kepala keluarga/anak, bukan dari orang tua (orang tua → kolom "nama orang tua"); cara masuk tidak diisi untuk episode rawat inap saja (rujukannya milik pendaftaran RI).
+- Jenis pelayanan dari nama ruang (IRDA = anak, IRDO = kebidanan — mohon dikonfirmasi).
+
+**Episode IGD asal:** untuk episode rawat inap tanpa leg IGD, sumber asesmen (triase, edukasi, Morse) yang kosong diambil dari episode IGD asal — lewat SPRI (`perencanaan_rawat_inap.PENDAFTARAN_RI_NOMOR`, NORM sama) atau pendaftaran IGD pasien yang sama ≤ 24 jam sebelumnya (pola fungsi SIMGOS `getNopenIRD`). 424/566 episode RI 90 hari tertaut lewat SPRI.
+
+**Tanda asal kolom:** kolom `asal` (JSON, tanpa DDL) kini menyimpan per path `{ sumber, nilai, nopen? }`. Penanda **SIMRS** / **Diubah** per kolom dihitung di klien dengan membandingkan nilai sekarang dengan nilai SIMRS; isian lama (daftar path) tetap terbaca. Klien tidak pernah bisa menulis `asal`.
+
+**Muat ulang dari SIMRS** (`GET/POST /api/form-rm/isian/[id]/simrs`): perbandingan per bagian (nilai isian ↔ SIMRS terkini, status tersedia/tidak/gagal); petugas memilih kolom; server mengambil ulang nilai SIMRS (klien hanya mengirim path yang terdaftar di registri), rev naik, audit `banding-simrs` & `muat-ulang-simrs`. Hanya isian DRAF; update pada kategori form; CSRF + batas laju (20 banding/menit).
+
+**RM.21:** persiapan edukasi (bahasa, penerjemah, pendidikan, hambatan, kesediaan) terisi dari `edukasi_pasien_keluarga` + data pasien; kategori edukator diberi tanda **Dibutuhkan** sesuai asesmen kebutuhan edukasi SIMRS (rujukan baca-saja, tidak mengaktifkan entri).
+
+**Hasil uji (dev & build produksi):**
+
+- Unit 147/147 (baru: asal kolom, pemetaan per ID, konsistensi registri ↔ pemetaan).
+- E2E F2 46/46: **2.320 kolom pada 160 isian** (40 episode IGD 30 hari × 4 form) dan **530 kolom isian rawat inap** (episode IGD asal lewat SPRI, dicek silang dengan `getNopenIRD` SIMGOS) **cocok 100 % SQL independen**; cakupan kolom berdata SIMRS yang punya padanan opsi **100 %** (93,8 % atas semua data mentah — sisanya nilai tanpa opsi formulir, mis. pekerjaan "Mengurus Rumah Tangga", cara keluar "lanjut rawat inap"); p95 buat isian + isi otomatis 151 ms (dev) / 40 ms (produksi); banding/terapkan, rev usang 409, 9 fuzz → 422, IDOR 404 seragam, hanya lihat 403, CSRF 403, body 413, FINAL 409, banjir 429, audit tanpa PHI, data nyata identik.
+- UI 23/23 (penanda SIMRS → Diubah, dialog banding & terapkan, ponsel 390 px, tanpa galat JS); regresi L1 83, L2 56, F1 103, UI L2 29, UI F1 29.
+- `/security-review` atas diff F2: tanpa temuan.
+
+### F3 — Mesin form deklaratif + pilot Risiko Jatuh Morse (7 Okt 2026)
+
+**Mesin** (`src/features/form-rm/deklaratif.ts`, murni): struktur bagian & kolom — teks, angka (rentang), tanggal, tanggal-jam, pilihan (berskor), pilihan ganda, centang, TTD, info, **skor terhitung** (jumlah skor opsi + pita kategori; tidak disimpan, selalu dihitung dari data), dan **tabel berulang** (baris awal tetap, batas baris, minimal baris sebelum FINAL). Dari struktur diturunkan: skema strict (kunci asing di tingkat mana pun → 422), isian kosong, slot TTD (`tabel.i.kolom`), dan syarat FINAL per baris. Struktur divalidasi saat modul dimuat (id aman sebagai path, opsi unik, skor hanya dari pilihan berskor di lingkupnya).
+
+**Renderer & cetak generik:** `FormDeklaratifView` (bagian, chip pilihan + skor, skor & kategori langsung, baris tabel ringkas/terbuka, tambah/hapus baris, penanda asal, kunci FINAL) dan `DokumenDeklaratif` (kop RS + identitas, pilihan dicetak ☑/☐ lengkap; tabel per baris, atau **per lajur** — entri sebagai kolom dengan legenda skor, baris total skor + kategori, centang intervensi, dan lajur kosong untuk pengisian tangan; ukuran kertas dari registri). Halaman isian & cetak memilihnya otomatis untuk form ber-`struktur`.
+
+**Menambah form deklaratif** = satu berkas `src/features/form-rm/forms/<form>.ts` + mendaftarkan kodenya (`KODE_FORM`, `DEFINISI_FORM`, `tampilan.ts` — TypeScript menolak bila terlewat) + pemetaan SIMRS opsional (`PETA_FORM`). Metadata tampilan sengaja terpisah dari registri agar katalog tidak memuat skema semua form.
+
+**Pilot `RM.MORSE` — Pengkajian Risiko Jatuh Dewasa (Skala Morse)** (kategori baru **Asesmen Keperawatan** → modul RBAC `form-rm.asesmen-keperawatan`): tabel pengkajian (maks 20, baris 1 = pengkajian awal), 6 faktor berskor (= `master.referensi` SCORING JENIS 186–191 SIMGOS), total skor & kategori (0–24 rendah / 25–44 sedang / ≥ 45 tinggi), intervensi, nama & paraf perawat; sasaran IGD + rawat inap (72 jam / masih dirawat); belum wajib (K9). Baris awal terisi dari `penilaian_skala_morse` pertama episode (atau episode IGD asal); gaya berjalan berkode 0 dengan faktor lain terisi = "normal" (SIMGOS tak punya kode normal; 429 baris). **Isi & cetak masih draf sampai templat resmi diterima (K10).**
+
+**Hasil uji (dev & build produksi):**
+
+- Unit 192/192 (baru: validasi struktur, skema & isian kosong turunan, 14 kasus tolak, slot TTD per baris, syarat FINAL per baris, skor & ambang Morse 24/25 dan 44/45, pemetaan Morse).
+- E2E F3 42/42: katalog & RBAC kategori baru (grant lama "semua kategori" ikut mencakup; modul lain tak melihat); pemilih Morse (IGD + RI) = SQL independen; **280 kolom baris pengkajian awal pada 35 episode cocok SQL independen** (termasuk 3 dari episode IGD asal); 10 kasus skema tabel → 422; syarat FINAL per baris; FINAL terkunci; cetak lajur — skor & kategori per pengkajian = hitungan independen, intervensi ✓, XSS ter-escape, paraf PNG; IDOR 404 seragam; muat ulang SIMRS di baris tabel; profil pasien "Tidak wajib"; audit tanpa PHI; data nyata identik.
+- UI 14/14 (baris awal bertanda SIMRS, skor 90 · Risiko tinggi langsung di baris & bilah aksi, tambah/hapus baris, baris awal tak bisa dihapus, simpan, finalisasi, ponsel 390 px, cetak lajur, tanpa galat JS).
+- Regresi: F2 46/46 (p95 isi otomatis 42 ms di produksi), F1 103/103 (daftar per pasien kini juga memuat episode rawat inap karena sasaran Morse), L1 83/83, L2 56/56; UI F2 23/23, UI F1 29/29 (5 kategori, saring IGD/RI), UI L2 29/29. Log produksi tanpa 500 (hanya P2002 yang diharapkan dari uji balapan).
+- `/security-review` atas diff F3: tanpa temuan.
 
 ## 17. Sumber
 
