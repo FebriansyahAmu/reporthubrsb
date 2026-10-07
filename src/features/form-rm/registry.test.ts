@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ambilPath, PATH_RE, SUMBER_SIMRS } from "./asal";
 import { DAFTAR_KATEGORI } from "./kategori";
 import { DEFINISI_FORM, definisiDariJenisLama, definisiForm, JENIS_KUNJUNGAN, KATEGORI_FORM, KODE_FORM } from "./registry";
 
@@ -77,6 +78,27 @@ describe("registri form RM", () => {
     expect(hasil.pasienTtd).toBe("ttd:abcdefghijklmnopqrstuvwx");
     expect(hasil.pjNama).toBe("Budi");
     expect((awal as Record<string, string>).pasienTtd).toBe("");
+  });
+
+  it.each(DEFINISI_FORM.map((d) => [d.kode, d] as const))("%s: kolom SIMRS unik, sah, dan ada di isian kosong", (_k, d) => {
+    const paths = d.simrs.flatMap((b) => b.kolom.map((k) => k.path));
+    expect(paths.length).toBeGreaterThan(0);
+    expect(new Set(paths).size).toBe(paths.length);
+    expect(new Set(d.simrs.map((b) => b.id)).size).toBe(d.simrs.length);
+    const kosong = d.kosong();
+    for (const p of paths) {
+      expect(PATH_RE.test(p), p).toBe(true);
+      expect(ambilPath(kosong, p), p).not.toBeUndefined();
+    }
+    for (const k of d.simrs.flatMap((b) => b.kolom)) expect(SUMBER_SIMRS).toContain(k.sumber);
+  });
+
+  it("kolom tanda tangan tak pernah diisi dari SIMRS", () => {
+    for (const d of DEFINISI_FORM) {
+      const slot: string[] = [];
+      d.petaTtd(d.kosong(), (v, s) => (slot.push(s), v));
+      for (const b of d.simrs) for (const k of b.kolom) expect(slot).not.toContain(k.path);
+    }
   });
 
   it.each(DEFINISI_FORM.map((d) => [d.kode, d] as const))("%s: isian kosong belum boleh FINAL", (_k, d) => {

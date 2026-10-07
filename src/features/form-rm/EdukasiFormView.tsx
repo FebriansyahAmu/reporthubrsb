@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Check, QrCode } from "lucide-react";
+import { Check, DatabaseZap, QrCode } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Input, Label } from "@/components/ui/Field";
 import { DatePicker, DateTimePicker, nowLocalDateTime } from "@/components/ui/DatePicker";
@@ -9,6 +9,7 @@ import { SelectOther } from "@/components/ui/Select";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
 import { BidangIsian } from "@/features/form-rm/isian/kunci";
+import { LabelAsal } from "@/features/form-rm/isian/TandaAsal";
 import { useIsian } from "@/features/form-rm/isian/useIsian";
 import { cn } from "@/lib/cn";
 import {
@@ -32,6 +33,7 @@ import type {
   EdukasiForm,
   EdukasiPersiapan,
   FormRmHeader,
+  KebutuhanEdukasiSimrs,
 } from "@/server/modules/form-rm/form-rm.types";
 import type { IsianForm, IzinIsian } from "@/server/modules/form-rm/isian.types";
 
@@ -41,10 +43,13 @@ export function EdukasiFormView({
   isian,
   header,
   izin,
+  kebutuhan,
 }: {
   isian: IsianForm;
   header: FormRmHeader;
   izin: IzinIsian;
+  /** Kebutuhan edukasi menurut asesmen SIMRS (rujukan baca-saja). */
+  kebutuhan: KebutuhanEdukasiSimrs | null;
 }) {
   const k = useIsian(isian, izin, siapkan);
   const { form, setForm } = k;
@@ -86,6 +91,7 @@ export function EdukasiFormView({
           <div className="grid grid-cols-1 gap-x-8 gap-y-5 lg:grid-cols-2">
             <CheckField
               label="Bahasa"
+              asal={["persiapan.bahasa", "persiapan.bahasaLain"]}
               options={BAHASA_OPTS}
               values={form.persiapan.bahasa}
               onToggle={(v) => patchPersiapan({ bahasa: toggle(form.persiapan.bahasa, v) })}
@@ -94,12 +100,14 @@ export function EdukasiFormView({
             />
             <RadioField
               label="Kebutuhan Penerjemah"
+              asal="persiapan.penerjemah"
               options={["Ya", "Tidak"]}
               value={form.persiapan.penerjemah}
               onChange={(v) => patchPersiapan({ penerjemah: v as EdukasiPersiapan["penerjemah"] })}
             />
             <RadioField
               label="Pendidikan Pasien"
+              asal={["persiapan.pendidikan", "persiapan.pendidikanLain"]}
               options={PENDIDIKAN_OPTS}
               value={form.persiapan.pendidikan}
               onChange={(v) => patchPersiapan({ pendidikan: form.persiapan.pendidikan === v ? "" : v })}
@@ -120,6 +128,7 @@ export function EdukasiFormView({
             />
             <RadioField
               label="Kesediaan Menerima Edukasi"
+              asal="persiapan.kesediaan"
               options={KESEDIAAN_OPTS}
               value={form.persiapan.kesediaan}
               onChange={(v) => patchPersiapan({ kesediaan: v as EdukasiPersiapan["kesediaan"] })}
@@ -127,6 +136,7 @@ export function EdukasiFormView({
             <div className="lg:col-span-2">
               <CheckField
                 label="Hambatan Edukasi"
+                asal={["persiapan.hambatan", "persiapan.hambatanLain"]}
                 options={HAMBATAN_OPTS}
                 values={form.persiapan.hambatan}
                 onToggle={(v) => patchPersiapan({ hambatan: toggle(form.persiapan.hambatan, v) })}
@@ -145,6 +155,13 @@ export function EdukasiFormView({
           </h2>
           <p className="mb-3 text-xs text-fg-muted">
             Aktifkan kategori yang benar-benar diberikan, lalu lengkapi rinciannya.
+            {kebutuhan && Object.keys(kebutuhan.perKategori).length > 0 && (
+              <>
+                {" "}
+                Kategori bertanda <b>Dibutuhkan</b> dinilai perlu pada asesmen edukasi di SIMRS
+                {kebutuhan.episodeIgd ? <> (episode IGD asal <span className="font-mono">{kebutuhan.episodeIgd}</span>)</> : null}.
+              </>
+            )}
           </p>
           <div className="space-y-3">
             {form.entries.map((entry, i) => (
@@ -152,6 +169,7 @@ export function EdukasiFormView({
                 key={entry.kategori}
                 entry={entry}
                 topik={topikByKategori.get(entry.kategori) ?? []}
+                kebutuhanSimrs={kebutuhan?.perKategori[entry.kategori] ?? []}
                 patientName={header.nama}
                 reuseTtd={form.entries.find((e, j) => j !== i && e.sasaranTtd)?.sasaranTtd ?? ""}
                 onPatch={(p) => patchEntry(i, p)}
@@ -180,12 +198,15 @@ export function EdukasiFormView({
 function EntryCard({
   entry,
   topik,
+  kebutuhanSimrs,
   patientName,
   reuseTtd,
   onPatch,
 }: {
   entry: EdukasiEntry;
   topik: string[];
+  /** Topik yang dinilai dibutuhkan pada asesmen edukasi SIMRS. */
+  kebutuhanSimrs: string[];
   patientName: string;
   reuseTtd: string;
   onPatch: (p: Partial<EdukasiEntry>) => void;
@@ -206,8 +227,22 @@ function EntryCard({
         className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-2/50"
       >
         <div className="min-w-0">
-          <p className="font-semibold text-fg">{entry.kategori}</p>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-semibold text-fg">
+            {entry.kategori}
+            {kebutuhanSimrs.length > 0 && (
+              <span
+                title={`Dibutuhkan menurut asesmen SIMRS: ${kebutuhanSimrs.join(", ")}`}
+                className="inline-flex items-center gap-1 rounded-full bg-brand-soft px-1.5 py-0.5 text-[10px] font-semibold text-brand-soft-fg"
+              >
+                <DatabaseZap className="size-2.5" aria-hidden />
+                Dibutuhkan
+              </span>
+            )}
+          </p>
           <p className="truncate text-xs text-fg-muted">{topik.join(" · ")}</p>
+          {kebutuhanSimrs.length > 0 && (
+            <p className="truncate text-xs text-brand-soft-fg">SIMRS: {kebutuhanSimrs.join(", ")}</p>
+          )}
         </div>
         <span
           className={cn(
@@ -436,8 +471,20 @@ function Chip({
   );
 }
 
+/** Label kolom + penanda asal SIMRS bila `asal` diberikan. */
+function JudulKolom({ label, asal }: { label: string; asal?: string | readonly string[] }) {
+  return asal ? (
+    <LabelAsal path={asal} className="mb-2">
+      {label}
+    </LabelAsal>
+  ) : (
+    <Label className="mb-2">{label}</Label>
+  );
+}
+
 function CheckField({
   label,
+  asal,
   options,
   values,
   onToggle,
@@ -446,6 +493,7 @@ function CheckField({
   columns,
 }: {
   label: string;
+  asal?: string | readonly string[];
   options: string[];
   values: string[];
   onToggle: (v: string) => void;
@@ -455,7 +503,7 @@ function CheckField({
 }) {
   return (
     <div>
-      <Label className="mb-2">{label}</Label>
+      <JudulKolom label={label} asal={asal} />
       <div className={cn("flex flex-wrap gap-2", columns && "gap-y-2")}>
         {options.map((o) => (
           <Chip key={o} active={values.includes(o)} onClick={() => onToggle(o)}>
@@ -477,6 +525,7 @@ function CheckField({
 
 function RadioField({
   label,
+  asal,
   options,
   value,
   onChange,
@@ -484,6 +533,7 @@ function RadioField({
   onOther,
 }: {
   label: string;
+  asal?: string | readonly string[];
   options: string[];
   value: string;
   onChange: (v: string) => void;
@@ -492,7 +542,7 @@ function RadioField({
 }) {
   return (
     <div>
-      <Label className="mb-2">{label}</Label>
+      <JudulKolom label={label} asal={asal} />
       <div className="flex flex-wrap gap-2">
         {options.map((o) => (
           <Chip key={o} active={value === o} onClick={() => onChange(o)}>

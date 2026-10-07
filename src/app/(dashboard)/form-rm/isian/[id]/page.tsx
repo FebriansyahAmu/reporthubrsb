@@ -10,11 +10,11 @@ import { TriaseFormView } from "@/features/form-rm/TriaseFormView";
 import { KATEGORI_FORM, MODUL_AKSES_FORM_RM } from "@/features/form-rm/kategori";
 import { NotFoundError } from "@/server/lib/errors";
 import { requireAnyModule } from "@/server/rbac/guard";
-import { bacaTriaseSimrs } from "@/server/modules/form-rm/form-rm.service";
+import { bacaKebutuhanEdukasi, bacaTriaseSimrs } from "@/server/modules/form-rm/form-rm.service";
 import { aktorHalaman } from "@/server/modules/form-rm/isian.jaga";
 import { ID_RE } from "@/server/modules/form-rm/isian.schema";
 import { bacaIsian, identitasIsian } from "@/server/modules/form-rm/isian.service";
-import type { FormRmHeader, TriaseSimrs } from "@/server/modules/form-rm/form-rm.types";
+import type { FormRmHeader, KebutuhanEdukasiSimrs, TriaseSimrs } from "@/server/modules/form-rm/form-rm.types";
 import type { IsianForm, IzinIsian } from "@/server/modules/form-rm/isian.types";
 
 export const metadata = { title: "Isian Form RM · AuditTrail RS BOLTIM" };
@@ -36,9 +36,14 @@ export default async function IsianPage({ params }: { params: Promise<{ id: stri
   });
   if (!isian) notFound();
 
-  const [header, triaseSimrs] = await Promise.all([
+  // Rujukan SIMRS baca-saja (bukan isi isian): dibaca langsung tiap halaman dibuka.
+  const [header, rujukan] = await Promise.all([
     identitasIsian(isian),
-    isian.kode === "RM.04" ? bacaTriaseSimrs(isian.nopen) : null,
+    isian.kode === "RM.04"
+      ? bacaTriaseSimrs(isian.nopen).then((triase) => ({ triase, edukasi: null }))
+      : isian.kode === "RM.21"
+        ? bacaKebutuhanEdukasi(isian.nopen).then((edukasi) => ({ triase: null, edukasi }))
+        : { triase: null, edukasi: null },
   ]);
   const { hak } = aktor;
   const izin: IzinIsian = {
@@ -70,10 +75,12 @@ export default async function IsianPage({ params }: { params: Promise<{ id: stri
         title={isian.judul}
         description={`${isian.kode} · ${KATEGORI_FORM[isian.kategori].label} · ${header.nama} · No. RM ${header.norm}`}
       />
-      <TampilanForm isian={isian} header={header} izin={izin} triaseSimrs={triaseSimrs?.simrs ?? null} />
+      <TampilanForm isian={isian} header={header} izin={izin} rujukan={rujukan} />
     </FadeIn>
   );
 }
+
+type RujukanSimrs = { triase: TriaseSimrs | null; edukasi: KebutuhanEdukasiSimrs | null };
 
 /**
  * Tampilan per kode form. Dipilih di server → hanya komponen form yang dipakai
@@ -84,19 +91,19 @@ function TampilanForm({
   isian,
   header,
   izin,
-  triaseSimrs,
+  rujukan,
 }: {
   isian: IsianForm;
   header: FormRmHeader;
   izin: IzinIsian;
-  triaseSimrs: TriaseSimrs | null;
+  rujukan: RujukanSimrs;
 }) {
   const key = `${isian.id}:${isian.rev}`;
   switch (isian.kode) {
     case "RM.04":
-      return <TriaseFormView key={key} isian={isian} header={header} izin={izin} simrs={triaseSimrs} />;
+      return <TriaseFormView key={key} isian={isian} header={header} izin={izin} simrs={rujukan.triase} />;
     case "RM.21":
-      return <EdukasiFormView key={key} isian={isian} header={header} izin={izin} />;
+      return <EdukasiFormView key={key} isian={isian} header={header} izin={izin} kebutuhan={rujukan.edukasi} />;
     case "RM.01":
       return <RingkasanFormView key={key} isian={isian} header={header} izin={izin} />;
     case "RM.03":

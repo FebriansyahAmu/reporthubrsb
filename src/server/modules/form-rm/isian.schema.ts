@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PATH_RE } from "@/features/form-rm/asal";
 import { KODE_FORM } from "@/features/form-rm/registry";
 import { AKSI_ISIAN } from "@/features/form-rm/isian.status";
 
@@ -32,6 +33,16 @@ export const aksiIsianSchema = z
     path: ["alasan"],
   });
 
+/** Terapkan nilai SIMRS terkini ke kolom terpilih (path dicek lagi terhadap registri form di service). */
+export const terapkanSimrsSchema = z.strictObject({
+  rev: z.number().int().min(1),
+  kolom: z
+    .array(z.string().max(80).regex(PATH_RE, "Path kolom tidak valid"))
+    .min(1, "Pilih minimal satu kolom")
+    .max(100),
+});
+
 export type BuatIsianInput = z.infer<typeof buatIsianSchema>;
+export type TerapkanSimrsInput = z.infer<typeof terapkanSimrsSchema>;
 export type SimpanIsianInput = z.infer<typeof simpanIsianSchema>;
 export type AksiIsianInput = z.infer<typeof aksiIsianSchema>;

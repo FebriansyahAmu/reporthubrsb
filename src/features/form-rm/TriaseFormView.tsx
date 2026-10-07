@@ -33,6 +33,7 @@ import { Switch } from "@/components/ui/Switch";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
 import { BidangIsian } from "@/features/form-rm/isian/kunci";
+import { LabelAsal, TandaAsal } from "@/features/form-rm/isian/TandaAsal";
 import { useIsian } from "@/features/form-rm/isian/useIsian";
 import {
   EMERGENCY_OPTS,
@@ -172,17 +173,6 @@ export function TriaseFormView({
         ) : null
       }
     >
-      {kendali.isian.rev === 1 && kendali.isian.asal.length > 0 && (
-        <div className="flex items-start gap-2 rounded-[var(--radius-md)] border border-brand/30 bg-brand-soft px-3 py-2.5 text-[13px] text-brand-soft-fg">
-          <Check className="mt-0.5 size-4 shrink-0" />
-          <span>
-            Sebagian data <b>terisi otomatis dari SIMRS</b> saat isian dibuat (waktu &amp; cara datang, jenis
-            kasus, tanda vital, petugas). Periksa dan sesuaikan. Kriteria pemeriksaan tetap dicentang oleh
-            petugas.
-          </span>
-        </div>
-      )}
-
       {/* Identitas + rujukan triase SIMRS */}
       <Card className="p-4">
         <div className="grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
@@ -211,6 +201,11 @@ export function TriaseFormView({
             {simrs.zona && <span className="text-fg-muted">{simrs.zona}</span>}
             {simrs.waktu && <span className="text-fg-muted">· {fmtLokal(simrs.waktu)}</span>}
             {simrs.petugas && <span className="text-fg-muted">· {simrs.petugas}</span>}
+            {simrs.episodeIgd && (
+              <span className="text-fg-muted">
+                · episode IGD asal <span className="font-mono">{simrs.episodeIgd}</span>
+              </span>
+            )}
             {simrs.keluhan && (
               <span className="basis-full text-fg">
                 <span className="text-fg-muted">Keluhan utama:</span> {simrs.keluhan}
@@ -264,11 +259,11 @@ export function TriaseFormView({
           <SectionCard id="kedatangan" no={1} title="Kedatangan" done={selesai.kedatangan}>
             <div className="space-y-4">
               <div className="sm:max-w-sm">
-                <Label>Tanggal &amp; Pukul Kedatangan (WITA)</Label>
+                <LabelAsal path="kedatanganWaktu">Tanggal &amp; Pukul Kedatangan (WITA)</LabelAsal>
                 <DateTimePicker value={form.kedatanganWaktu} onChange={(v) => set("kedatanganWaktu", v)} />
               </div>
               <div>
-                <Label>Cara Datang</Label>
+                <LabelAsal path={["caraDatang", "caraDatangLain"]}>Cara Datang</LabelAsal>
                 {/* xl: kartu setengah lebar → 2 kolom agar label tak terjepit */}
                 <div role="radiogroup" aria-label="Cara datang" className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
                   {CARA_DATANG.map(({ v, icon }) => (
@@ -310,7 +305,13 @@ export function TriaseFormView({
             </div>
           </SectionCard>
 
-          <SectionCard id="kasus" no={2} title="Jenis Kasus" done={selesai.kasus}>
+          <SectionCard
+            id="kasus"
+            no={2}
+            title="Jenis Kasus"
+            done={selesai.kasus}
+            action={<TandaAsal path={["kasus", "kecelakaan", "doa"]} />}
+          >
             <div className="space-y-4">
               <div role="radiogroup" aria-label="Jenis kasus" className="grid grid-cols-2 gap-2">
                 <ChoiceTile
@@ -390,7 +391,7 @@ export function TriaseFormView({
                 </div>
                 {form.doa && (
                   <div className="mt-3 sm:max-w-sm">
-                    <Label>Pukul DOA (WITA)</Label>
+                    <LabelAsal path="doaWaktu">Pukul DOA (WITA)</LabelAsal>
                     <DateTimePicker value={form.doaWaktu} onChange={(v) => set("doaWaktu", v)} />
                   </div>
                 )}
@@ -412,6 +413,7 @@ export function TriaseFormView({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
             <VitalCard
               label="Tekanan Darah"
+              asal={["tdSistolik", "tdDiastolik"]}
               unit="mmHg"
               saranIds={saran.filter((s) => /^(Sistolik|Diastolik)/.test(s.alasan)).map((s) => s.id)}
               warning={
@@ -436,20 +438,22 @@ export function TriaseFormView({
             </VitalCard>
             <VitalCard
               label="Nadi"
+              asal="nadi"
               unit="x/menit"
               saranIds={saran.filter((s) => s.alasan.startsWith("Nadi")).map((s) => s.id)}
               warning={diLuarRentang("nadi", form.nadi)}
             >
               <VitalInput aria-label="Nadi" value={form.nadi} onChange={(v) => set("nadi", v)} placeholder="80" />
             </VitalCard>
-            <VitalCard label="Suhu" unit="°C" warning={diLuarRentang("suhu", form.suhu)}>
+            <VitalCard label="Suhu" asal="suhu" unit="°C" warning={diLuarRentang("suhu", form.suhu)}>
               <VitalInput aria-label="Suhu" value={form.suhu} onChange={(v) => set("suhu", v)} placeholder="36.5" />
             </VitalCard>
-            <VitalCard label="Saturasi O₂" unit="%" warning={diLuarRentang("saturasi", form.saturasi)}>
+            <VitalCard label="Saturasi O₂" asal="saturasi" unit="%" warning={diLuarRentang("saturasi", form.saturasi)}>
               <VitalInput aria-label="Saturasi oksigen" value={form.saturasi} onChange={(v) => set("saturasi", v)} placeholder="98" />
             </VitalCard>
             <VitalCard
               label="Pernapasan"
+              asal="pernapasan"
               unit="x/menit"
               saranIds={saran.filter((s) => s.alasan.startsWith("Pernapasan")).map((s) => s.id)}
               warning={diLuarRentang("pernapasan", form.pernapasan)}
@@ -640,11 +644,13 @@ export function TriaseFormView({
             <div className="space-y-3 rounded-[var(--radius-md)] border border-border bg-surface-2/30 p-3">
               <p className="text-sm font-semibold text-fg">Dokter / Perawat</p>
               <div>
-                <Label>Tanggal &amp; Pukul Triase (WITA)</Label>
+                <LabelAsal path="waktuTriase">Tanggal &amp; Pukul Triase (WITA)</LabelAsal>
                 <DateTimePicker value={form.waktuTriase} onChange={(v) => set("waktuTriase", v)} />
               </div>
               <div>
-                <Label htmlFor="triase-petugas">Nama Jelas</Label>
+                <LabelAsal path="petugasNama" htmlFor="triase-petugas">
+                  Nama Jelas
+                </LabelAsal>
                 <Input
                   id="triase-petugas"
                   value={form.petugasNama}
@@ -798,12 +804,15 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 
 function VitalCard({
   label,
+  asal,
   unit,
   saranIds = [],
   warning,
   children,
 }: {
   label: string;
+  /** Path kolom untuk penanda SIMRS / diubah. */
+  asal: string | readonly string[];
   unit: string;
   saranIds?: string[];
   warning?: boolean;
@@ -817,8 +826,11 @@ function VitalCard({
       )}
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-fg-muted">{label}</span>
-        <span className="text-[11px] text-fg-subtle">{unit}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-xs font-medium text-fg-muted">{label}</span>
+          <TandaAsal path={asal} />
+        </span>
+        <span className="shrink-0 text-[11px] text-fg-subtle">{unit}</span>
       </div>
       {children}
       <div className="mt-1.5 flex min-h-5 flex-wrap items-center gap-1">

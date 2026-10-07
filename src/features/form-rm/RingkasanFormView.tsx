@@ -7,6 +7,7 @@ import { DatePicker, DateTimePicker } from "@/components/ui/DatePicker";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
 import { BidangIsian } from "@/features/form-rm/isian/kunci";
+import { LabelAsal } from "@/features/form-rm/isian/TandaAsal";
 import { useIsian } from "@/features/form-rm/isian/useIsian";
 import {
   AGAMA_OPTS,
@@ -48,8 +49,6 @@ export function RingkasanFormView({
 }) {
   const k = useIsian(isian, izin, siapkan);
   const { form, setForm } = k;
-  // Isian baru (belum pernah disimpan) yang sebagian kolomnya dari SIMRS.
-  const adaPrefill = k.isian.rev === 1 && k.isian.asal.length > 0;
 
   const set = <K extends keyof RingkasanForm>(key: K, value: RingkasanForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -70,16 +69,6 @@ export function RingkasanFormView({
 
   return (
     <IsianFrame kendali={k}>
-      {adaPrefill && (
-        <div className="flex items-start gap-2 rounded-[var(--radius-md)] border border-brand/30 bg-brand-soft px-3 py-2.5 text-[13px] text-brand-soft-fg">
-          <Check className="mt-0.5 size-4 shrink-0" />
-          <span>
-            Sebagian data telah <b>terisi otomatis dari SIMRS</b> (alamat, agama, pekerjaan, tanggal
-            rawat, DPJP, diagnosa, dll.) saat isian dibuat. Periksa dan sesuaikan bila perlu.
-          </span>
-        </div>
-      )}
-
       <BidangIsian className="space-y-5">
         {/* Identitas */}
         <Card className="p-4">
@@ -96,13 +85,12 @@ export function RingkasanFormView({
           </div>
           <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="sm:col-span-2">
-              <Label>Alamat</Label>
-              <Input value={form.alamat} onChange={(e) => set("alamat", e.target.value)} placeholder="Alamat pasien" />
+              <TextField label="Alamat" asal="alamat" value={form.alamat} onChange={(v) => set("alamat", v)} placeholder="Alamat pasien" />
             </div>
-            <TextField label="Telp / HP" value={form.telp} onChange={(v) => set("telp", v)} placeholder="08xx" />
+            <TextField label="Telp / HP" asal="telp" value={form.telp} onChange={(v) => set("telp", v)} placeholder="08xx" />
             <div className="grid grid-cols-2 gap-3">
-              <TextField label="Dirawat ke-" value={form.dirawatKe} onChange={(v) => set("dirawatKe", v)} placeholder="1" />
-              <TextField label="Gol. Darah" value={form.golDarah} onChange={(v) => set("golDarah", v)} placeholder="A/B/O/AB" />
+              <TextField label="Dirawat ke-" asal="dirawatKe" value={form.dirawatKe} onChange={(v) => set("dirawatKe", v)} placeholder="1" />
+              <TextField label="Gol. Darah" asal="golDarah" value={form.golDarah} onChange={(v) => set("golDarah", v)} placeholder="A/B/O/AB" />
             </div>
           </div>
         </Card>
@@ -111,7 +99,7 @@ export function RingkasanFormView({
         <Section title="Data Sosial">
           <div className="space-y-4">
             <div>
-              <Label>Pendidikan Terakhir</Label>
+              <LabelAsal path={["pendidikan", "pendidikanLain"]}>Pendidikan Terakhir</LabelAsal>
               <div className="flex flex-wrap items-center gap-2">
                 <ChipRow options={PENDIDIKAN_OPTS} value={form.pendidikan} onChange={(v) => set("pendidikan", v)} />
                 <Input
@@ -124,33 +112,33 @@ export function RingkasanFormView({
             </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <Label>Bangsa</Label>
+                <LabelAsal path="bangsa">Bangsa</LabelAsal>
                 <ChipRow options={BANGSA_OPTS} value={form.bangsa} onChange={(v) => set("bangsa", v as RingkasanForm["bangsa"])} />
               </div>
               <div>
-                <Label>Agama</Label>
+                <LabelAsal path="agama">Agama</LabelAsal>
                 <ChipRow options={AGAMA_OPTS} value={form.agama} onChange={(v) => set("agama", v)} />
               </div>
               <div>
-                <Label>Status Perkawinan</Label>
+                <LabelAsal path="statusPerkawinan">Status Perkawinan</LabelAsal>
                 <ChipRow options={PERKAWINAN_OPTS} value={form.statusPerkawinan} onChange={(v) => set("statusPerkawinan", v)} />
               </div>
               <div>
-                <Label>Pekerjaan</Label>
+                <LabelAsal path="pekerjaan">Pekerjaan</LabelAsal>
                 <ChipRow options={PEKERJAAN_OPTS} value={form.pekerjaan} onChange={(v) => set("pekerjaan", v)} />
               </div>
               <div>
-                <Label>Cara Masuk Rumah Sakit</Label>
+                <LabelAsal path="caraMasuk">Cara Masuk Rumah Sakit</LabelAsal>
                 <ChipRow options={CARA_MASUK_OPTS} value={form.caraMasuk} onChange={(v) => set("caraMasuk", v)} />
               </div>
               <div>
-                <Label>Jenis Pelayanan</Label>
+                <LabelAsal path="jenisPelayanan">Jenis Pelayanan</LabelAsal>
                 <ChipRow options={JENIS_PELAYANAN_OPTS} value={form.jenisPelayanan} onChange={(v) => set("jenisPelayanan", v)} />
               </div>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <TextField label="Nama Orang Tua" value={form.namaOrangTua} onChange={(v) => set("namaOrangTua", v)} placeholder="Nama orang tua" />
-              <TextField label="Pekerjaan Orang Tua" value={form.pekerjaanOrangTua} onChange={(v) => set("pekerjaanOrangTua", v)} placeholder="Pekerjaan orang tua" />
+              <TextField label="Nama Orang Tua" asal="namaOrangTua" value={form.namaOrangTua} onChange={(v) => set("namaOrangTua", v)} placeholder="Nama orang tua" />
+              <TextField label="Pekerjaan Orang Tua" asal="pekerjaanOrangTua" value={form.pekerjaanOrangTua} onChange={(v) => set("pekerjaanOrangTua", v)} placeholder="Pekerjaan orang tua" />
             </div>
           </div>
         </Section>
@@ -158,45 +146,44 @@ export function RingkasanFormView({
         {/* Keluarga terdekat */}
         <Section title="Keluarga Terdekat">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <TextField label="Nama" value={form.keluargaNama} onChange={(v) => set("keluargaNama", v)} placeholder="Nama keluarga terdekat" />
+            <TextField label="Nama" asal="keluargaNama" value={form.keluargaNama} onChange={(v) => set("keluargaNama", v)} placeholder="Nama keluarga terdekat" />
             <div className="sm:col-span-2">
-              <Label>Alamat</Label>
-              <Input value={form.keluargaAlamat} onChange={(e) => set("keluargaAlamat", e.target.value)} placeholder="Alamat keluarga" />
+              <TextField label="Alamat" asal="keluargaAlamat" value={form.keluargaAlamat} onChange={(v) => set("keluargaAlamat", v)} placeholder="Alamat keluarga" />
             </div>
-            <TextField label="Telp / HP" value={form.keluargaTelp} onChange={(v) => set("keluargaTelp", v)} placeholder="08xx" />
+            <TextField label="Telp / HP" asal="keluargaTelp" value={form.keluargaTelp} onChange={(v) => set("keluargaTelp", v)} placeholder="08xx" />
           </div>
         </Section>
 
         {/* Perawatan */}
-        <Section title="Data Perawatan" desc="Tanggal masuk/keluar & DPJP diprefill dari SIMRS bila tersedia.">
+        <Section title="Data Perawatan">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div>
-              <Label>Tgl &amp; Jam Masuk (WITA)</Label>
+              <LabelAsal path="tglMasuk">Tgl &amp; Jam Masuk (WITA)</LabelAsal>
               <DateTimePicker value={form.tglMasuk} onChange={(v) => set("tglMasuk", v)} />
             </div>
             <div>
-              <Label>Tgl &amp; Jam Keluar (WITA)</Label>
+              <LabelAsal path="tglKeluar">Tgl &amp; Jam Keluar (WITA)</LabelAsal>
               <DateTimePicker value={form.tglKeluar} onChange={(v) => set("tglKeluar", v)} />
             </div>
-            <TextField label="Lama Rawat (hari)" value={form.lamaRawat} onChange={(v) => set("lamaRawat", v)} placeholder="0" />
-            <TextField label="Diagnosa Sementara" value={form.diagnosaSementara} onChange={(v) => set("diagnosaSementara", v)} placeholder="Diagnosa saat masuk" />
-            <TextField label="Dokter Jaga / DPJP" value={form.dpjp} onChange={(v) => set("dpjp", v)} placeholder="Nama DPJP" />
+            <TextField label="Lama Rawat (hari)" asal="lamaRawat" value={form.lamaRawat} onChange={(v) => set("lamaRawat", v)} placeholder="0" />
+            <TextField label="Diagnosa Sementara" asal="diagnosaSementara" value={form.diagnosaSementara} onChange={(v) => set("diagnosaSementara", v)} placeholder="Diagnosa saat masuk" />
+            <TextField label="Dokter Jaga / DPJP" asal="dpjp" value={form.dpjp} onChange={(v) => set("dpjp", v)} placeholder="Nama DPJP" />
             <div>
-              <Label>Peserta</Label>
+              <LabelAsal path="peserta">Peserta</LabelAsal>
               <ChipRow options={PESERTA_OPTS} value={form.peserta} onChange={(v) => set("peserta", v as RingkasanForm["peserta"])} />
             </div>
             <div className="lg:col-span-3">
-              <Label>Izin Keluar</Label>
+              <LabelAsal path="izinKeluar">Izin Keluar</LabelAsal>
               <ChipRow options={IZIN_KELUAR_OPTS} value={form.izinKeluar} onChange={(v) => set("izinKeluar", v)} />
             </div>
           </div>
         </Section>
 
         {/* Diagnosa akhir */}
-        <Section title="Diagnosa Akhir & Kode ICD" desc="Diagnosa utama & sekunder diprefill dari rekam medis (ICD-10).">
+        <Section title="Diagnosa Akhir & Kode ICD">
           <div className="space-y-3">
-            <DxRow label="Diagnosa Utama" teks={form.diagnosaUtama} kode={form.diagnosaUtamaKode} onTeks={(v) => set("diagnosaUtama", v)} onKode={(v) => set("diagnosaUtamaKode", v)} />
-            <DxRow label="Diagnosa Sekunder" teks={form.diagnosaSekunder} kode={form.diagnosaSekunderKode} onTeks={(v) => set("diagnosaSekunder", v)} onKode={(v) => set("diagnosaSekunderKode", v)} />
+            <DxRow label="Diagnosa Utama" asal={["diagnosaUtama", "diagnosaUtamaKode"]} teks={form.diagnosaUtama} kode={form.diagnosaUtamaKode} onTeks={(v) => set("diagnosaUtama", v)} onKode={(v) => set("diagnosaUtamaKode", v)} />
+            <DxRow label="Diagnosa Sekunder" asal={["diagnosaSekunder", "diagnosaSekunderKode"]} teks={form.diagnosaSekunder} kode={form.diagnosaSekunderKode} onTeks={(v) => set("diagnosaSekunder", v)} onKode={(v) => set("diagnosaSekunderKode", v)} />
             <DxRow label="Komplikasi" teks={form.komplikasi} kode={form.komplikasiKode} onTeks={(v) => set("komplikasi", v)} onKode={(v) => set("komplikasiKode", v)} />
             <DxRow label="Penyebab Luar Cedera & Keracunan" teks={form.penyebabLuar} kode={form.penyebabLuarKode} onTeks={(v) => set("penyebabLuar", v)} onKode={(v) => set("penyebabLuarKode", v)} />
             <DxRow label="Operasi" teks={form.operasi} kode={form.operasiKode} onTeks={(v) => set("operasi", v)} onKode={(v) => set("operasiKode", v)} />
@@ -237,7 +224,7 @@ export function RingkasanFormView({
         <Section title="Dokter yang Merawat & Keadaan Keluar">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div className="space-y-3 rounded-[var(--radius-md)] border border-border bg-surface-2/30 p-3">
-              <TextField label="Nama Dokter yang Merawat" value={form.dokterMerawatNama} onChange={(v) => set("dokterMerawatNama", v)} placeholder="Nama dokter" />
+              <TextField label="Nama Dokter yang Merawat" asal="dokterMerawatNama" value={form.dokterMerawatNama} onChange={(v) => set("dokterMerawatNama", v)} placeholder="Nama dokter" />
               <SignaturePad
                 label="Tanda Tangan Dokter"
                 value={form.dokterMerawatTtd}
@@ -246,7 +233,7 @@ export function RingkasanFormView({
               />
             </div>
             <div>
-              <Label>Keadaan Keluar</Label>
+              <LabelAsal path="keadaanKeluar">Keadaan Keluar</LabelAsal>
               <div className="flex flex-wrap gap-2">
                 {KEADAAN_KELUAR_OPTS.map((o) => (
                   <Chip key={o} active={form.keadaanKeluar === o} onClick={() => set("keadaanKeluar", form.keadaanKeluar === o ? "" : o)}>
@@ -390,26 +377,54 @@ function IdItem({ label, value, mono, strong }: { label: string; value: string; 
   );
 }
 
-function TextField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+/** Kolom teks; `asal` = path kolom untuk penanda SIMRS / diubah. */
+function TextField({
+  label,
+  asal,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  asal?: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
   return (
     <div>
-      <Label>{label}</Label>
-      <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+      {asal ? <LabelAsal path={asal}>{label}</LabelAsal> : <Label>{label}</Label>}
+      <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={label} />
     </div>
   );
 }
 
 /** Diagnosa + kode ICD (2 kolom). */
-function DxRow({ label, teks, kode, onTeks, onKode }: { label: string; teks: string; kode: string; onTeks: (v: string) => void; onKode: (v: string) => void }) {
+function DxRow({
+  label,
+  asal,
+  teks,
+  kode,
+  onTeks,
+  onKode,
+}: {
+  label: string;
+  /** [path teks, path kode] bila kolom dapat diisi dari SIMRS. */
+  asal?: readonly [string, string];
+  teks: string;
+  kode: string;
+  onTeks: (v: string) => void;
+  onKode: (v: string) => void;
+}) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_10rem]">
       <div>
-        <Label>{label}</Label>
-        <Input value={teks} onChange={(e) => onTeks(e.target.value)} placeholder="Diagnosa" />
+        {asal ? <LabelAsal path={asal[0]}>{label}</LabelAsal> : <Label>{label}</Label>}
+        <Input value={teks} onChange={(e) => onTeks(e.target.value)} placeholder="Diagnosa" aria-label={label} />
       </div>
       <div>
-        <Label>Kode ICD</Label>
-        <Input value={kode} onChange={(e) => onKode(e.target.value)} placeholder="mis. J06.9" className="font-mono" />
+        {asal ? <LabelAsal path={asal[1]}>Kode ICD</LabelAsal> : <Label>Kode ICD</Label>}
+        <Input value={kode} onChange={(e) => onKode(e.target.value)} placeholder="mis. J06.9" className="font-mono" aria-label={`Kode ICD ${label}`} />
       </div>
     </div>
   );

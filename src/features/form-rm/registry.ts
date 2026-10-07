@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { BagianSimrs } from "./asal";
 import { emptyConsentForm, CONSENT_JENIS } from "./consent.constants";
 import { emptyEdukasiForm, EDUKASI_JENIS } from "./edukasi.constants";
 import { emptyRingkasanForm, RINGKASAN_JENIS } from "./ringkasan.constants";
@@ -61,6 +62,12 @@ export type DefinisiForm<T extends object = object> = {
   /** Form dihitung wajib (kelengkapan) untuk episode yang punya leg berjenis ini. */
   readonly wajibUntuk: readonly JenisKunjungan[];
   readonly kertas: Kertas;
+  /**
+   * Kolom yang dapat diisi dari SIMRS, dikelompokkan per bagian (penanda asal &
+   * "Muat ulang dari SIMRS"). Pemetaan nilainya ada di server
+   * (`server/modules/form-rm/isian.petakan.ts`).
+   */
+  readonly simrs: readonly BagianSimrs[];
   readonly skema: z.ZodType<T>;
   /** Isian baru tanpa data SIMRS (sudah lolos skema). */
   kosong(): T;
@@ -76,13 +83,169 @@ const belumDiisi = (s: string) => s.trim() === "";
 /*
  * SIMGOS membuat NOPEN BARU untuk rawat inap (552 dari 566 episode RI dalam 90
  * hari berasal dari episode IGD ber-NOPEN lain; tak satu pun berbagi NOPEN).
- * Praktik saat ini: keempat form diisi admisi pada episode IGD. Mengisi di
- * episode rawat inap (atau menaut episode IGD asal, PRD §6.4) menunggu keputusan.
+ * Praktik saat ini: keempat form diisi admisi pada episode IGD (keputusan K8
+ * terbuka). Bila diisi pada episode rawat inap, sumber asesmen (triase,
+ * edukasi) otomatis diambil dari episode IGD asalnya (PRD §6.4).
  */
 /** Triase: pasien yang baru tiba di IGD. */
 const SASARAN_TRIASE: SasaranPasien = { jenis: [2], jendelaJam: 24 };
 /** Dokumen episode admisi IGD; jendela 7 hari = bawaan daftar lama. */
 const SASARAN_ADMISI_IGD: SasaranPasien = { jenis: [2], jendelaJam: 24 * 7 };
+
+/*
+ * Kolom isi otomatis per form. Kolom tanpa data di SIMGOS (penanggung jawab,
+ * baca-tulis, imunisasi, sebab kematian, dst.) sengaja tidak dicantumkan.
+ * Kriteria & kesadaran triase tidak pernah diisi otomatis (keputusan klinis).
+ */
+const SIMRS_TRIASE: readonly BagianSimrs[] = [
+  {
+    id: "kedatangan",
+    judul: "Kedatangan",
+    kolom: [
+      { path: "kedatanganWaktu", label: "Tanggal & pukul kedatangan", sumber: "triase" },
+      { path: "caraDatang", label: "Cara datang", sumber: "triase" },
+      { path: "caraDatangLain", label: "Cara datang lain-lain", sumber: "triase" },
+    ],
+  },
+  {
+    id: "kasus",
+    judul: "Jenis kasus",
+    kolom: [
+      { path: "kasus", label: "Jenis kasus", sumber: "triase" },
+      { path: "kecelakaan", label: "Kecelakaan", sumber: "triase" },
+      { path: "doa", label: "DOA", sumber: "triase" },
+      { path: "doaWaktu", label: "Pukul DOA", sumber: "triase" },
+    ],
+  },
+  {
+    id: "ttv",
+    judul: "Tanda-tanda vital",
+    kolom: [
+      { path: "tdSistolik", label: "TD sistolik", sumber: "triase" },
+      { path: "tdDiastolik", label: "TD diastolik", sumber: "triase" },
+      { path: "nadi", label: "Nadi", sumber: "triase" },
+      { path: "suhu", label: "Suhu", sumber: "triase" },
+      { path: "saturasi", label: "Saturasi O₂", sumber: "triase" },
+      { path: "pernapasan", label: "Pernapasan", sumber: "triase" },
+    ],
+  },
+  {
+    id: "petugas",
+    judul: "Petugas triase",
+    kolom: [
+      { path: "waktuTriase", label: "Tanggal & pukul triase", sumber: "triase" },
+      { path: "petugasNama", label: "Nama petugas", sumber: "triase" },
+    ],
+  },
+];
+
+const SIMRS_EDUKASI: readonly BagianSimrs[] = [
+  {
+    id: "persiapan",
+    judul: "Persiapan edukasi",
+    kolom: [
+      { path: "persiapan.bahasa", label: "Bahasa", sumber: "sosial" },
+      { path: "persiapan.bahasaLain", label: "Bahasa lain", sumber: "sosial" },
+      { path: "persiapan.penerjemah", label: "Kebutuhan penerjemah", sumber: "edukasi" },
+      { path: "persiapan.pendidikan", label: "Pendidikan pasien", sumber: "sosial" },
+      { path: "persiapan.pendidikanLain", label: "Pendidikan lain", sumber: "sosial" },
+      { path: "persiapan.hambatan", label: "Hambatan edukasi", sumber: "edukasi" },
+      { path: "persiapan.hambatanLain", label: "Hambatan lain", sumber: "edukasi" },
+      { path: "persiapan.kesediaan", label: "Kesediaan menerima edukasi", sumber: "edukasi" },
+    ],
+  },
+];
+
+const SIMRS_RINGKASAN: readonly BagianSimrs[] = [
+  {
+    id: "identitas",
+    judul: "Identitas",
+    kolom: [
+      { path: "alamat", label: "Alamat", sumber: "sosial" },
+      { path: "telp", label: "Telp / HP", sumber: "sosial" },
+      { path: "dirawatKe", label: "Dirawat ke-", sumber: "episode" },
+      { path: "golDarah", label: "Gol. darah", sumber: "sosial" },
+    ],
+  },
+  {
+    id: "sosial",
+    judul: "Data sosial",
+    kolom: [
+      { path: "pendidikan", label: "Pendidikan", sumber: "sosial" },
+      { path: "pendidikanLain", label: "Pendidikan lain", sumber: "sosial" },
+      { path: "bangsa", label: "Bangsa", sumber: "sosial" },
+      { path: "agama", label: "Agama", sumber: "sosial" },
+      { path: "statusPerkawinan", label: "Status perkawinan", sumber: "sosial" },
+      { path: "pekerjaan", label: "Pekerjaan", sumber: "sosial" },
+      { path: "caraMasuk", label: "Cara masuk rumah sakit", sumber: "episode" },
+      { path: "jenisPelayanan", label: "Jenis pelayanan", sumber: "episode" },
+      { path: "namaOrangTua", label: "Nama orang tua", sumber: "keluarga" },
+      { path: "pekerjaanOrangTua", label: "Pekerjaan orang tua", sumber: "keluarga" },
+    ],
+  },
+  {
+    id: "keluarga",
+    judul: "Keluarga terdekat",
+    kolom: [
+      { path: "keluargaNama", label: "Nama", sumber: "keluarga" },
+      { path: "keluargaAlamat", label: "Alamat", sumber: "keluarga" },
+      { path: "keluargaTelp", label: "Telp / HP", sumber: "keluarga" },
+    ],
+  },
+  {
+    id: "perawatan",
+    judul: "Data perawatan",
+    kolom: [
+      { path: "tglMasuk", label: "Tanggal & jam masuk", sumber: "episode" },
+      { path: "tglKeluar", label: "Tanggal & jam keluar", sumber: "episode" },
+      { path: "lamaRawat", label: "Lama rawat", sumber: "episode" },
+      { path: "diagnosaSementara", label: "Diagnosa sementara", sumber: "episode" },
+      { path: "dpjp", label: "Dokter jaga / DPJP", sumber: "episode" },
+      { path: "peserta", label: "Peserta", sumber: "episode" },
+      { path: "izinKeluar", label: "Izin keluar", sumber: "pulang" },
+    ],
+  },
+  {
+    id: "diagnosa",
+    judul: "Diagnosa akhir",
+    kolom: [
+      { path: "diagnosaUtama", label: "Diagnosa utama", sumber: "diagnosa" },
+      { path: "diagnosaUtamaKode", label: "Kode ICD diagnosa utama", sumber: "diagnosa" },
+      { path: "diagnosaSekunder", label: "Diagnosa sekunder", sumber: "diagnosa" },
+      { path: "diagnosaSekunderKode", label: "Kode ICD diagnosa sekunder", sumber: "diagnosa" },
+    ],
+  },
+  {
+    id: "keluar",
+    judul: "Dokter merawat & keadaan keluar",
+    kolom: [
+      { path: "dokterMerawatNama", label: "Nama dokter yang merawat", sumber: "episode" },
+      { path: "keadaanKeluar", label: "Keadaan keluar", sumber: "pulang" },
+    ],
+  },
+];
+
+const SIMRS_CONSENT: readonly BagianSimrs[] = [
+  {
+    id: "identitas",
+    judul: "Identitas",
+    kolom: [{ path: "nik", label: "NIK", sumber: "identitas" }],
+  },
+  {
+    id: "pendaftaran",
+    judul: "Waktu pendaftaran & ruang",
+    kolom: [
+      { path: "waktuPendaftaran", label: "Tanggal & jam pendaftaran", sumber: "identitas" },
+      { path: "ruanganRawat", label: "Ruangan rawat", sumber: "identitas" },
+      { path: "kelas", label: "Kelas", sumber: "episode" },
+    ],
+  },
+  {
+    id: "ttd",
+    judul: "Penanda tangan",
+    kolom: [{ path: "pasienNama", label: "Nama pasien / penanggung jawab", sumber: "identitas" }],
+  },
+];
 
 const triase: DefinisiForm<z.output<typeof triaseFormSchema>> = {
   kode: "RM.04",
@@ -95,6 +258,7 @@ const triase: DefinisiForm<z.output<typeof triaseFormSchema>> = {
   sasaran: SASARAN_TRIASE,
   wajibUntuk: [2],
   kertas: { ukuran: "F4", orientasi: "potret" },
+  simrs: SIMRS_TRIASE,
   skema: triaseFormSchema,
   kosong: () => triaseFormSchema.parse(emptyTriaseForm()),
   petaTtd: (d, f) => ({ ...d, petugasTtd: f(d.petugasTtd, "petugasTtd") }),
@@ -117,6 +281,7 @@ const edukasi: DefinisiForm<z.output<typeof edukasiFormSchema>> = {
   sasaran: SASARAN_ADMISI_IGD,
   wajibUntuk: [2],
   kertas: { ukuran: "F4", orientasi: "lanskap" },
+  simrs: SIMRS_EDUKASI,
   skema: edukasiFormSchema,
   kosong: () => edukasiFormSchema.parse(emptyEdukasiForm()),
   petaTtd: (d, f) => ({
@@ -145,6 +310,7 @@ const ringkasan: DefinisiForm<z.output<typeof ringkasanFormSchema>> = {
   sasaran: SASARAN_ADMISI_IGD,
   wajibUntuk: [2],
   kertas: { ukuran: "A4", orientasi: "potret" },
+  simrs: SIMRS_RINGKASAN,
   skema: ringkasanFormSchema,
   kosong: () => ringkasanFormSchema.parse(emptyRingkasanForm()),
   petaTtd: (d, f) => ({
@@ -176,6 +342,7 @@ const consent: DefinisiForm<z.output<typeof consentFormSchema>> = {
   sasaran: SASARAN_ADMISI_IGD,
   wajibUntuk: [2],
   kertas: { ukuran: "A4", orientasi: "potret" },
+  simrs: SIMRS_CONSENT,
   skema: consentFormSchema,
   kosong: () => consentFormSchema.parse(emptyConsentForm()),
   petaTtd: (d, f) => ({

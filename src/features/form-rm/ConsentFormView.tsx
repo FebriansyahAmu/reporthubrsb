@@ -9,6 +9,7 @@ import { Select, SelectOther } from "@/components/ui/Select";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
 import { BidangIsian } from "@/features/form-rm/isian/kunci";
+import { LabelAsal } from "@/features/form-rm/isian/TandaAsal";
 import { useIsian } from "@/features/form-rm/isian/useIsian";
 import { HUBUNGAN_OPTS } from "@/features/form-rm/edukasi.constants";
 import {
@@ -35,8 +36,6 @@ export function ConsentFormView({
 }) {
   const k = useIsian(isian, izin, siapkan);
   const { form, setForm } = k;
-  // Apakah NIK sama dengan data SIMRS (untuk hint & badge di UI).
-  const nikDariSimrs = !!header.nik && form.nik === header.nik;
   const [bacaIsi, setBacaIsi] = useState(false);
 
   const set = <K extends keyof ConsentForm>(key: K, value: ConsentForm[K]) =>
@@ -64,14 +63,9 @@ export function ConsentFormView({
                 .join(" ")}
             />
             <div className="sm:col-span-2 lg:col-span-1">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="nik">NIK</Label>
-                {nikDariSimrs && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-1.5 py-0.5 text-[10px] font-medium text-success">
-                    <Check className="size-2.5" /> SIMRS
-                  </span>
-                )}
-              </div>
+              <LabelAsal path="nik" htmlFor="nik">
+                NIK
+              </LabelAsal>
               <Input
                 id="nik"
                 inputMode="numeric"
@@ -79,11 +73,6 @@ export function ConsentFormView({
                 onChange={(e) => set("nik", e.target.value)}
                 placeholder="Nomor Induk Kependudukan"
               />
-              <p className="mt-1 text-[11px] text-fg-subtle">
-                {nikDariSimrs
-                  ? "Otomatis dari data SIMRS — dapat disesuaikan."
-                  : "Tidak ditemukan di SIMRS, isi manual."}
-              </p>
             </div>
           </div>
         </Card>
@@ -91,15 +80,15 @@ export function ConsentFormView({
 
       <BidangIsian className="space-y-5">
         {/* Waktu pendaftaran */}
-        <Section title="Waktu Pendaftaran & Ruang" desc="Prefill dari SIMRS, bisa disesuaikan.">
+        <Section title="Waktu Pendaftaran & Ruang">
           <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
             <div>
-              <Label>Tanggal &amp; Jam (WITA)</Label>
+              <LabelAsal path="waktuPendaftaran">Tanggal &amp; Jam (WITA)</LabelAsal>
               <DateTimePicker value={form.waktuPendaftaran} onChange={(v) => set("waktuPendaftaran", v)} />
             </div>
-            <TextField label="Ruangan Rawat" value={form.ruanganRawat} onChange={(v) => set("ruanganRawat", v)} placeholder="mis. Perawatan Interna" />
+            <TextField label="Ruangan Rawat" asal="ruanganRawat" value={form.ruanganRawat} onChange={(v) => set("ruanganRawat", v)} placeholder="mis. Perawatan Interna" />
             <div>
-              <Label>Kelas</Label>
+              <LabelAsal path="kelas">Kelas</LabelAsal>
               <SelectOther value={form.kelas} onChange={(v) => set("kelas", v)} options={KELAS_OPTS} placeholder="Pilih kelas" otherPlaceholder="Kelas lain…" />
             </div>
           </div>
@@ -224,7 +213,7 @@ export function ConsentFormView({
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div className="space-y-3 rounded-[var(--radius-md)] border border-border bg-surface-2/30 p-3">
               <p className="text-sm font-semibold text-fg">Pasien / Keluarga / Penanggung Jawab</p>
-              <TextField label="Nama" value={form.pasienNama} onChange={(v) => set("pasienNama", v)} placeholder="Nama penanda tangan" />
+              <TextField label="Nama" asal="pasienNama" value={form.pasienNama} onChange={(v) => set("pasienNama", v)} placeholder="Nama penanda tangan" />
               <SignaturePad
                 label="Tanda Tangan"
                 value={form.pasienTtd}
@@ -275,11 +264,24 @@ function IdItem({ label, value, mono, strong }: { label: string; value: string; 
   );
 }
 
-function TextField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+/** Kolom teks; `asal` = path kolom untuk penanda SIMRS / diubah. */
+function TextField({
+  label,
+  asal,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  asal?: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
   return (
     <div>
-      <Label>{label}</Label>
-      <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+      {asal ? <LabelAsal path={asal}>{label}</LabelAsal> : <Label>{label}</Label>}
+      <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={label} />
     </div>
   );
 }

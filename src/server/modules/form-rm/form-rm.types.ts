@@ -256,28 +256,6 @@ export type RingkasanForm = {
   dokterKematianTtd: string;
 };
 
-/** Nilai isi otomatis RM.01 dari SIMGOS (sudah diformat siap-isi), dipakai saat isian dibuat. */
-export type RingkasanPrefill = {
-  alamat: string;
-  golDarah: string;
-  dirawatKe: string;
-  pendidikan: string;
-  pendidikanLain: string;
-  bangsa: "" | "Indonesia" | "Asing";
-  agama: string;
-  statusPerkawinan: string;
-  pekerjaan: string;
-  tglMasuk: string;
-  tglKeluar: string;
-  lamaRawat: string;
-  dpjp: string;
-  peserta: "" | "BPJS" | "Asuransi" | "Umum";
-  diagnosaUtama: string;
-  diagnosaUtamaKode: string;
-  diagnosaSekunder: string;
-  diagnosaSekunderKode: string;
-};
-
 // ---------------------------------------------------------------------------
 // Triase IGD (RM.04)
 // ---------------------------------------------------------------------------
@@ -320,26 +298,6 @@ export type TriaseForm = {
   petugasTtd: string;
 };
 
-/** Nilai isi otomatis RM.04 dari triase SIMGOS (`medicalrecord.triage`), dipakai saat isian dibuat. */
-export type TriasePrefill = Pick<
-  TriaseForm,
-  | "kedatanganWaktu"
-  | "caraDatang"
-  | "caraDatangLain"
-  | "kasus"
-  | "kecelakaan"
-  | "doa"
-  | "doaWaktu"
-  | "tdSistolik"
-  | "tdDiastolik"
-  | "nadi"
-  | "suhu"
-  | "saturasi"
-  | "pernapasan"
-  | "waktuTriase"
-  | "petugasNama"
->;
-
 /** Ringkasan triase yang tercatat di SIMRS — rujukan baca-saja di form. */
 export type TriaseSimrs = {
   /** ISO lokal "YYYY-MM-DDTHH:mm". */
@@ -351,4 +309,13 @@ export type TriaseSimrs = {
   zona: string;
   keluhan: string;
   petugas: string;
+  /** NOPEN episode IGD asal bila triase diambil dari sana (episode rawat inap). */
+  episodeIgd?: string | null;
+};
+
+/** Kebutuhan edukasi menurut asesmen SIMRS — rujukan baca-saja di RM.21. */
+export type KebutuhanEdukasiSimrs = {
+  /** Kategori edukator RM.21 → topik yang dibutuhkan. */
+  perKategori: Record<string, string[]>;
+  episodeIgd: string | null;
 };

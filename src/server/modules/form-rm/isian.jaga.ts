@@ -20,6 +20,8 @@ export const BATAS_BODY = { kecil: 4 * 1024, simpan: 4 * 1024 * 1024 } as const;
 const lajuTulis = buatPembatasLaju({ batas: 60, jendelaMs: 60_000 });
 /** Pencarian pasien (SIMGOS) per pengguna — mengetik dengan debounce jauh di bawah ini. */
 const lajuCari = buatPembatasLaju({ batas: 60, jendelaMs: 60_000 });
+/** Perbandingan isian dengan SIMRS (±8 query SIMGOS per permintaan) per pengguna. */
+const lajuSimrs = buatPembatasLaju({ batas: 20, jendelaMs: 60_000 });
 
 /** Aktor + hak per kategori form untuk Route Handler. */
 export const aktorDari = async (user: SessionUser, req: NextRequest): Promise<AktorForm> => ({
@@ -50,6 +52,12 @@ export function jagaTulis(req: NextRequest, user: SessionUser): void {
 /** Batasi laju pencarian pasien ke SIMGOS per pengguna. */
 export function jagaCari(user: SessionUser): void {
   const laju = lajuCari(user.id);
+  if (!laju.izin) throw new TooManyRequestsError(laju.ulangDetik);
+}
+
+/** Batasi laju perbandingan isian dengan SIMRS per pengguna. */
+export function jagaSimrs(user: SessionUser): void {
+  const laju = lajuSimrs(user.id);
   if (!laju.izin) throw new TooManyRequestsError(laju.ulangDetik);
 }
 

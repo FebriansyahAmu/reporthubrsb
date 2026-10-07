@@ -31,11 +31,13 @@ export type KendaliIsian<T> = {
   /** FINAL / BATAL / tanpa izin ubah → kolom tidak bisa disunting. */
   terkunci: boolean;
   kotor: boolean;
-  sibuk: "simpan" | AksiIsian | null;
+  sibuk: "simpan" | "simrs" | AksiIsian | null;
   galat: GalatIsian | null;
   tutupGalat: () => void;
   simpan: () => Promise<boolean>;
   jalankan: (aksi: AksiIsian, alasan?: string) => Promise<boolean>;
+  /** Terapkan nilai SIMRS terkini ke kolom terpilih; path yang diterapkan, atau null bila gagal. */
+  terapkanSimrs: (kolom: string[]) => Promise<string[] | null>;
 };
 
 function galatDari(e: unknown): GalatIsian {
@@ -141,6 +143,33 @@ export function useIsian<T extends object>(
     }
   }
 
+  async function terapkanSimrs(kolom: string[]): Promise<string[] | null> {
+    if (terkunci || berjalan.current) return null;
+    // Server menerapkan atas isi tersimpan: simpan dulu perubahan di layar.
+    if (versi.current !== versiTersimpan.current && !(await simpan())) return null;
+    berjalan.current = true;
+    setSibuk("simrs");
+    setGalat(null);
+    try {
+      const r = await apiPost<{ isian: IsianForm; diterapkan: string[] }>(`/api/form-rm/isian/${isian.id}/simrs`, {
+        rev: rev.current,
+        kolom,
+      });
+      versi.current++;
+      versiTersimpan.current = versi.current;
+      setFormMentah(siapkan(r.isian.data));
+      setKotor(false);
+      terima(r.isian);
+      return r.diterapkan;
+    } catch (e) {
+      setGalat(galatDari(e));
+      return null;
+    } finally {
+      berjalan.current = false;
+      setSibuk(null);
+    }
+  }
+
   // Ctrl/⌘+S = simpan; peringatan saat meninggalkan halaman dengan perubahan.
   const simpanTerbaru = useRef(simpan);
   useEffect(() => {
@@ -176,5 +205,6 @@ export function useIsian<T extends object>(
     tutupGalat: () => setGalat(null),
     simpan,
     jalankan,
+    terapkanSimrs,
   };
 }

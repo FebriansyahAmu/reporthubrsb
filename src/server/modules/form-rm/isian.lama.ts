@@ -78,7 +78,7 @@ export async function pindahkanBarisLama(row: FormRm, aktor: Aktor): Promise<Has
           status: "DRAF",
           rev: 1,
           data: {},
-          asal: [],
+          asal: {},
           dibuatOlehId,
           diubahOlehId,
           createdAt: row.createdAt,

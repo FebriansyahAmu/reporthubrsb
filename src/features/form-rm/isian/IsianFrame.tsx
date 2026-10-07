@@ -3,17 +3,34 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Ban, Check, CircleAlert, FilePlus2, History, Lock, LockOpen, Printer, RotateCw, Save, X } from "lucide-react";
+import {
+  Ban,
+  Check,
+  CircleAlert,
+  DatabaseZap,
+  FilePlus2,
+  History,
+  Lock,
+  LockOpen,
+  Printer,
+  RefreshCcwDot,
+  RotateCw,
+  Save,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
 import { apiPost, pesanGalat } from "@/lib/api-client";
 import { formatDateTime } from "@/lib/format";
+import { statusAsal } from "@/features/form-rm/asal";
 import type { AksiIsian } from "@/features/form-rm/isian.status";
 import type { IsianForm } from "@/server/modules/form-rm/isian.types";
 import { AksiIsianDialog } from "./AksiIsianDialog";
 import { KunciIsian } from "./kunci";
+import { MuatUlangSimrs } from "./MuatUlangSimrs";
 import { RiwayatIsianDrawer } from "./RiwayatIsianDrawer";
 import { StatusIsianBadge } from "./StatusIsianBadge";
+import { AsalIsianProvider } from "./TandaAsal";
 import type { KendaliIsian } from "./useIsian";
 
 const PESAN_BERHASIL: Record<AksiIsian, string> = {
@@ -41,6 +58,7 @@ export function IsianFrame<T>({
   const toast = useToast();
   const [dialog, setDialog] = useState<AksiIsian | null>(null);
   const [riwayat, setRiwayat] = useState(false);
+  const [simrs, setSimrs] = useState(false);
   const { isian } = k;
 
   const bukaDialog = (aksi: AksiIsian) => {
@@ -51,16 +69,67 @@ export function IsianFrame<T>({
     setDialog(null);
     toast.success(PESAN_BERHASIL[aksi]);
   };
+  // Perbandingan dihitung server atas isi TERSIMPAN → simpan dulu perubahan di layar.
+  async function bukaSimrs() {
+    k.tutupGalat();
+    if (k.kotor && !(await k.simpan())) return;
+    setSimrs(true);
+  }
 
   return (
-    <div className="space-y-5 pb-28">
-      <PemberitahuanStatus kendali={k} onRiwayat={() => setRiwayat(true)} />
-      <KunciIsian terkunci={k.terkunci}>{children}</KunciIsian>
+    <AsalIsianProvider value={{ asal: isian.asal, data: k.form }}>
+      <div className="space-y-5 pb-28">
+        <PemberitahuanStatus kendali={k} onRiwayat={() => setRiwayat(true)} />
+        <RingkasAsal kendali={k} onMuatUlang={bukaSimrs} />
+        <KunciIsian terkunci={k.terkunci}>{children}</KunciIsian>
 
-      <BilahAksi kendali={k} aksen={aksen} onAksi={bukaDialog} onRiwayat={() => setRiwayat(true)} />
+        <BilahAksi kendali={k} aksen={aksen} onAksi={bukaDialog} onRiwayat={() => setRiwayat(true)} />
 
-      <AksiIsianDialog kendali={k} aksi={dialog} onTutup={() => setDialog(null)} onBerhasil={berhasil} />
-      <RiwayatIsianDrawer open={riwayat} onClose={() => setRiwayat(false)} isianId={isian.id} rev={isian.rev} />
+        <AksiIsianDialog kendali={k} aksi={dialog} onTutup={() => setDialog(null)} onBerhasil={berhasil} />
+        {simrs && <MuatUlangSimrs kendali={k} onTutup={() => setSimrs(false)} />}
+        <RiwayatIsianDrawer open={riwayat} onClose={() => setRiwayat(false)} isianId={isian.id} rev={isian.rev} />
+      </div>
+    </AsalIsianProvider>
+  );
+}
+
+/* ------------------------------------------------------------ asal SIMRS */
+
+/** Ringkasan kolom dari SIMRS + tombol "Muat ulang dari SIMRS" (DRAF & berizin ubah). */
+function RingkasAsal<T>({ kendali: k, onMuatUlang }: { kendali: KendaliIsian<T>; onMuatUlang: () => void }) {
+  const paths = Object.keys(k.isian.asal);
+  const bolehMuat = k.isian.status === "DRAF" && k.izin.ubah;
+  if (paths.length === 0 && !bolehMuat) return null;
+  const diubah = paths.filter((p) => statusAsal(k.isian.asal, k.form, p) === "diubah").length;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-[var(--radius-md)] border border-brand/25 bg-brand-soft/60 px-3 py-2 text-[13px] text-brand-soft-fg">
+      <p className="flex min-w-0 items-start gap-2">
+        <DatabaseZap className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <span>
+          {paths.length > 0 ? (
+            <>
+              <b>{paths.length} kolom</b> terisi otomatis dari SIMRS
+              {diubah > 0 && <> · {diubah} sudah diubah petugas</>}. Kolom bertanda <b>SIMRS</b> perlu diperiksa sebelum
+              difinalkan.
+            </>
+          ) : (
+            <>Belum ada kolom yang terisi dari SIMRS.</>
+          )}
+        </span>
+      </p>
+      {bolehMuat && (
+        <Button
+          size="sm"
+          variant="secondary"
+          icon={<RefreshCcwDot className="size-4" />}
+          onClick={onMuatUlang}
+          disabled={k.sibuk !== null}
+          loading={k.sibuk === "simpan"}
+        >
+          Muat ulang dari SIMRS
+        </Button>
+      )}
     </div>
   );
 }
@@ -246,6 +315,7 @@ function BilahAksi<T>({
 function TeksSimpan<T>({ kendali: k }: { kendali: KendaliIsian<T> }) {
   const { isian } = k;
   if (k.sibuk === "simpan") return <span>Menyimpan…</span>;
+  if (k.sibuk === "simrs") return <span>Menerapkan data SIMRS…</span>;
   if (k.galat && !k.galat.konflik) {
     return (
       <span className="inline-flex items-center gap-1 text-danger">

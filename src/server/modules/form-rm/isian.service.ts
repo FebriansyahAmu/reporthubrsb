@@ -8,9 +8,12 @@ import {
   NotFoundError,
   PayloadTooLargeError,
   ServiceUnavailableError,
+  ValidationError,
 } from "@/server/lib/errors";
+import { ambilPath, normalkanAsal, pasangPath, samaNilai } from "@/features/form-rm/asal";
 import type { AksiForm, HakForm } from "@/features/form-rm/hak";
 import { definisiForm, type DefinisiForm } from "@/features/form-rm/registry";
+import { pangkasTeksPanjang } from "@/features/form-rm/skema";
 import {
   adalahStatusIsian,
   perluIzinKelola,
@@ -24,9 +27,9 @@ import { auditIsian } from "./isian.audit";
 import { pindahkanBarisLama } from "./isian.lama";
 import { isiOtomatis } from "./isian.prefill";
 import { kanonik, periksaRantai, segel, type IsiSegel } from "./isian.segel";
-import type { AksiIsianInput, BuatIsianInput, SimpanIsianInput } from "./isian.schema";
+import type { AksiIsianInput, BuatIsianInput, SimpanIsianInput, TerapkanSimrsInput } from "./isian.schema";
 import { pisahkanTtd, rujukanTtd, sidikTtd, sisipkanTtd } from "./isian.ttd";
-import type { AktorForm, IsianForm, RevisiIsian, RiwayatIsian } from "./isian.types";
+import type { AktorForm, BandingSimrs, IsianForm, RevisiIsian, RiwayatIsian } from "./isian.types";
 
 /**
  * LAYANAN ISIAN FORM RM (PRD §6.3, §8). Semua penulisan memakai update
@@ -91,7 +94,7 @@ function keDto(row: FormRmIsian): IsianForm {
     status: statusDari(row),
     rev: row.rev,
     data: row.data,
-    asal: Array.isArray(row.asal) ? (row.asal as string[]) : [],
+    asal: normalkanAsal(row.asal),
     dibuatOlehId: row.dibuatOlehId,
     diubahOlehId: row.diubahOlehId,
     difinalkanOlehId: row.difinalkanOlehId,
@@ -188,7 +191,7 @@ export async function bukaAtauBuatIsian(
         namaPasien: header.nama,
         ruang: header.ruang === "—" ? null : header.ruang,
         data: data as Prisma.InputJsonValue,
-        asal,
+        asal: asal as Prisma.InputJsonValue,
         dibuatOlehId: aktor.id,
         diubahOlehId: aktor.id,
       },
@@ -263,22 +266,28 @@ export async function bacaTtd(id: string, hak: HakForm): Promise<{ png: Uint8Arr
 
 /* ---------------------------------------------------------------- simpan */
 
+/** Isi isian hanya bisa diubah selama DRAF. */
+function jagaDraf(row: Pick<FormRmIsian, "status">): void {
+  if (statusDari(row) === "DRAF") return;
+  throw new BusinessRuleError(
+    row.status === "FINAL"
+      ? "Isian sudah FINAL. Buka untuk koreksi lebih dulu."
+      : "Isian sudah dibatalkan dan tidak bisa diubah.",
+  );
+}
+
+const ukuranJson = (v: unknown) => new TextEncoder().encode(JSON.stringify(v)).byteLength;
+
 export async function simpanIsian(id: string, input: SimpanIsianInput, aktor: AktorForm): Promise<IsianForm> {
   const row = await cariIsianBoleh(id, aktor.hak, "update");
-  if (statusDari(row) !== "DRAF") {
-    throw new BusinessRuleError(
-      row.status === "FINAL"
-        ? "Isian sudah FINAL. Buka untuk koreksi lebih dulu."
-        : "Isian sudah dibatalkan dan tidak bisa diubah.",
-    );
-  }
+  jagaDraf(row);
   if (row.rev !== input.rev) throw new ConflictError();
   const def = definisiDari(row);
   const sah = def.skema.parse(input.data);
 
   const hasil = await getAppDb().$transaction(async (tx) => {
     const data = await pisahkanTtd(tx, id, def, sah, aktor.id);
-    if (new TextEncoder().encode(JSON.stringify(data)).byteLength > MAKS_DATA_BYTE) throw new PayloadTooLargeError();
+    if (ukuranJson(data) > MAKS_DATA_BYTE) throw new PayloadTooLargeError();
     const n = await tx.formRmIsian.updateMany({
       where: { id, rev: input.rev, status: "DRAF" },
       data: { data: data as Prisma.InputJsonValue, rev: input.rev + 1, diubahOlehId: aktor.id },
@@ -291,6 +300,93 @@ export async function simpanIsian(id: string, input: SimpanIsianInput, aktor: Ak
 
   await auditIsian(aktor, "simpan", hasil);
   return keDto(hasil);
+}
+
+/* ----------------------------------------------------- muat ulang SIMRS */
+
+/** Nilai SIMRS terkini untuk isian (identitas dibaca ulang dari SIMGOS). */
+async function isiSimrsTerkini(def: DefinisiForm, nopen: string) {
+  const header = await getFormRmHeader(nopen);
+  if (!header) throw new BusinessRuleError("Pendaftaran pasien ini tidak lagi aktif di SIMRS");
+  return isiOtomatis(def, nopen, header);
+}
+
+/**
+ * Perbandingan nilai isian dengan nilai SIMRS terkini per bagian (PRD §6.4
+ * butir 3). Hanya untuk isian DRAF & pengguna yang boleh mengubahnya.
+ */
+export async function bandingkanSimrs(id: string, aktor: AktorForm): Promise<BandingSimrs> {
+  const row = await cariIsianBoleh(id, aktor.hak, "update");
+  jagaDraf(row);
+  const def = definisiDari(row);
+  const segar = await isiSimrsTerkini(def, row.nopen);
+  await auditIsian(aktor, "banding-simrs", row);
+  return {
+    rev: row.rev,
+    bagian: def.simrs.map((b) => ({
+      id: b.id,
+      judul: b.judul,
+      kolom: b.kolom.map((k) => {
+        const s = Object.hasOwn(segar.asal, k.path) ? segar.asal[k.path] : undefined;
+        const sekarang = ambilPath(row.data, k.path) ?? null;
+        return {
+          path: k.path,
+          label: k.label,
+          sekarang,
+          simrs: s ? s.nilai : null,
+          sama: s ? samaNilai(sekarang, s.nilai) : false,
+          status: s ? "ada" : segar.status[k.sumber] === "gagal" ? "gagal" : "kosong",
+          episodeIgd: s?.nopen ?? null,
+        };
+      }),
+    })),
+  };
+}
+
+/**
+ * Terapkan nilai SIMRS TERKINI ke kolom terpilih (diambil ulang di server —
+ * klien tak pernah mengirim nilai SIMRS sehingga tanda asal tak bisa dipalsu).
+ * Kolom tanpa nilai SIMRS dilewati. rev naik; asal kolom diperbarui.
+ */
+export async function terapkanSimrs(
+  id: string,
+  input: TerapkanSimrsInput,
+  aktor: AktorForm,
+): Promise<{ isian: IsianForm; diterapkan: string[] }> {
+  const row = await cariIsianBoleh(id, aktor.hak, "update");
+  jagaDraf(row);
+  if (row.rev !== input.rev) throw new ConflictError();
+  const def = definisiDari(row);
+  const dikenal = new Set(def.simrs.flatMap((b) => b.kolom.map((k) => k.path)));
+  const asing = input.kolom.filter((p) => !dikenal.has(p));
+  if (asing.length > 0) throw new ValidationError({ kolom: `Kolom tidak dapat diisi dari SIMRS: ${asing.slice(0, 5).join(", ")}` });
+
+  const segar = await isiSimrsTerkini(def, row.nopen);
+  const data = structuredClone(row.data) as Record<string, unknown>;
+  const pilih = [...new Set(input.kolom)].filter(
+    (p) => Object.hasOwn(segar.asal, p) && pasangPath(data, p, segar.asal[p].nilai),
+  );
+  if (pilih.length === 0) throw new BusinessRuleError("Data SIMRS untuk kolom yang dipilih tidak tersedia");
+
+  const sah = pangkasTeksPanjang(def.skema, data);
+  if (!sah) throw new BusinessRuleError("Data SIMRS tidak sesuai dengan formulir ini");
+  if (ukuranJson(sah) > MAKS_DATA_BYTE) throw new PayloadTooLargeError();
+  const asal = normalkanAsal(row.asal);
+  for (const p of pilih) asal[p] = segar.asal[p];
+
+  const n = await getAppDb().formRmIsian.updateMany({
+    where: { id, rev: input.rev, status: "DRAF" },
+    data: {
+      data: sah as Prisma.InputJsonValue,
+      asal: asal as Prisma.InputJsonValue,
+      rev: input.rev + 1,
+      diubahOlehId: aktor.id,
+    },
+  });
+  if (n.count === 0) throw new ConflictError();
+  const hasil = await cariIsian(id);
+  await auditIsian(aktor, "muat-ulang-simrs", hasil);
+  return { isian: keDto(hasil), diterapkan: pilih };
 }
 
 /* --------------------------------------------------------------- transisi */
