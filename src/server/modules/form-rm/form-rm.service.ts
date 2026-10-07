@@ -1,8 +1,6 @@
 import "server-only";
 import { isSimgosConfigured } from "@/server/lib/env";
 import { hitungUmur } from "@/lib/format";
-import { queryKunjunganRange } from "@/server/modules/pelayanan/pelayanan.dal";
-import { mapKunjunganPelayanan } from "@/server/modules/pelayanan/pelayanan.mapper";
 import {
   queryFormRmHeader,
   queryRingkasanHeader,
@@ -17,26 +15,7 @@ import {
   matchPendidikan,
   matchPerkawinan,
 } from "@/features/form-rm/ringkasan.constants";
-import { kelengkapanDari } from "@/features/form-rm/kelengkapan";
-import { isianAktifPerNopen } from "./isian.cari";
-import type {
-  FormRmHeader,
-  FormRmListResult,
-  FormRmPatient,
-  RingkasanPrefill,
-  TriasePrefill,
-  TriaseSimrs,
-} from "./form-rm.types";
-
-const PAGE_SIZE = 12;
-
-export type FormRmListArgs = {
-  from: string;
-  toExclusive: string;
-  ruanganId?: string;
-  search?: string;
-  page: number;
-};
+import type { FormRmHeader, RingkasanPrefill, TriasePrefill, TriaseSimrs } from "./form-rm.types";
 
 function toIso(v: Date | string | null): string | null {
   if (v == null) return null;
@@ -44,73 +23,18 @@ function toIso(v: Date | string | null): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-/**
- * Daftar pasien target Form RM = kunjungan **IGD** (baru masuk / masih dirawat)
- * pada rentang tanggal. READ-ONLY (SIMGOS). Non-final ikut tampil karena form RM
- * diisi di AWAL kunjungan. Pencarian nama/No.RM/ruang; paginasi server-side.
- */
-export async function getFormRmList(a: FormRmListArgs): Promise<FormRmListResult> {
-  if (!isSimgosConfigured()) {
-    return {
-      data: [],
-      meta: { page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 1 },
-      total: 0,
-      lengkapCount: 0,
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
-  const rows = await queryKunjunganRange({
-    from: a.from,
-    to: a.toExclusive,
-    ruanganId: a.ruanganId,
-  });
-
-  const igd: Omit<FormRmPatient, "kelengkapan">[] = rows
-    .map(mapKunjunganPelayanan)
-    .filter((it) => it.kategori === "IGD")
-    .map((it) => ({
-      nopen: it.nopen,
-      nomor: it.nomor,
-      norm: it.norm,
-      nama: it.nama,
-      jenisKelamin: it.jenisKelamin,
-      umur: it.umur,
-      kategori: it.kategori,
-      ruang: it.ruang,
-      masuk: it.masuk,
-      keluar: it.keluar,
-    }));
-
-  const q = a.search?.trim().toLowerCase();
-  const searched = q
-    ? igd.filter((it) => `${it.nama} ${it.norm} ${it.ruang}`.toLowerCase().includes(q))
-    : igd;
-
-  // Kelengkapan form RM (isian aktif di reporthub) untuk seluruh hasil filter →
-  // penanda per kartu + ringkasan "lengkap" akurat lintas halaman. Satu query batch.
-  const isianMap = await isianAktifPerNopen(searched.map((it) => it.nopen));
-  const enriched: FormRmPatient[] = searched.map((it) => ({
-    ...it,
-    kelengkapan: kelengkapanDari(isianMap.get(it.nopen) ?? {}),
-  }));
-  const lengkapCount = enriched.reduce((n, it) => n + (it.kelengkapan.lengkap ? 1 : 0), 0);
-
-  const total = enriched.length;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const page = Math.min(Math.max(1, a.page), totalPages);
-  const start = (page - 1) * PAGE_SIZE;
-
-  return {
-    data: enriched.slice(start, start + PAGE_SIZE),
-    meta: { page, pageSize: PAGE_SIZE, total, totalPages },
-    total,
-    lengkapCount,
-    updatedAt: new Date().toISOString(),
-  };
+/** DATETIME adapter (jam dinding di field UTC) → tanggal lokal; null bila tak valid. */
+function tanggalDinding(v: Date | string | null): Date | null {
+  if (v == null) return null;
+  const d = v instanceof Date ? v : new Date(v);
+  return Number.isNaN(d.getTime()) ? null : new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 
-/** Header identitas pasien untuk kepala formulir. Null bila NOPEN tak ditemukan. */
+/**
+ * Header identitas pasien untuk kepala formulir. Umur dihitung pada tanggal
+ * masuk episode (umur saat dilayani, bukan saat dicetak). Null bila NOPEN tak
+ * ditemukan.
+ */
 export async function getFormRmHeader(nopen: string): Promise<FormRmHeader | null> {
   if (!isSimgosConfigured()) return null;
   const h = await queryFormRmHeader(nopen);
@@ -129,7 +53,7 @@ export async function getFormRmHeader(nopen: string): Promise<FormRmHeader | nul
     nama: h.NAMA?.trim() || "—",
     jenisKelamin: jk === 1 ? "Laki-Laki" : jk === 2 ? "Perempuan" : "—",
     tanggalLahir: toIso(h.TANGGAL_LAHIR),
-    umur: hitungUmur(lahir && !Number.isNaN(lahir.getTime()) ? lahir : null),
+    umur: hitungUmur(lahir && !Number.isNaN(lahir.getTime()) ? lahir : null, tanggalDinding(h.MASUK) ?? new Date()),
     ruang: h.RUANG?.trim() || "—",
     masuk: toIso(h.MASUK) ?? new Date().toISOString(),
     nik: h.NIK?.trim() || "",

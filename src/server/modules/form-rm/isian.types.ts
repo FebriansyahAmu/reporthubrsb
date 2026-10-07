@@ -3,6 +3,7 @@
  */
 import type { KategoriForm, KodeForm } from "@/features/form-rm/registry";
 import type { AksiIsian, StatusIsian } from "@/features/form-rm/isian.status";
+import type { HakForm } from "@/features/form-rm/hak";
 
 export type IsianForm = {
   id: string;
@@ -48,17 +49,20 @@ export type RiwayatIsian = {
   integritas: { utuh: boolean; masalah: string[] };
 };
 
-/** Izin pengguna atas halaman isian (dihitung server, dipakai UI untuk tombol). */
+/** Izin pengguna atas halaman isian (dihitung server per kategori form, dipakai UI untuk tombol). */
 export type IzinIsian = {
-  /** Simpan draf, finalkan, batalkan draf (`form-rm` update). */
+  /** Simpan draf, finalkan, batalkan draf (update pada kategori form). */
   ubah: boolean;
   /** Buka koreksi / batalkan isian FINAL (`form-rm.kelola` update). */
   kelola: boolean;
-  /** Buat isian baru setelah dibatalkan (`form-rm` create). */
+  /** Buat isian baru setelah dibatalkan (create pada kategori form). */
   buat: boolean;
-  /** Cetak (`form-rm` print). */
+  /** Cetak (print pada kategori form). */
   cetak: boolean;
 };
 
 /** Pelaku aksi (dari sesi) + IP untuk audit. */
 export type Aktor = { id: string; nama: string; ip: string | null };
+
+/** Pelaku + hak per kategori form — wajib untuk setiap baca/tulis isian berdasarkan ID. */
+export type AktorForm = Aktor & { hak: HakForm };

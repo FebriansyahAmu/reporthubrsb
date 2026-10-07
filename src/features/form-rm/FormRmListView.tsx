@@ -14,7 +14,7 @@ import {
   PencilLine,
   RefreshCw,
   Search,
-  Siren,
+  Users,
 } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -29,8 +29,9 @@ import { EmptyState, ErrorState } from "@/components/feedback/States";
 import { cn } from "@/lib/cn";
 import { useDebounce } from "@/lib/useDebounce";
 import { useAsyncData } from "@/lib/useAsyncData";
+import { apiGet } from "@/lib/api-client";
 import { addDays, formatDate, formatDateTime, formatJam, toLocalDateInput } from "@/lib/format";
-import { DEFINISI_FORM } from "@/features/form-rm/registry";
+import type { JenisKunjungan } from "@/features/form-rm/registry";
 import { TAMPILAN_FORM } from "@/features/form-rm/tampilan";
 import type {
   FormRmKelengkapan,
@@ -38,29 +39,40 @@ import type {
   FormRmPatient,
   StatusFormPasien,
 } from "@/server/modules/form-rm/form-rm.types";
-import type { RuanganOption } from "@/server/modules/kunjungan/kunjungan.types";
 
-async function fetchList(args: {
+const LABEL_JENIS: Record<JenisKunjungan, string> = { 1: "Rawat Jalan", 2: "IGD", 3: "Rawat Inap" };
+const NADA_JENIS: Record<JenisKunjungan, "neutral" | "warning" | "brand"> = { 1: "neutral", 2: "warning", 3: "brand" };
+
+/** Opsi ruangan + jenis kunjungannya (untuk menyaring ruangan per jenis). */
+export type RuanganJenis = { id: string; nama: string; jenis: JenisKunjungan };
+
+function fetchList(args: {
   from: string;
   toExclusive: string;
+  jenis: JenisKunjungan | 0;
   ruanganId: string;
   search: string;
   page: number;
 }): Promise<FormRmListResult> {
   const p = new URLSearchParams({ from: args.from, to: args.toExclusive, page: String(args.page) });
+  if (args.jenis) p.set("jenis", String(args.jenis));
   if (args.ruanganId) p.set("ruangan", args.ruanganId);
   if (args.search) p.set("search", args.search);
-  const res = await fetch(`/api/form-rm/list?${p.toString()}`);
-  if (!res.ok) throw new Error("Gagal memuat data");
-  const json = (await res.json()) as { data: FormRmListResult };
-  return json.data;
+  return apiGet<FormRmListResult>(`/api/form-rm/list?${p.toString()}`);
 }
 
+/**
+ * Daftar per pasien (alur pasien lebih dulu, PRD §6.2): episode sasaran form
+ * yang boleh dilihat, masuk dalam rentang, dengan kelengkapan form wajibnya.
+ */
 export function FormRmListView({
   ruanganOptions,
+  jenisOptions,
   nowIso,
 }: {
-  ruanganOptions: RuanganOption[];
+  ruanganOptions: RuanganJenis[];
+  /** Jenis kunjungan sasaran form yang boleh dilihat (mis. IGD & Rawat Inap). */
+  jenisOptions: JenisKunjungan[];
   nowIso: string;
 }) {
   const today = useMemo(() => toLocalDateInput(new Date(nowIso)), [nowIso]);
@@ -68,6 +80,7 @@ export function FormRmListView({
 
   const [from, setFrom] = useState(weekAgo);
   const [to, setTo] = useState(today);
+  const [jenis, setJenis] = useState<JenisKunjungan | 0>(0);
   const [ruanganId, setRuanganId] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(1);
@@ -78,7 +91,7 @@ export function FormRmListView({
     [to],
   );
 
-  const filterKey = `${from}|${toExclusive}|${ruanganId}|${search}`;
+  const filterKey = `${from}|${toExclusive}|${jenis}|${ruanganId}|${search}`;
   const [prevKey, setPrevKey] = useState(filterKey);
   if (prevKey !== filterKey) {
     setPrevKey(filterKey);
@@ -86,24 +99,27 @@ export function FormRmListView({
   }
 
   const { result, loading, error, reload } = useAsyncData<FormRmListResult>(
-    () => fetchList({ from, toExclusive, ruanganId, search, page }),
-    [from, toExclusive, ruanganId, search, page],
+    () => fetchList({ from, toExclusive, jenis, ruanganId, search, page }),
+    [from, toExclusive, jenis, ruanganId, search, page],
   );
 
   const meta = result?.meta ?? null;
   const updatedAt = result?.updatedAt ?? null;
   const items = result?.data ?? [];
   const rangeInvalid = from > to;
-  const lengkapCount = result?.lengkapCount ?? 0;
-  const belumLengkap = Math.max(0, (meta?.total ?? 0) - lengkapCount);
 
-  // Opsi ruangan IGD (datar) untuk <Select>: "Semua ruangan IGD" + daftar ruangan.
+  const pilihJenis = (j: JenisKunjungan | 0) => {
+    setJenis(j);
+    // Ruangan terpilih harus milik jenis yang dipilih.
+    if (j && ruanganOptions.find((r) => r.id === ruanganId)?.jenis !== j) setRuanganId("");
+  };
+
   const ruanganSelectOptions = useMemo<SelectOption[]>(
     () => [
-      { value: "", label: "Semua ruangan IGD" },
-      ...ruanganOptions.map((r) => ({ value: r.id, label: r.nama })),
+      { value: "", label: "Semua ruangan" },
+      ...ruanganOptions.filter((r) => !jenis || r.jenis === jenis).map((r) => ({ value: r.id, label: r.nama })),
     ],
-    [ruanganOptions],
+    [ruanganOptions, jenis],
   );
 
   return (
@@ -128,23 +144,17 @@ export function FormRmListView({
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard
-          label="Pasien IGD"
-          value={meta?.total ?? 0}
-          icon={Siren}
-          tone="accent"
-          loading={loading}
-        />
+        <StatCard label="Pasien" value={meta?.total ?? 0} icon={Users} tone="accent" loading={loading} />
         <StatCard
           label="RM Lengkap (Final)"
-          value={lengkapCount}
+          value={result?.lengkapCount ?? 0}
           icon={ClipboardCheck}
           tone="success"
           loading={loading}
         />
         <StatCard
           label="Belum Lengkap"
-          value={belumLengkap}
+          value={result?.belumLengkapCount ?? 0}
           icon={ClipboardList}
           tone="warning"
           loading={loading}
@@ -166,20 +176,44 @@ export function FormRmListView({
             <InputWithIcon
               id="cari"
               icon={<Search className="size-4" />}
-              placeholder="Nama / No. RM / ruang"
+              placeholder="Nama / No. RM / NOPEN / ruang"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
             />
           </div>
+          {jenisOptions.length > 1 && (
+            <div>
+              <span className="mb-1.5 block text-sm font-medium text-fg">Jenis kunjungan</span>
+              <div role="group" aria-label="Jenis kunjungan" className="flex flex-wrap gap-1.5">
+                {([0, ...jenisOptions] as const).map((j) => (
+                  <button
+                    key={j}
+                    type="button"
+                    aria-pressed={jenis === j}
+                    onClick={() => pilihJenis(j)}
+                    className={cn(
+                      "inline-flex min-h-10 items-center rounded-full border px-3.5 text-[13px] font-medium transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring",
+                      jenis === j
+                        ? "border-brand bg-brand-soft text-brand-soft-fg"
+                        : "border-border bg-surface text-fg-muted hover:bg-surface-2 hover:text-fg",
+                    )}
+                  >
+                    {j === 0 ? "Semua" : LABEL_JENIS[j]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {ruanganOptions.length > 0 && (
-            <div className="lg:col-span-3">
-              <Label htmlFor="ruangan">Ruangan IGD</Label>
+            <div className={jenisOptions.length > 1 ? "lg:col-span-2" : "lg:col-span-3"}>
+              <Label htmlFor="ruangan">Ruangan</Label>
               <Select
                 id="ruangan"
                 value={ruanganId}
                 onChange={setRuanganId}
                 options={ruanganSelectOptions}
-                placeholder="Semua ruangan IGD"
+                placeholder="Semua ruangan"
               />
             </div>
           )}
@@ -191,10 +225,10 @@ export function FormRmListView({
 
       <Card className="overflow-hidden">
         <CardHeader
-          title="Pasien IGD"
+          title="Pasien"
           subtitle={
             !loading && meta
-              ? `${meta.total} pasien · rentang ${formatDate(from)} – ${formatDate(to)}`
+              ? `${meta.total} episode · masuk ${formatDate(from)} – ${formatDate(to)}`
               : undefined
           }
         />
@@ -204,7 +238,7 @@ export function FormRmListView({
           ) : error ? (
             <ErrorState onRetry={reload} />
           ) : items.length === 0 ? (
-            <EmptyState title="Tidak ada pasien IGD" description="Tidak ada kunjungan IGD untuk filter ini." />
+            <EmptyState title="Tidak ada pasien" description="Tidak ada kunjungan untuk filter ini." />
           ) : (
             <AnimatePresence mode="wait">
               <motion.div
@@ -215,7 +249,7 @@ export function FormRmListView({
                 className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
               >
                 {items.map((it) => (
-                  <PatientCard key={it.nomor} item={it} />
+                  <PatientCard key={it.nopen} item={it} />
                 ))}
               </motion.div>
             </AnimatePresence>
@@ -235,8 +269,7 @@ const cardVariants: Variants = {
 };
 
 function PatientCard({ item }: { item: FormRmPatient }) {
-  const href = `/form-rm/${item.nopen}`;
-  const berjalan = item.keluar == null;
+  const href = `/form-rm/pasien/${item.nopen}`;
   return (
     <motion.div
       variants={cardVariants}
@@ -255,14 +288,19 @@ function PatientCard({ item }: { item: FormRmPatient }) {
               {item.umur ? ` · ${item.umur}` : ""}
             </p>
           </div>
-          <Badge tone={berjalan ? "warning" : "brand"} dot>
-            {berjalan ? "Dirawat" : "Selesai"}
+          <Badge tone={item.dirawat ? "success" : "neutral"} dot>
+            {item.dirawat ? "Dilayani" : "Keluar"}
           </Badge>
         </div>
         <div className="mt-3 space-y-1.5 text-[13px]">
           <div className="flex items-start gap-2 text-fg-muted">
             <DoorOpen className="mt-0.5 size-3.5 shrink-0 text-fg-subtle" />
-            <span className="min-w-0 text-fg">{item.ruang}</span>
+            <span className="min-w-0 text-fg">
+              <Badge tone={NADA_JENIS[item.jenis]} className="mr-1.5 align-middle">
+                {LABEL_JENIS[item.jenis]}
+              </Badge>
+              {item.ruang}
+            </span>
           </div>
           <div className="flex items-start gap-2 text-fg-muted">
             <Clock className="mt-0.5 size-3.5 shrink-0 text-fg-subtle" />
@@ -278,13 +316,8 @@ function PatientCard({ item }: { item: FormRmPatient }) {
           <KelengkapanBadge k={item.kelengkapan} />
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {DEFINISI_FORM.map((d) => (
-            <FormChip
-              key={d.kode}
-              kode={d.kode}
-              nama={TAMPILAN_FORM[d.kode].singkat}
-              status={item.kelengkapan.status[d.kode]}
-            />
+          {item.kelengkapan.formulir.map((f) => (
+            <FormChip key={f.kode} kode={f.kode} nama={TAMPILAN_FORM[f.kode].singkat} status={f.status} wajib={f.wajib} />
           ))}
         </div>
       </div>
@@ -292,7 +325,7 @@ function PatientCard({ item }: { item: FormRmPatient }) {
       <Link
         href={href}
         prefetch={false}
-        className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-brand bg-brand-soft px-3 py-2 text-sm font-medium text-brand-soft-fg transition-colors hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+        className="mt-4 inline-flex min-h-10 items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-brand bg-brand-soft px-3 py-2 text-sm font-medium text-brand-soft-fg transition-colors hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
       >
         {item.kelengkapan.lengkap ? "Lihat Form RM" : "Isi Form RM"}
         <ArrowRight className="size-4" />
@@ -301,8 +334,9 @@ function PatientCard({ item }: { item: FormRmPatient }) {
   );
 }
 
-/** Ringkasan status kelengkapan RM (teks + warna + ikon — tak hanya warna). Lengkap = semua FINAL. */
+/** Ringkasan kelengkapan form WAJIB (teks + warna + ikon — tak hanya warna). */
 function KelengkapanBadge({ k }: { k: FormRmKelengkapan }) {
+  if (k.total === 0) return <Badge tone="neutral">Tidak ada form wajib</Badge>;
   if (k.lengkap) {
     return (
       <Badge tone="success">
@@ -324,12 +358,16 @@ const CHIP: Record<StatusFormPasien, { kelas: string; teks: string }> = {
   KOSONG: { kelas: "border-dashed border-border bg-surface-2/60 text-fg-subtle", teks: "belum diisi" },
 };
 
-/** Chip satu form RM: final (centang) / draf (pensil) / belum (garis putus) — ikon + teks, tak hanya warna. */
-function FormChip({ kode, nama, status }: { kode: string; nama: string; status: StatusFormPasien }) {
+/** Chip satu form: final (centang) / draf (pensil) / belum (garis putus); form tak wajib dipudarkan. */
+function FormChip({ kode, nama, status, wajib }: { kode: string; nama: string; status: StatusFormPasien; wajib: boolean }) {
   return (
     <span
-      title={`${kode} · ${nama} — ${CHIP[status].teks}`}
-      className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium", CHIP[status].kelas)}
+      title={`${kode} · ${nama} — ${CHIP[status].teks}${wajib ? "" : " (tidak wajib untuk episode ini)"}`}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+        CHIP[status].kelas,
+        !wajib && "opacity-60",
+      )}
     >
       {status === "FINAL" ? (
         <Check className="size-3" />
@@ -339,6 +377,7 @@ function FormChip({ kode, nama, status }: { kode: string; nama: string; status: 
         <span className="size-1.5 rounded-full bg-fg-subtle/50" aria-hidden />
       )}
       {kode}
+      {!wajib && <span className="sr-only">(tidak wajib)</span>}
     </span>
   );
 }

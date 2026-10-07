@@ -3,47 +3,68 @@
  * reporthub). Type-only → aman diimpor client & server.
  */
 import type { PageMeta } from "@/lib/types";
-import type { KodeForm } from "@/features/form-rm/registry";
-import type { KategoriKunjungan } from "@/server/modules/pelayanan/pelayanan.types";
+import type { JenisKunjungan, KodeForm } from "@/features/form-rm/registry";
+import type { RingkasIsian } from "./isian.types";
 
 /** Status satu form untuk pasien: isian aktif DRAF/FINAL, atau belum ada. */
 export type StatusFormPasien = "KOSONG" | "DRAF" | "FINAL";
 
-/** Kelengkapan form RM pasien (semua form di registri). */
+/** Kelengkapan form RM satu episode, atas form yang boleh dilihat pengguna. */
 export type FormRmKelengkapan = {
-  status: Record<KodeForm, StatusFormPasien>;
-  /** Jumlah form yang punya isian aktif (DRAF/FINAL). */
+  /** Status tiap form (urutan registri); `wajib` = `wajibUntuk` cocok dengan jenis kunjungan episode. */
+  formulir: { kode: KodeForm; status: StatusFormPasien; wajib: boolean }[];
+  /** Form WAJIB yang punya isian aktif (DRAF/FINAL). */
   terisi: number;
-  /** Jumlah form yang sudah FINAL. */
+  /** Form WAJIB yang sudah FINAL. */
   final: number;
-  /** Total form di registri. */
+  /** Jumlah form wajib. */
   total: number;
-  /** true bila semua form sudah FINAL. */
+  /** Ada form wajib dan semuanya FINAL. */
   lengkap: boolean;
 };
 
-/** Satu pasien di daftar Form RM (target admisi — biasanya kunjungan IGD). */
-export type FormRmPatient = {
+/** Satu episode (pendaftaran) sasaran form, diwakili leg sasaran terbarunya. */
+export type EpisodeSasaran = {
   nopen: string;
-  nomor: string;
   norm: string;
   nama: string;
   jenisKelamin: string;
   umur: string | null;
-  kategori: KategoriKunjungan;
+  /** Ruang & jenis leg terbaru yang cocok sasaran. */
   ruang: string;
+  ruanganId: string;
+  jenis: JenisKunjungan;
+  /** "YYYY-MM-DDTHH:mm:ss" jam dinding. */
   masuk: string;
   keluar: string | null;
-  /** Status kelengkapan form RM pasien ini (dari reporthub). */
-  kelengkapan: FormRmKelengkapan;
+  /** Masih ada leg sasaran yang belum keluar. */
+  dirawat: boolean;
 };
+
+/** Satu episode di daftar per pasien, beserta kelengkapan form RM-nya (reporthub). */
+export type FormRmPatient = EpisodeSasaran & { kelengkapan: FormRmKelengkapan };
 
 export type FormRmListResult = {
   data: FormRmPatient[];
   meta: PageMeta;
   total: number;
-  /** Jumlah pasien (dalam filter) yang form RM-nya sudah lengkap. */
+  /** Episode (dalam filter) yang semua form wajibnya FINAL. */
   lengkapCount: number;
+  /** Episode yang punya form wajib tetapi belum semuanya FINAL. */
+  belumLengkapCount: number;
+  updatedAt: string;
+};
+
+/** Satu baris pemilih pasien sebuah form: episode + isian aktif form itu (bila ada). */
+export type PasienSasaran = EpisodeSasaran & { isian: RingkasIsian | null };
+
+export type DaftarPasienForm = {
+  data: PasienSasaran[];
+  meta: PageMeta;
+  /** `aktif` = daftar bawaan sasaran form; `cari` = hasil pencarian No.RM / nama / NIK. */
+  mode: "aktif" | "cari";
+  /** Hitungan status isian atas seluruh hasil (sebelum saring status). */
+  ringkas: Record<StatusFormPasien, number>;
   updatedAt: string;
 };
 

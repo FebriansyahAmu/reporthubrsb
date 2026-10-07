@@ -1,6 +1,7 @@
 import "server-only";
 import { getSimgos } from "@/server/db/simgos.client";
 import { SIMGOS_DB } from "@/server/db/simgos-databases";
+import type { KunciCariPasien } from "@/features/form-rm/cari";
 
 /** Baris header identitas pasien untuk kepala formulir RM (READ-ONLY). */
 export type FormRmHeaderRow = {
@@ -44,6 +45,146 @@ export async function queryFormRmHeader(nopen: string): Promise<FormRmHeaderRow 
 
   const rows = await getSimgos().$queryRawUnsafe<FormRmHeaderRow[]>(sql, nopen);
   return rows[0] ?? null;
+}
+
+// --- Pasien sasaran form (pemilih pasien & daftar per pasien) ---------------
+
+const CAP = "/*+ MAX_EXECUTION_TIME(5000) */";
+
+/** Satu leg kunjungan sasaran Form RM. Waktu = string jam dinding (bebas TZ adapter). */
+export type LegSasaranRow = {
+  NOMOR: string;
+  NOPEN: string;
+  RUANGAN_ID: string;
+  RUANG: string | null;
+  JENIS_KUNJUNGAN: number | string;
+  /** "YYYY-MM-DDTHH:mm:ss" */
+  MASUK: string;
+  KELUAR: string | null;
+  NORM: string | number | bigint;
+  NAMA: string | null;
+  JENIS_KELAMIN: number | string | null;
+  /** "YYYY-MM-DD" */
+  TANGGAL_LAHIR: string | null;
+};
+
+/** `jenis` hanya dari registri (1/2/3) — tetap divalidasi agar tak pernah jadi celah. */
+function klausaJenis(jenis: readonly number[]): { sql: string; params: number[] } {
+  const sah = [...new Set(jenis)].filter((j) => j === 1 || j === 2 || j === 3);
+  if (sah.length === 0) throw new Error("Jenis kunjungan sasaran kosong");
+  return { sql: `r.JENIS_KUNJUNGAN IN (${sah.map(() => "?").join(", ")})`, params: sah };
+}
+
+/** Leg ruangan layanan (ID 9 digit) dari pendaftaran aktif; leg batal dibuang. */
+function sqlLeg(jenisSql: string, syarat: string, batas: number): string {
+  const P = SIMGOS_DB.PENDAFTARAN;
+  const M = SIMGOS_DB.MASTER;
+  return `
+    SELECT ${CAP} k.NOMOR, k.NOPEN, r.ID AS RUANGAN_ID, r.DESKRIPSI AS RUANG, r.JENIS_KUNJUNGAN,
+           DATE_FORMAT(k.MASUK, '%Y-%m-%dT%H:%i:%s') AS MASUK,
+           DATE_FORMAT(k.KELUAR, '%Y-%m-%dT%H:%i:%s') AS KELUAR,
+           ps.NORM, ps.NAMA, ps.JENIS_KELAMIN,
+           DATE_FORMAT(ps.TANGGAL_LAHIR, '%Y-%m-%d') AS TANGGAL_LAHIR
+    FROM ${P}.kunjungan k
+    JOIN ${M}.ruangan r ON r.ID = k.RUANGAN
+    JOIN ${P}.pendaftaran pp ON pp.NOMOR = k.NOPEN
+    JOIN ${M}.pasien ps ON ps.NORM = pp.NORM
+    WHERE CHAR_LENGTH(r.ID) = 9 AND ${jenisSql} AND pp.STATUS = 1 AND k.STATUS <> 0
+      AND ${syarat}
+    ORDER BY k.MASUK DESC, k.NOMOR DESC
+    LIMIT ${batas}`;
+}
+
+/** Batas bawah leg "masih dilayani": leg yang tak pernah ditutup di SIMGOS tak muncul selamanya. */
+const AKTIF_MAKS_HARI = 90;
+
+/**
+ * Daftar bawaan pemilih pasien: leg sasaran yang masih dilayani (KELUAR NULL,
+ * ≤ 90 hari) atau masuk dalam `jendelaJam` terakhir. READ-ONLY.
+ */
+export async function queryLegAktif(a: {
+  jenis: readonly number[];
+  jendelaJam: number;
+  ruanganId?: string;
+}): Promise<LegSasaranRow[]> {
+  const j = klausaJenis(a.jenis);
+  const jam = Math.min(Math.max(1, Math.trunc(a.jendelaJam)), 24 * AKTIF_MAKS_HARI);
+  let syarat = `k.MASUK >= NOW() - INTERVAL ${AKTIF_MAKS_HARI} DAY AND (k.KELUAR IS NULL OR k.MASUK >= NOW() - INTERVAL ? HOUR)`;
+  const params: unknown[] = [...j.params, jam];
+  if (a.ruanganId) {
+    syarat += " AND k.RUANGAN = ?";
+    params.push(a.ruanganId);
+  }
+  return getSimgos().$queryRawUnsafe<LegSasaranRow[]>(sqlLeg(j.sql, syarat, 1000), ...params);
+}
+
+/** Leg sasaran yang MASUK dalam rentang [from, toExclusive) — daftar per pasien. READ-ONLY. */
+export async function queryLegRentang(a: {
+  jenis: readonly number[];
+  from: string;
+  toExclusive: string;
+  ruanganId?: string;
+}): Promise<LegSasaranRow[]> {
+  const j = klausaJenis(a.jenis);
+  let syarat = "k.MASUK >= ? AND k.MASUK < ?";
+  const params: unknown[] = [...j.params, a.from, a.toExclusive];
+  if (a.ruanganId) {
+    syarat += " AND k.RUANGAN = ?";
+    params.push(a.ruanganId);
+  }
+  return getSimgos().$queryRawUnsafe<LegSasaranRow[]>(sqlLeg(j.sql, syarat, 1000), ...params);
+}
+
+const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+/**
+ * NORM pasien yang cocok dengan kunci pencarian (maks 50). Angka dicocokkan
+ * persis ke No.RM, NIK (kartu identitas KTP), atau NOPEN — masing-masing lewat
+ * indeksnya; nama = LIKE penggalan (indeks NAMA, dibatasi waktu). READ-ONLY.
+ */
+export async function queryNormCari(kunci: KunciCariPasien): Promise<string[]> {
+  const P = SIMGOS_DB.PENDAFTARAN;
+  const M = SIMGOS_DB.MASTER;
+  let sql: string;
+  let params: unknown[];
+  if ("angka" in kunci) {
+    // No.RM berupa INT: hanya dicocokkan bila panjangnya masuk akal (NIK 16 digit tak pernah jadi NORM).
+    const normSql = kunci.angka.length <= 10 ? `SELECT ps.NORM FROM ${M}.pasien ps WHERE ps.NORM = ? UNION ` : "";
+    sql = `
+      SELECT ${CAP} x.NORM FROM (
+        ${normSql}SELECT ki.NORM FROM ${M}.kartu_identitas_pasien ki WHERE ki.NOMOR = ? AND ki.JENIS = 1
+        UNION SELECT pp.NORM FROM ${P}.pendaftaran pp WHERE pp.NOMOR = ?
+      ) x LIMIT 50`;
+    params = kunci.angka.length <= 10 ? [Number(kunci.angka), kunci.angka, kunci.angka] : [kunci.angka, kunci.angka];
+  } else {
+    sql = `SELECT ${CAP} ps.NORM FROM ${M}.pasien ps WHERE ps.NAMA LIKE ? ORDER BY ps.NAMA LIMIT 50`;
+    params = [`%${escapeLike(kunci.nama)}%`];
+  }
+  const rows = await getSimgos().$queryRawUnsafe<{ NORM: string | number | bigint }[]>(sql, ...params);
+  return [...new Set(rows.map((r) => String(r.NORM)))];
+}
+
+/** Leg sasaran milik pasien tertentu (terbaru dulu, maks 300). READ-ONLY. */
+export async function queryLegPasien(a: { jenis: readonly number[]; norm: readonly string[] }): Promise<LegSasaranRow[]> {
+  if (a.norm.length === 0) return [];
+  const j = klausaJenis(a.jenis);
+  const syarat = `pp.NORM IN (${a.norm.map(() => "?").join(", ")})`;
+  return getSimgos().$queryRawUnsafe<LegSasaranRow[]>(sqlLeg(j.sql, syarat, 300), ...j.params, ...a.norm.map(Number));
+}
+
+/**
+ * Jenis kunjungan (1/2/3) seluruh leg aktif tiap episode — penentu form wajib
+ * (`wajibUntuk`), termasuk leg di luar rentang daftar. READ-ONLY.
+ */
+export async function queryJenisEpisode(nopens: readonly string[]): Promise<{ NOPEN: string; JENIS_KUNJUNGAN: number | string }[]> {
+  if (nopens.length === 0) return [];
+  const sql = `
+    SELECT ${CAP} DISTINCT k.NOPEN, r.JENIS_KUNJUNGAN
+    FROM ${SIMGOS_DB.PENDAFTARAN}.kunjungan k
+    JOIN ${SIMGOS_DB.MASTER}.ruangan r ON r.ID = k.RUANGAN
+    WHERE k.NOPEN IN (${nopens.map(() => "?").join(", ")}) AND k.STATUS <> 0
+      AND CHAR_LENGTH(r.ID) = 9 AND r.JENIS_KUNJUNGAN IN (1, 2, 3)`;
+  return getSimgos().$queryRawUnsafe(sql, ...nopens);
 }
 
 /** Susun nama lengkap pegawai + gelar (alias `pg`). */

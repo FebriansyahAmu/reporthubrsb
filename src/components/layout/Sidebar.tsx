@@ -24,6 +24,11 @@ export function Sidebar({
   const activeKey = workspaceKeyForPath(pathname);
   const active = modules.find((w) => w.key === activeKey) ?? modules[0] ?? null;
   const ActiveIcon = active?.icon;
+  // Item bersarang (mis. /form-rm & /form-rm/pasien): hanya prefix terpanjang yang aktif.
+  const activeHref =
+    active?.items
+      .filter((it) => pathname === it.href || pathname.startsWith(it.href + "/"))
+      .reduce<string | null>((best, it) => (!best || it.href.length > best.length ? it.href : best), null) ?? null;
 
   return (
     <div className="flex h-full flex-col bg-surface">
@@ -62,8 +67,7 @@ export function Sidebar({
             </p>
             <ul className="space-y-1">
               {active.items.map((item) => {
-                const isActive =
-                  pathname === item.href || pathname.startsWith(item.href + "/");
+                const isActive = item.href === activeHref;
                 const Icon = item.icon;
                 return (
                   <li key={item.href}>

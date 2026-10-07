@@ -36,6 +36,13 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
+import {
+  DAFTAR_KATEGORI,
+  KATEGORI_FORM,
+  MODUL_FORM_RM,
+  MODUL_KELOLA_FORM_RM,
+  modulKategori,
+} from "@/features/form-rm/kategori";
 
 export type ModuleAction = "view" | "create" | "update" | "delete" | "print";
 
@@ -159,19 +166,35 @@ export const MODULES: readonly AppModule[] = [
     actions: ["view", "update"],
     order: 44,
   },
+  // Form RM Terpadu (docs/PRD_Form_RM_Terpadu.md §8.4): `form-rm` = SEMUA kategori
+  // (grant lama tetap berlaku); `form-rm.<kategori>` = satu kategori — untuk
+  // membatasi unit hanya pada formulirnya. Izin dicek per kategori form di service.
   {
-    key: "form-rm",
+    key: MODUL_FORM_RM,
     group: "Form RM",
-    label: "Form RM (Admisi)",
-    description: "Isi formulir RM pasien saat pendaftaran",
+    label: "Form RM — Semua Kategori",
+    description:
+      "Seluruh kategori formulir RM (mis. Instalasi RM). Untuk membatasi per unit, berikan modul kategori di bawah sebagai gantinya",
     icon: FileSignature,
     navHref: "/form-rm",
     apiPrefixes: ["/api/form-rm"],
     actions: ["view", "create", "update", "print"],
     order: 50,
   },
+  ...DAFTAR_KATEGORI.map(
+    (k, i): AppModule => ({
+      key: modulKategori(k),
+      group: "Form RM",
+      label: `Form RM — ${KATEGORI_FORM[k].label}`,
+      description: `Formulir kategori ${KATEGORI_FORM[k].label}: lihat, isi, simpan & finalkan, cetak`,
+      icon: KATEGORI_FORM[k].ikon,
+      apiPrefixes: [],
+      actions: ["view", "create", "update", "print"],
+      order: 50 + (i + 1) / 100,
+    }),
+  ),
   {
-    key: "form-rm.kelola",
+    key: MODUL_KELOLA_FORM_RM,
     group: "Form RM",
     label: "Kelola Isian FINAL (Instalasi RM)",
     description: "Buka isian FINAL untuk koreksi atau batalkan isian FINAL (alasan wajib, tercatat di riwayat)",

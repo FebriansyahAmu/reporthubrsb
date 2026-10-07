@@ -2,8 +2,10 @@ import { Card } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 
 /**
- * Fallback saat halaman detail Form RM memuat header pasien (SIMGOS). Kehadiran
+ * Fallback saat profil pasien Form RM memuat header pasien (SIMGOS). Kehadiran
  * loading.tsx membatasi biaya prefetch/navigasi Next.js (hanya shell statis ini).
+ * Rute ini tak pernah `redirect()` / `notFound()` — keduanya jadi meta-tag
+ * berstatus 200 di bawah boundary loading.
  */
 export default function Loading() {
   return (

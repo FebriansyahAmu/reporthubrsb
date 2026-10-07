@@ -9,6 +9,7 @@ import {
   PayloadTooLargeError,
   ServiceUnavailableError,
 } from "@/server/lib/errors";
+import type { AksiForm, HakForm } from "@/features/form-rm/hak";
 import { definisiForm, type DefinisiForm } from "@/features/form-rm/registry";
 import {
   adalahStatusIsian,
@@ -25,13 +26,14 @@ import { isiOtomatis } from "./isian.prefill";
 import { kanonik, periksaRantai, segel, type IsiSegel } from "./isian.segel";
 import type { AksiIsianInput, BuatIsianInput, SimpanIsianInput } from "./isian.schema";
 import { pisahkanTtd, rujukanTtd, sidikTtd, sisipkanTtd } from "./isian.ttd";
-import type { Aktor, IsianForm, RevisiIsian, RiwayatIsian } from "./isian.types";
+import type { AktorForm, IsianForm, RevisiIsian, RiwayatIsian } from "./isian.types";
 
 /**
  * LAYANAN ISIAN FORM RM (PRD §6.3, §8). Semua penulisan memakai update
  * bersyarat pada `rev` (+ status) → tulis bersamaan: satu menang, sisanya 409.
  * Setiap transisi status menulis revisi tersegel HMAC berantai dalam transaksi
  * yang sama. Audit tanpa isi form / nama pasien (hanya id, kode, NOPEN, status).
+ * Setiap akses isian/TTD/riwayat berdasarkan ID dicek hak kategori form-nya.
  */
 
 type Tx = Prisma.TransactionClient;
@@ -99,9 +101,28 @@ function keDto(row: FormRmIsian): IsianForm {
   };
 }
 
+const ISIAN_TAK_ADA = "Isian form tidak ditemukan";
+
 async function cariIsian(id: string, db: Tx = getAppDb()): Promise<FormRmIsian> {
   const row = await db.formRmIsian.findUnique({ where: { id } });
-  if (!row) throw new NotFoundError("Isian form tidak ditemukan");
+  if (!row) throw new NotFoundError(ISIAN_TAK_ADA);
+  return row;
+}
+
+/**
+ * Hak per kategori form atas isian (PRD §10.2). Kategori yang tak boleh dilihat
+ * diperlakukan sama dengan isian yang tak ada (404 seragam → ID isian kategori
+ * lain tak bisa ditebak keberadaannya); boleh lihat tetapi tanpa `aksi` → 403.
+ */
+function jagaKategori(formKode: string, hak: HakForm, aksi: AksiForm): void {
+  const def = definisiForm(formKode);
+  if (!def || !hak.boleh(def.kategori, "view")) throw new NotFoundError(ISIAN_TAK_ADA);
+  if (!hak.boleh(def.kategori, aksi)) throw new ForbiddenError();
+}
+
+async function cariIsianBoleh(id: string, hak: HakForm, aksi: AksiForm): Promise<FormRmIsian> {
+  const row = await cariIsian(id);
+  jagaKategori(row.formKode, hak, aksi);
   return row;
 }
 
@@ -120,10 +141,11 @@ async function cariIsian(id: string, db: Tx = getAppDb()): Promise<FormRmIsian> 
  */
 export async function bukaAtauBuatIsian(
   input: BuatIsianInput,
-  aktor: Aktor,
+  aktor: AktorForm,
 ): Promise<{ isian: IsianForm; baru: boolean }> {
   const def = definisiForm(input.kode);
   if (!def) throw new NotFoundError("Form tidak dikenal");
+  if (!aktor.hak.boleh(def.kategori, "create")) throw new ForbiddenError();
   const db = getAppDb();
   const subjek = input.nopen; // semua form saat ini bercakupan EPISODE
 
@@ -182,8 +204,8 @@ export async function bukaAtauBuatIsian(
 
 /* ------------------------------------------------------------------ baca */
 
-export async function bacaIsian(id: string, aktor: Aktor): Promise<IsianForm> {
-  const row = await cariIsian(id);
+export async function bacaIsian(id: string, aktor: AktorForm): Promise<IsianForm> {
+  const row = await cariIsianBoleh(id, aktor.hak, "view");
   await auditIsian(aktor, "lihat", row);
   return keDto(row);
 }
@@ -211,9 +233,9 @@ export async function identitasIsian(isian: IsianForm): Promise<FormRmHeader> {
  * Isian untuk dokumen cetak: TTD disisipkan sebagai PNG data-URL, ditambah segel
  * revisi terakhir bila isian identik dengan revisi itu (FINAL/BATAL). Diaudit.
  */
-export async function bacaIsianCetak(id: string, aktor: Aktor): Promise<{ isian: IsianForm; segel: string | null }> {
+export async function bacaIsianCetak(id: string, aktor: AktorForm): Promise<{ isian: IsianForm; segel: string | null }> {
   const db = getAppDb();
-  const row = await cariIsian(id);
+  const row = await cariIsianBoleh(id, aktor.hak, "print");
   const def = definisiDari(row);
   const [data, revisi] = await Promise.all([
     sisipkanTtd(db, id, def, row.data as object),
@@ -223,17 +245,26 @@ export async function bacaIsianCetak(id: string, aktor: Aktor): Promise<{ isian:
   return { isian: { ...keDto(row), data }, segel: revisi?.rev === row.rev ? revisi.hash : null };
 }
 
-/** Gambar TTD (PNG ternormalisasi). Izin dicek di API; id = cuid acak. */
-export async function bacaTtd(id: string): Promise<{ png: Uint8Array; sha256: string }> {
-  const row = await getAppDb().formRmTtd.findUnique({ where: { id }, select: { png: true, sha256: true } });
-  if (!row) throw new NotFoundError("Tanda tangan tidak ditemukan");
-  return row;
+/** Gambar TTD (PNG ternormalisasi); hak dicek pada kategori form isian pemiliknya. */
+export async function bacaTtd(id: string, hak: HakForm): Promise<{ png: Uint8Array; sha256: string }> {
+  const row = await getAppDb().formRmTtd.findUnique({
+    where: { id },
+    select: { png: true, sha256: true, isian: { select: { formKode: true } } },
+  });
+  const takAda = new NotFoundError("Tanda tangan tidak ditemukan");
+  if (!row) throw takAda;
+  try {
+    jagaKategori(row.isian.formKode, hak, "view");
+  } catch {
+    throw takAda;
+  }
+  return { png: row.png, sha256: row.sha256 };
 }
 
 /* ---------------------------------------------------------------- simpan */
 
-export async function simpanIsian(id: string, input: SimpanIsianInput, aktor: Aktor): Promise<IsianForm> {
-  const row = await cariIsian(id);
+export async function simpanIsian(id: string, input: SimpanIsianInput, aktor: AktorForm): Promise<IsianForm> {
+  const row = await cariIsianBoleh(id, aktor.hak, "update");
   if (statusDari(row) !== "DRAF") {
     throw new BusinessRuleError(
       row.status === "FINAL"
@@ -271,19 +302,16 @@ const LABEL_AUDIT: Record<AksiIsian, string> = {
 };
 
 /**
- * FINALKAN / BUKA_KOREKSI / BATALKAN. Aksi atas isian FINAL hanya untuk
- * pengelola RM (`bolehKelola`). Finalisasi mensyaratkan `syaratFinal` form.
+ * FINALKAN / BUKA_KOREKSI / BATALKAN (butuh update pada kategori form). Aksi
+ * atas isian FINAL hanya untuk pengelola RM (`hak.kelola`). Finalisasi
+ * mensyaratkan `syaratFinal` form.
  */
-export async function aksiIsian(
-  id: string,
-  input: AksiIsianInput,
-  aktor: Aktor & { bolehKelola: boolean },
-): Promise<IsianForm> {
-  const row = await cariIsian(id);
+export async function aksiIsian(id: string, input: AksiIsianInput, aktor: AktorForm): Promise<IsianForm> {
+  const row = await cariIsianBoleh(id, aktor.hak, "update");
   const status = statusDari(row);
   const ke = statusSetelah(status, input.aksi);
   if (!ke) throw new BusinessRuleError(`Aksi ${input.aksi} tidak berlaku untuk isian berstatus ${status}`);
-  if (perluIzinKelola(status) && !aktor.bolehKelola) {
+  if (perluIzinKelola(status) && !aktor.hak.kelola) {
     throw new ForbiddenError("Hanya pengelola rekam medis yang dapat mengubah isian FINAL");
   }
   if (row.rev !== input.rev) throw new ConflictError();
@@ -361,9 +389,9 @@ export async function aksiIsian(
  * FINAL/BATAL identik dengan revisi terakhirnya (DRAF boleh berbeda — sedang
  * dikoreksi).
  */
-export async function riwayatIsian(id: string): Promise<RiwayatIsian> {
+export async function riwayatIsian(id: string, hak: HakForm): Promise<RiwayatIsian> {
   const db = getAppDb();
-  const row = await cariIsian(id);
+  const row = await cariIsianBoleh(id, hak, "view");
   const def = definisiDari(row);
   const revisi = await db.formRmRevisi.findMany({ where: { isianId: id }, orderBy: { rev: "asc" } });
 

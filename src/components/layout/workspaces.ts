@@ -25,6 +25,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
+import { MODUL_AKSES_FORM_RM, MODUL_FORM_RM } from "@/features/form-rm/kategori";
 
 /**
  * TAKSONOMI MODUL (workspace) — struktur navigasi "per modul".
@@ -177,14 +178,23 @@ export const WORKSPACES: Workspace[] = [
     key: "form-rm",
     label: "Form RM",
     icon: FileSignature,
-    description: "Isi formulir RM pasien saat pendaftaran",
+    description: "Formulir rekam medis per kategori",
     items: [
       {
         href: "/form-rm",
-        label: "Form RM (Admisi)",
+        label: "Katalog Formulir",
         icon: FileSignature,
-        description: "Isi formulir RM pasien saat pendaftaran",
-        moduleKey: "form-rm",
+        description: "Pilih formulir, lalu pilih pasien",
+        moduleKey: MODUL_FORM_RM,
+        anyOf: MODUL_AKSES_FORM_RM,
+      },
+      {
+        href: "/form-rm/pasien",
+        label: "Per Pasien",
+        icon: UsersRound,
+        description: "Daftar pasien & kelengkapan formulir RM",
+        moduleKey: MODUL_FORM_RM,
+        anyOf: MODUL_AKSES_FORM_RM,
       },
     ],
   },

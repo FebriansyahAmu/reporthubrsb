@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   try {
     const user = await authorize("form-rm.kelola", "update");
     jagaTulis(req, user);
-    return tanpaCache(ok(await pindahkanSemuaDataLama(aktorDari(user, req))));
+    return tanpaCache(ok(await pindahkanSemuaDataLama(await aktorDari(user, req))));
   } catch (err) {
     return tanpaCache(fail(err));
   }

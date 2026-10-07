@@ -3,6 +3,7 @@ import { emptyConsentForm, CONSENT_JENIS } from "./consent.constants";
 import { emptyEdukasiForm, EDUKASI_JENIS } from "./edukasi.constants";
 import { emptyRingkasanForm, RINGKASAN_JENIS } from "./ringkasan.constants";
 import { emptyTriaseForm, hitungKategori, TRIASE_JENIS } from "./triase.constants";
+import { KATEGORI_FORM, type KategoriForm } from "./kategori";
 import { consentFormSchema, edukasiFormSchema, ringkasanFormSchema, triaseFormSchema } from "./skema";
 
 /**
@@ -12,19 +13,33 @@ import { consentFormSchema, edukasiFormSchema, ringkasanFormSchema, triaseFormSc
  * (`server/modules/form-rm/isian.prefill.ts`).
  */
 
-export const KATEGORI_FORM = {
-  "administrasi-persetujuan": "Administrasi & Persetujuan",
-  "gawat-darurat": "Gawat Darurat",
-  edukasi: "Edukasi",
-  "ringkasan-pemulangan": "Ringkasan & Pemulangan",
-} as const;
-export type KategoriForm = keyof typeof KATEGORI_FORM;
+export { KATEGORI_FORM, type KategoriForm };
 
 export const KODE_FORM = ["RM.04", "RM.21", "RM.01", "RM.03"] as const;
 export type KodeForm = (typeof KODE_FORM)[number];
 
 /** EPISODE = satu isian per pendaftaran (NOPEN); KUNJUNGAN = per kunjungan ruang. */
 export type CakupanForm = "EPISODE" | "KUNJUNGAN";
+
+/** `master.ruangan.JENIS_KUNJUNGAN` SIMGOS: 1 = rawat jalan, 2 = IGD, 3 = rawat inap. */
+export const JENIS_KUNJUNGAN = [1, 2, 3] as const;
+export type JenisKunjungan = (typeof JENIS_KUNJUNGAN)[number];
+export const LABEL_JENIS_KUNJUNGAN: Record<JenisKunjungan, string> = { 1: "Rawat Jalan", 2: "IGD", 3: "Rawat Inap" };
+
+/** Penyaring pemilih pasien sebuah form (PRD §6.1). */
+export type SasaranPasien = {
+  /** Episode menjadi sasaran bila punya kunjungan (leg) berjenis ini. */
+  readonly jenis: readonly JenisKunjungan[];
+  /**
+   * Daftar bawaan: leg sasaran yang masih dilayani (belum keluar) atau masuk
+   * dalam N jam terakhir. Pasien lain dicari lewat No.RM / nama / NIK.
+   */
+  readonly jendelaJam: number;
+};
+
+/** "Pasien IGD & Rawat Inap" — ringkasan sasaran untuk katalog & pemilih pasien. */
+export const labelSasaran = (s: SasaranPasien): string =>
+  `Pasien ${s.jenis.map((j) => LABEL_JENIS_KUNJUNGAN[j]).join(" & ")}`;
 
 export type Kertas = { ukuran: "A4" | "F4"; orientasi: "potret" | "lanskap" };
 
@@ -42,6 +57,9 @@ export type DefinisiForm<T extends object = object> = {
   readonly cakupan: CakupanForm;
   /** Boleh lebih dari satu isian per subjek (mis. informed consent per tindakan). */
   readonly berulang: boolean;
+  readonly sasaran: SasaranPasien;
+  /** Form dihitung wajib (kelengkapan) untuk episode yang punya leg berjenis ini. */
+  readonly wajibUntuk: readonly JenisKunjungan[];
   readonly kertas: Kertas;
   readonly skema: z.ZodType<T>;
   /** Isian baru tanpa data SIMRS (sudah lolos skema). */
@@ -55,6 +73,17 @@ export type DefinisiForm<T extends object = object> = {
 const kosongBila = (kondisi: boolean, pesan: string) => (kondisi ? [pesan] : []);
 const belumDiisi = (s: string) => s.trim() === "";
 
+/*
+ * SIMGOS membuat NOPEN BARU untuk rawat inap (552 dari 566 episode RI dalam 90
+ * hari berasal dari episode IGD ber-NOPEN lain; tak satu pun berbagi NOPEN).
+ * Praktik saat ini: keempat form diisi admisi pada episode IGD. Mengisi di
+ * episode rawat inap (atau menaut episode IGD asal, PRD §6.4) menunggu keputusan.
+ */
+/** Triase: pasien yang baru tiba di IGD. */
+const SASARAN_TRIASE: SasaranPasien = { jenis: [2], jendelaJam: 24 };
+/** Dokumen episode admisi IGD; jendela 7 hari = bawaan daftar lama. */
+const SASARAN_ADMISI_IGD: SasaranPasien = { jenis: [2], jendelaJam: 24 * 7 };
+
 const triase: DefinisiForm<z.output<typeof triaseFormSchema>> = {
   kode: "RM.04",
   jenisLama: TRIASE_JENIS,
@@ -63,6 +92,8 @@ const triase: DefinisiForm<z.output<typeof triaseFormSchema>> = {
   kategori: "gawat-darurat",
   cakupan: "EPISODE",
   berulang: false,
+  sasaran: SASARAN_TRIASE,
+  wajibUntuk: [2],
   kertas: { ukuran: "F4", orientasi: "potret" },
   skema: triaseFormSchema,
   kosong: () => triaseFormSchema.parse(emptyTriaseForm()),
@@ -83,6 +114,8 @@ const edukasi: DefinisiForm<z.output<typeof edukasiFormSchema>> = {
   kategori: "edukasi",
   cakupan: "EPISODE",
   berulang: false,
+  sasaran: SASARAN_ADMISI_IGD,
+  wajibUntuk: [2],
   kertas: { ukuran: "F4", orientasi: "lanskap" },
   skema: edukasiFormSchema,
   kosong: () => edukasiFormSchema.parse(emptyEdukasiForm()),
@@ -109,6 +142,8 @@ const ringkasan: DefinisiForm<z.output<typeof ringkasanFormSchema>> = {
   kategori: "ringkasan-pemulangan",
   cakupan: "EPISODE",
   berulang: false,
+  sasaran: SASARAN_ADMISI_IGD,
+  wajibUntuk: [2],
   kertas: { ukuran: "A4", orientasi: "potret" },
   skema: ringkasanFormSchema,
   kosong: () => ringkasanFormSchema.parse(emptyRingkasanForm()),
@@ -138,6 +173,8 @@ const consent: DefinisiForm<z.output<typeof consentFormSchema>> = {
   kategori: "administrasi-persetujuan",
   cakupan: "EPISODE",
   berulang: false,
+  sasaran: SASARAN_ADMISI_IGD,
+  wajibUntuk: [2],
   kertas: { ukuran: "A4", orientasi: "potret" },
   skema: consentFormSchema,
   kosong: () => consentFormSchema.parse(emptyConsentForm()),

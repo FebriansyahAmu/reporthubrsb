@@ -1,15 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, UserRound } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
 import { ConsentFormView } from "@/features/form-rm/ConsentFormView";
 import { EdukasiFormView } from "@/features/form-rm/EdukasiFormView";
 import { RingkasanFormView } from "@/features/form-rm/RingkasanFormView";
 import { TriaseFormView } from "@/features/form-rm/TriaseFormView";
-import { KATEGORI_FORM } from "@/features/form-rm/registry";
+import { KATEGORI_FORM, MODUL_AKSES_FORM_RM } from "@/features/form-rm/kategori";
 import { NotFoundError } from "@/server/lib/errors";
-import { hasModule, requireModule } from "@/server/rbac/guard";
+import { requireAnyModule } from "@/server/rbac/guard";
 import { bacaTriaseSimrs } from "@/server/modules/form-rm/form-rm.service";
 import { aktorHalaman } from "@/server/modules/form-rm/isian.jaga";
 import { ID_RE } from "@/server/modules/form-rm/isian.schema";
@@ -20,40 +20,55 @@ import type { IsianForm, IzinIsian } from "@/server/modules/form-rm/isian.types"
 export const metadata = { title: "Isian Form RM · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
-/** Halaman isian — satu URL per isian (PRD §8.4). Pembukaan dicatat di audit. */
+/**
+ * Halaman isian — satu URL per isian (PRD §8.4). Pembukaan dicatat di audit;
+ * hak dicek per kategori form (kategori tak terlihat → 404 seragam).
+ */
 export default async function IsianPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireModule("form-rm", "view");
+  const user = await requireAnyModule(MODUL_AKSES_FORM_RM);
   const { id } = await params;
   if (!ID_RE.test(id)) notFound();
 
-  const isian = await bacaIsian(id, await aktorHalaman(user)).catch((e: unknown) => {
+  const aktor = await aktorHalaman(user);
+  const isian = await bacaIsian(id, aktor).catch((e: unknown) => {
     if (e instanceof NotFoundError) return null;
     throw e;
   });
   if (!isian) notFound();
 
-  const [header, triaseSimrs, ubah, kelola, buat, cetak] = await Promise.all([
+  const [header, triaseSimrs] = await Promise.all([
     identitasIsian(isian),
     isian.kode === "RM.04" ? bacaTriaseSimrs(isian.nopen) : null,
-    hasModule(user, "form-rm", "update"),
-    hasModule(user, "form-rm.kelola", "update"),
-    hasModule(user, "form-rm", "create"),
-    hasModule(user, "form-rm", "print"),
   ]);
-  const izin: IzinIsian = { ubah, kelola, buat, cetak };
+  const { hak } = aktor;
+  const izin: IzinIsian = {
+    ubah: hak.boleh(isian.kategori, "update"),
+    kelola: hak.kelola,
+    buat: hak.boleh(isian.kategori, "create"),
+    cetak: hak.boleh(isian.kategori, "print"),
+  };
 
   return (
     <FadeIn className="space-y-6">
-      <Link
-        href={`/form-rm/${isian.nopen}`}
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-fg-muted transition-colors hover:text-fg"
-      >
-        <ArrowLeft className="size-4" />
-        Kembali ke formulir pasien
-      </Link>
+      <nav aria-label="Kembali" className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm font-medium">
+        <Link
+          href={`/form-rm/f/${isian.kode}`}
+          className="inline-flex items-center gap-1.5 text-fg-muted transition-colors hover:text-fg"
+        >
+          <ArrowLeft className="size-4" />
+          Pasien {isian.kode}
+        </Link>
+        <Link
+          href={`/form-rm/pasien/${isian.nopen}`}
+          className="inline-flex items-center gap-1.5 text-fg-muted transition-colors hover:text-fg"
+        >
+          <UserRound className="size-4" />
+          Semua formulir pasien ini
+        </Link>
+      </nav>
       <PageHeader
         title={isian.judul}
-        description={`${isian.kode} · ${KATEGORI_FORM[isian.kategori]} · ${header.nama} · No. RM ${header.norm}`}
+        description={`${isian.kode} · ${KATEGORI_FORM[isian.kategori].label} · ${header.nama} · No. RM ${header.norm}`}
       />
       <TampilanForm isian={isian} header={header} izin={izin} triaseSimrs={triaseSimrs?.simrs ?? null} />
     </FadeIn>

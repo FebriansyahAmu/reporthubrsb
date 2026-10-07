@@ -1,13 +1,14 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { PrintToolbar } from "@/components/report/PrintToolbar";
 import { ConsentDocument } from "@/features/form-rm/ConsentDocument";
 import { EdukasiDocument } from "@/features/form-rm/EdukasiDocument";
 import { RingkasanDocument } from "@/features/form-rm/RingkasanDocument";
 import { TriaseDocument } from "@/features/form-rm/TriaseDocument";
+import { MODUL_AKSES_FORM_RM } from "@/features/form-rm/kategori";
 import { definisiForm, type Kertas } from "@/features/form-rm/registry";
-import { NotFoundError } from "@/server/lib/errors";
+import { ForbiddenError, NotFoundError } from "@/server/lib/errors";
 import { qrSvgDataUriMap } from "@/server/lib/qr";
-import { requireModule } from "@/server/rbac/guard";
+import { requireAnyModule } from "@/server/rbac/guard";
 import { aktorHalaman } from "@/server/modules/form-rm/isian.jaga";
 import { ID_RE } from "@/server/modules/form-rm/isian.schema";
 import { bacaIsianCetak, identitasIsian } from "@/server/modules/form-rm/isian.service";
@@ -42,15 +43,18 @@ const waktuCetak = () =>
  * waktu cetak. Setiap cetak diaudit.
  */
 export default async function CetakIsianPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireModule("form-rm", "print");
+  const user = await requireAnyModule(MODUL_AKSES_FORM_RM, "print");
   const { id } = await params;
   if (!ID_RE.test(id)) notFound();
 
+  // Hak cetak dicek pada kategori form isian: kategori tak terlihat → 404, tanpa cetak → 403.
   const hasil = await bacaIsianCetak(id, await aktorHalaman(user)).catch((e: unknown) => {
     if (e instanceof NotFoundError) return null;
+    if (e instanceof ForbiddenError) return "terlarang" as const;
     throw e;
   });
   if (!hasil) notFound();
+  if (hasil === "terlarang") redirect("/403");
   const { isian, segel } = hasil;
   const def = definisiForm(isian.kode);
   if (!def) notFound();

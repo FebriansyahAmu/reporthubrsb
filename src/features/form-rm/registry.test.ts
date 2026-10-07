@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DEFINISI_FORM, definisiDariJenisLama, definisiForm, KATEGORI_FORM, KODE_FORM } from "./registry";
+import { DAFTAR_KATEGORI } from "./kategori";
+import { DEFINISI_FORM, definisiDariJenisLama, definisiForm, JENIS_KUNJUNGAN, KATEGORI_FORM, KODE_FORM } from "./registry";
 
 describe("registri form RM", () => {
   it("kode & jenis lama unik, sesuai KODE_FORM, kategori dikenal", () => {
@@ -8,6 +9,19 @@ describe("registri form RM", () => {
     expect([...kode].sort()).toEqual([...KODE_FORM].sort());
     expect(new Set(DEFINISI_FORM.map((d) => d.jenisLama)).size).toBe(DEFINISI_FORM.length);
     for (const d of DEFINISI_FORM) expect(Object.keys(KATEGORI_FORM)).toContain(d.kategori);
+  });
+
+  it("setiap kategori punya minimal satu form (kategori kosong tak membuat modul RBAC mubazir)", () => {
+    for (const k of DAFTAR_KATEGORI) expect(DEFINISI_FORM.some((d) => d.kategori === k), k).toBe(true);
+  });
+
+  it.each(DEFINISI_FORM.map((d) => [d.kode, d] as const))("%s: sasaran & wajibUntuk sah", (_k, d) => {
+    expect(d.sasaran.jenis.length).toBeGreaterThan(0);
+    for (const j of [...d.sasaran.jenis, ...d.wajibUntuk]) expect(JENIS_KUNJUNGAN).toContain(j);
+    // Form wajib harus bisa ditemukan di pemilih pasiennya.
+    for (const j of d.wajibUntuk) expect(d.sasaran.jenis).toContain(j);
+    expect(d.sasaran.jendelaJam).toBeGreaterThanOrEqual(1);
+    expect(d.sasaran.jendelaJam).toBeLessThanOrEqual(24 * 90);
   });
 
   it("pencarian per kode & jenis lama", () => {
