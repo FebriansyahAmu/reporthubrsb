@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/layout/AppShell";
+import { menitIdle } from "@/server/auth/idle";
 import { getCurrentUser } from "@/server/auth/session";
 import { allowedModuleKeys } from "@/server/rbac/permissions";
 
@@ -15,6 +16,7 @@ export default async function DashboardLayout({
     <AppShell
       user={user ? { name: user.name, username: user.username, role: user.role } : null}
       allowedModules={allowed}
+      menitIdle={menitIdle()}
     >
       {children}
     </AppShell>

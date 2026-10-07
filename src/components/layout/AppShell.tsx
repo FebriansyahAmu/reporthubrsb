@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { PendaftarPwa } from "./PendaftarPwa";
+import { PenjagaSesi } from "./PenjagaSesi";
 import { Sidebar } from "./Sidebar";
 import { Topbar, type TopbarUser } from "./Topbar";
 
@@ -9,15 +11,20 @@ export function AppShell({
   children,
   user,
   allowedModules,
+  menitIdle,
 }: {
   children: React.ReactNode;
   user: TopbarUser | null;
   allowedModules: string[];
+  /** Keluar otomatis setelah sekian menit tanpa aktivitas (0 = nonaktif). */
+  menitIdle: number;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <div className="flex min-h-screen bg-bg">
+      <PenjagaSesi menitIdle={menitIdle} />
+      <PendaftarPwa />
       {/* Sidebar desktop */}
       <aside className="no-print hidden w-64 shrink-0 border-r border-border lg:block">
         <div className="sticky top-0 h-screen">

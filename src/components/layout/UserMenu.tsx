@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, KeyRound, LogOut, ShieldCheck } from "lucide-react";
+import { ChevronDown, KeyRound, LogOut, MonitorDown, ShieldCheck } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { ChangePasswordForm } from "@/features/auth/ChangePasswordForm";
 import { cn } from "@/lib/cn";
+import { pasangAplikasi, useBisaDipasang } from "@/lib/pwa";
+import { keluarSesi } from "@/lib/sesi";
 
 export type MenuUser = { name: string; username: string; role?: string };
 
@@ -18,11 +19,11 @@ function initials(name: string): string {
 }
 
 export function UserMenu({ user }: { user: MenuUser | null }) {
-  const router = useRouter();
   const ref = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const bisaDipasang = useBisaDipasang();
 
   // Tutup dropdown saat klik di luar.
   useEffect(() => {
@@ -41,15 +42,10 @@ export function UserMenu({ user }: { user: MenuUser | null }) {
     };
   }, [open]);
 
-  async function handleLogout() {
+  // Simpan draf form, kabari tab lain (ikut keluar), cabut sesi, muat ulang penuh ke login.
+  function handleLogout() {
     setLoggingOut(true);
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-    } catch {
-      // abaikan; tetap arahkan ke login
-    }
-    router.replace("/");
-    router.refresh();
+    void keluarSesi("manual");
   }
 
   const name = user?.name ?? "Pengguna";
@@ -120,6 +116,20 @@ export function UserMenu({ user }: { user: MenuUser | null }) {
                 <KeyRound className="size-4 text-fg-muted" />
                 Ubah Password
               </button>
+              {bisaDipasang && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false);
+                    void pasangAplikasi();
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-fg transition-colors hover:bg-surface-2"
+                >
+                  <MonitorDown className="size-4 text-fg-muted" />
+                  Pasang aplikasi
+                </button>
+              )}
               <button
                 type="button"
                 role="menuitem"

@@ -7,9 +7,11 @@ import {
   signRefreshToken,
   verifyRefreshToken,
 } from "@/server/auth/tokens";
+import { batasIdleRefreshMs } from "@/server/auth/idle";
 import { AppError, ForbiddenError, UnauthorizedError } from "@/server/lib/errors";
 import { querySimgosPenggunaByLogin } from "./simgos-pengguna.dal";
 import { verifySimgosPasswordHash } from "./simgos-password";
+import { penggantiMasihAktif, putuskanRotasi } from "./rotasi";
 import * as dal from "./auth.dal";
 
 /**
@@ -34,7 +36,7 @@ type Meta = { userAgent?: string | null; ip?: string | null };
 async function issueTokens(
   user: { id: string; username: string; name: string; role: { key: string } },
   meta: Meta,
-): Promise<IssuedTokens> {
+): Promise<IssuedTokens & { refreshId: string }> {
   const roleKey = user.role.key;
   const access = await signAccessToken({
     sub: user.id,
@@ -44,7 +46,7 @@ async function issueTokens(
   });
   const jti = crypto.randomUUID();
   const refresh = await signRefreshToken(user.id, jti);
-  await dal.storeRefreshToken({
+  const rec = await dal.storeRefreshToken({
     userId: user.id,
     tokenHash: dal.hashToken(refresh),
     expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
@@ -54,6 +56,7 @@ async function issueTokens(
   return {
     access,
     refresh,
+    refreshId: rec.id,
     user: { id: user.id, username: user.username, name: user.name, role: roleKey },
   };
 }
@@ -87,11 +90,18 @@ export async function login(
   return issueTokens(user, meta);
 }
 
+/** Sesi ditolak karena tidak ada aktivitas melewati batas idle (K6). */
+export class SesiIdleError extends UnauthorizedError {
+  constructor() {
+    super("Sesi berakhir karena tidak ada aktivitas. Silakan masuk kembali.");
+  }
+}
+
 /**
- * Rotasi refresh token: verifikasi tanda tangan + cek record di DB (belum dicabut
- * & belum kadaluarsa), terbitkan pasangan baru, lalu cabut yang lama.
- * Bila token yang sudah dicabut dipakai lagi (indikasi pencurian), cabut SEMUA
- * token milik user tersebut.
+ * Rotasi refresh token: verifikasi tanda tangan + cek record di DB, terbitkan
+ * pasangan baru, lalu cabut yang lama. Keputusan (rotasi / cabang paralel /
+ * idle / reuse) ada di `putuskanRotasi`. Token mati yang dipakai lagi di luar
+ * jendela paralel (indikasi pencurian) → cabut SEMUA token milik user tersebut.
  */
 export async function refresh(rawRefresh: string, meta: Meta): Promise<IssuedTokens> {
   const claims = await verifyRefreshToken(rawRefresh);
@@ -100,17 +110,30 @@ export async function refresh(rawRefresh: string, meta: Meta): Promise<IssuedTok
   const rec = await dal.findRefreshByHash(dal.hashToken(rawRefresh));
   if (!rec) throw new UnauthorizedError("Sesi tidak valid");
 
-  if (rec.revokedAt || rec.expiresAt.getTime() < Date.now()) {
-    // Reuse token yang sudah mati → anggap kompromi, cabut semua sesi user.
+  const sekarang = Date.now();
+  const keputusan = putuskanRotasi(rec, claims.iat * 1000, sekarang, batasIdleRefreshMs());
+  if (keputusan === "reuse") {
     await dal.revokeAllUserTokens(rec.userId);
     throw new UnauthorizedError("Sesi kadaluarsa, silakan login ulang");
+  }
+  // Cabang hanya bila rantai penggantinya masih aktif — "cabut semua sesi" tetap mengakhiri sesi.
+  const cabangSah = keputusan === "cabang" && (await penggantiMasihAktif(rec, dal.findRefreshById, sekarang));
+  if (keputusan === "ditolak" || (keputusan === "cabang" && !cabangSah)) {
+    throw new UnauthorizedError("Sesi sudah berakhir, silakan login ulang");
+  }
+  if (keputusan === "idle") {
+    await dal.revokeRefresh(rec.id);
+    throw new SesiIdleError();
   }
 
   const user = await dal.findUserById(rec.userId);
   if (!user || !user.isActive) throw new UnauthorizedError("Akun tidak tersedia");
 
-  const issued = await issueTokens(user, meta);
-  await dal.revokeRefresh(rec.id, dal.hashToken(issued.refresh));
+  const { refreshId, ...issued } = await issueTokens(user, meta);
+  // `replaced_by` = id token pengganti (kolom VARCHAR(30); dulu diisi hash 64
+  // karakter yang terpotong diam-diam). `cabang`: token lama sudah dicabut oleh
+  // permintaan paralel pemenang rotasi.
+  if (keputusan === "rotasi") await dal.revokeRefresh(rec.id, refreshId);
   return issued;
 }
 

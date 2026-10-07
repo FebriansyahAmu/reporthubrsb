@@ -4,8 +4,8 @@
 
 **Project:** ReportHub (`reporthubrsb`) · Modul **Form RM** (`form-rm`)
 **Organisasi:** UPTD RSUD Bolaang Mongondow Timur
-**Versi:** 0.5 — K1, K5, K7 diputuskan; K4 ditunda; K8 terbuka; K9–K10 baru (§15)
-**Tanggal:** 7 Oktober 2026 · **Status:** F0, F1, F2 selesai; F3 selesai dengan pilot Risiko Jatuh Morse (isi & cetak menunggu templat resmi RS, K10) — lihat §16
+**Versi:** 0.6 — K1, K3, K5, K6, K7 diputuskan; K4 ditunda; K8–K10 terbuka (§15)
+**Tanggal:** 7 Oktober 2026 · **Status:** F0–F3 selesai (pilot Morse menunggu templat resmi RS, K10); F4 menunggu formulir RM resmi dari RS (dikerjakan 1:1); F5 selesai — PWA, simpan otomatis, keluar otomatis saat idle, pengerasan sesi — lihat §16
 **Sifat data SIMGOS:** **FULL READ-ONLY.** Hanya `SELECT` / `information_schema`. Tidak ada DDL/DML, tidak menambah atau mengubah tabel maupun stored procedure apa pun di SIMGOS. Semua isian form, tanda tangan, dan riwayat disimpan di DB aplikasi `reporthub`.
 
 ---
@@ -454,7 +454,9 @@ Data yang ditangani adalah rekam medis, yang termasuk **data pribadi spesifik** 
 | Pemalsuan IP audit           | `clientIp()` diganti: X-Real-IP dari nginx, lalu X-Forwarded-For paling kanan (pola QR publik)                                                                                                                                                           |
 | Banjir permintaan            | Batas laju simpan per pengguna (mis. 60/menit) dan pencarian pasien; batas ukuran body                                                                                                                                                                   |
 | Kebocoran lewat error / log  | `fail()` seragam; log tanpa isi form, nama, atau diagnosa; metadata audit hanya id isian, kode form, NOPEN, status                                                                                                                                       |
-| PC bersama di loket/bangsal  | `no-store`; token akses 15 menit (sudah); keluar otomatis saat idle (K6)                                                                                                                                                                                 |
+| PC bersama di loket/bangsal  | `no-store`; token akses 15 menit; keluar otomatis saat idle (K6, F5) dua lapis — klien (semua tab, peringatan 1 menit, draf disimpan dulu) dan server (refresh token tanpa permintaan > masa access + batas idle ditolak); service worker tanpa cache        |
+| Open redirect                | `callbackUrl` login & refresh hanya path internal (`jalurInternal`): backslash & karakter kontrol ditolak, hasil parse wajib tetap di origin sendiri (F5)                                                                                                  |
+| Sesi habis saat menulis      | Proxy memulihkan sesi untuk semua metode (307 → refresh → 307, metode & body diulang); API tanpa sesi → 401 JSON, tak pernah halaman login (F5)                                                                                                           |
 | Injeksi SQL ke SIMGOS        | Query berparameter; tanpa identifier dinamis; sumber isi otomatis berupa whitelist di registri; user DB hanya SELECT                                                                                                                                     |
 
 ### 10.3. Pengujian keamanan (wajib lulus di setiap fase)
@@ -555,8 +557,8 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 | **F1 — Katalog & pemilih pasien** ✅  | Katalog per kategori; pemilih pasien per sasaran; alur pasien lebih dulu; kelengkapan dari `wajibUntuk`; RBAC per kategori                                                                                                                                                                                                               | Alur form → pasien → isian berjalan untuk 4 form; hitungan kelengkapan cocok dengan SQL independen        |
 | **F2 — Pustaka isi otomatis** ✅      | Sumber §8.3 + episode IGD asal; tanda asal kolom; "Muat ulang dari SIMRS" dengan perbandingan; RM.21 terisi dari `edukasi_pasien_keluarga`                                                                                                                                                                                               | Pemetaan cocok 100 % dengan SQL independen pada sampel 30 hari; ≥ 80 % kolom yang datanya tersedia terisi |
 | **F3 — Mesin form deklaratif** ✅     | Renderer form & cetak generik; skor terhitung; tabel berulang; batch pertama form baru (sesuai K1)                                                                                                                                                                                                                                       | Form baru cukup ditambah dengan satu berkas definisi; cetak sesuai kertas                                 |
-| **F4 — Perluasan per kategori**       | Batch form berikutnya                                                                                                                                                                                                                                                                                                                    | Setiap batch: E2E dan suite keamanan lulus                                                                |
-| **F5 — Opsional: PWA / Tauri**        | Manifest PWA (HTTPS) atau shell Tauri 2.12 sesuai K3                                                                                                                                                                                                                                                                                     | Installer bertanda tangan, pembaruan otomatis, uji capability                                             |
+| **F4 — Perluasan per kategori** ⏸     | Batch form berikutnya — **menunggu formulir RM resmi dari RS**; tiap form dikerjakan 1:1 dengan formulir kertasnya (keputusan 7 Okt 2026)                                                                                                                                                                                                 | Setiap batch: E2E dan suite keamanan lulus                                                                |
+| **F5 — PWA + penyelesaian non-form** ✅ | Manifest PWA + service worker tanpa cache (K3 → PWA, tanpa Tauri); simpan otomatis draf (§6.3/§9); keluar otomatis saat idle (K6); pengerasan sesi                                                                                                                                                                                      | Suite F5 + regresi F0–F3 & QR publik lulus di build produksi                                              |
 
 ---
 
@@ -579,10 +581,10 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | K1  | Daftar Formulir RM resmi RS (nomor, judul, kategori) dan urutan prioritas                                                                                                                                                                 | ✅ **Diputuskan:** mulai dengan 4 form yang ada; form lain menyusul setelah tersedia                                                                                                     |
 | K2  | Peran pengisi per kategori, dan siapa yang boleh membuka isian FINAL                                                                                                                                                                      | Pengisi = peran kategori; membuka FINAL = Instalasi RM (sementara: modul `form-rm.kelola`)                                                                                               |
-| K3  | Kebutuhan perangkat untuk Tauri (cetak langsung, pad TTD, e-KTP, kiosk)                                                                                                                                                                   | Bila tidak ada → PWA                                                                                                                                                                     |
-| K4  | Apakah server produksi sudah HTTPS                                                                                                                                                                                                        | ⏸ **Ditunda** (6 Okt 2026): dimitigasi kemudian. Rekomendasi: sertifikat Let's Encrypt via DNS-01 untuk nama host LAN di reverse proxy; wajib sebelum PWA/Tauri/kamera                   |
+| K3  | Kebutuhan perangkat untuk Tauri (cetak langsung, pad TTD, e-KTP, kiosk)                                                                                                                                                                   | ✅ Mengikuti rekomendasi (7 Okt 2026): **PWA** dibangun di F5; Tauri hanya bila kelak ada kebutuhan perangkat nyata                                                                     |
+| K4  | Apakah server produksi sudah HTTPS                                                                                                                                                                                                        | ⏸ **Ditunda** (6 Okt 2026): dimitigasi kemudian. Rekomendasi: sertifikat Let's Encrypt via DNS-01 untuk nama host LAN di reverse proxy. PWA (F5) sudah siap, tetapi pemasangan penuh & halaman "Tidak terhubung" baru aktif di HTTPS; kamera juga butuh HTTPS |
 | K5  | Status awal 10 isian lama setelah migrasi                                                                                                                                                                                                 | ✅ Mengikuti rekomendasi: DRAF (diterapkan di Langkah 2)                                                                                                                                 |
-| K6  | Keluar otomatis saat idle di PC bersama                                                                                                                                                                                                   | 15 menit                                                                                                                                                                                 |
+| K6  | Keluar otomatis saat idle di PC bersama                                                                                                                                                                                                   | ✅ Mengikuti rekomendasi: **15 menit**, untuk seluruh aplikasi; dapat diubah lewat env `SESI_IDLE_MENIT` (5–480; `0` = nonaktif, mis. layar monitor di dinding)                             |
 | K7  | Menambah Vitest sebagai runner unit test                                                                                                                                                                                                  | ✅ Mengikuti rekomendasi: Vitest 3 (v5 butuh `@types/node` ≥ 22; proyek masih ^20)                                                                                                       |
 | K8  | Pasien IGD yang lanjut rawat inap mendapat **NOPEN baru** di SIMGOS (552 dari 566 episode RI dalam 90 hari; tak satu pun berbagi NOPEN dengan leg IGD). RM.21/RM.01/RM.03 diisi di episode mana — IGD (praktik sekarang) atau rawat inap? | Sementara: tetap di episode IGD (sasaran & wajib = IGD, sama dengan sebelum F1). Pindah ke episode RI = ubah `sasaran`/`wajibUntuk` di registri; sejak F2 sumber asesmen episode RI otomatis diambil dari episode IGD asal (SPRI / pendaftaran IGD ≤ 24 jam) |
 | K9  | Apakah Risiko Jatuh Morse **wajib** (dihitung di kelengkapan) — untuk episode IGD, rawat inap, atau keduanya? | Sementara tidak wajib (`wajibUntuk: []`) agar hitungan kelengkapan tidak berubah; cukup ubah satu baris di berkas definisi |
@@ -733,6 +735,56 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 - UI 14/14 (baris awal bertanda SIMRS, skor 90 · Risiko tinggi langsung di baris & bilah aksi, tambah/hapus baris, baris awal tak bisa dihapus, simpan, finalisasi, ponsel 390 px, cetak lajur, tanpa galat JS).
 - Regresi: F2 46/46 (p95 isi otomatis 42 ms di produksi), F1 103/103 (daftar per pasien kini juga memuat episode rawat inap karena sasaran Morse), L1 83/83, L2 56/56; UI F2 23/23, UI F1 29/29 (5 kategori, saring IGD/RI), UI L2 29/29. Log produksi tanpa 500 (hanya P2002 yang diharapkan dari uji balapan).
 - `/security-review` atas diff F3: tanpa temuan.
+
+### F4 — ditunda (7 Okt 2026)
+
+Keputusan pemilik: formulir baru dikerjakan **setelah formulir RM resmi dikirim**, 1:1 dengan kertasnya (nomor RM, isi, tata letak). Mesin F3 sudah siap; satu form = satu berkas definisi.
+
+### F5 — PWA + penyelesaian non-form (7 Okt 2026)
+
+**Simpan otomatis** (§6.3/§9, `useIsian`): 3 detik setelah perubahan terakhir, hanya bila ada perubahan, satu permintaan sekaligus (simpan manual/otomatis/finalkan/terapkan SIMRS saling menunggu, bukan saling menolak). Isi form dan nomor versinya disimpan berpasangan, sehingga versi yang ditandai tersimpan selalu sama dengan data yang terkirim. Perubahan terakhir juga disimpan saat tab disembunyikan, saat pindah halaman di dalam aplikasi, dan sebelum keluar. Simpan yang gagal (mis. 422) tidak diulang sampai ada perubahan baru; konflik `rev` menghentikan simpan otomatis. Ctrl+S tanpa perubahan tidak mengirim apa pun (rev & audit tidak bertambah). Bilah aksi: "Perubahan akan disimpan otomatis…" → "Tersimpan".
+
+**Keluar otomatis saat idle (K6)**, dua lapis:
+
+- _Klien_ (`PenjagaSesi`, dasbor & halaman cetak): aktivitas (klik, ketik, sentuh, gulir) dibagi antar-tab lewat localStorage. Peringatan "Sesi akan berakhir" dengan hitung mundur muncul 1 menit sebelum batas; gerak mouse saja tidak menutupnya. Saat batas tercapai, layar langsung ditutup, draf semua tab disimpan, sesi dicabut di server, lalu halaman masuk dimuat ulang penuh (cache router berisi data pasien ikut dibuang). Login berikutnya kembali ke halaman semula dengan pemberitahuan. Tombol **Keluar** di satu tab juga mengeluarkan tab lain (BroadcastChannel).
+- _Server_ (rotasi refresh token): token yang `iat`-nya lebih tua dari masa access + batas idle ditolak dan dicabut. Ini menutup kasus browser ditutup lalu dibuka lagi, atau JS dimatikan.
+- Batas diatur lewat env `SESI_IDLE_MENIT` (bawaan 15; `0` = nonaktif).
+
+**PWA (K3 → PWA):**
+
+- `app/manifest.ts` (nama, ikon any + maskable dari lambang daerah, warna tema, `start_url` `/dashboard`) dan ikon Apple; manifest & `sw.js` dikecualikan dari proxy auth karena browser mengambilnya tanpa cookie.
+- `public/sw.js` **tanpa Cache Storage sama sekali**: hanya navigasi yang disentuh; bila server tak terjangkau, tampil halaman "Tidak terhubung" (503, CSP ketat, tanpa data). API, aset, dan RSC tidak disentuh.
+- SW didaftarkan hanya di build produksi dan konteks aman. Di HTTP LAN browser menolaknya, jadi pemasangan penuh menunggu HTTPS (K4). Menu pengguna menampilkan **Pasang aplikasi** bila browser (Chromium) menawarkannya.
+
+**Pengerasan sesi** (cacat lama yang ditemukan saat menguji simpan otomatis, semuanya terbukti dulu dengan permintaan nyata):
+
+1. Setelah access token (15 menit) habis, proxy mengalihkan PATCH/DELETE ke `/api/auth/refresh` yang hanya punya GET/POST → **405**. POST jatuh ke silent refresh → **200 berisi data pengguna**, sehingga aksi tampak berhasil padahal tidak dijalankan. Kini route refresh menangani semua metode: rotasi, lalu 307 kembali ke tujuan dengan metode & body yang sama.
+2. API tanpa sesi dialihkan ke halaman login → fetch menerima **HTML 200** dan klien mengira simpan berhasil. Kini proxy menjawab **401 JSON** untuk semua `/api/*` tanpa sesi (halaman tetap dialihkan ke login).
+3. **Open redirect:** `callbackUrl=/\evil.com` lolos `safePath` (`/` di depan, bukan `//`), lalu `new URL()` membacanya sebagai `http://evil.com/`. Pengguna yang masih login bisa diarahkan ke situs asing lewat tautan `/api/auth/refresh?callbackUrl=…`. Kini divalidasi `jalurInternal` (route refresh & halaman login).
+4. Dua permintaan paralel saat access habis (mis. simpan otomatis + lonceng notifikasi) membuat yang kalah dianggap pencurian token → **semua sesi pengguna di semua perangkat dicabut**. Kini ada jendela 30 detik untuk token yang baru dirotasi (pola _reuse interval_); di luar jendela, deteksi pencurian tetap mencabut semua. Token yang baru di-logout ditolak tanpa mencabut sesi lain.
+5. `refresh_tokens.replaced_by` (VARCHAR(30)) diisi hash 64 karakter yang dipotong diam-diam oleh DB (sql_mode tidak strict). Kini diisi id token pengganti, tanpa DDL.
+6. _UI (sisa F3):_ di ponsel 390 px, chip skor & status di bilah aksi menindih tombol Riwayat/Cetak/Batalkan. Kini status berada di baris sendiri di ponsel, dan di layar lebar terpotong rapi.
+
+**Hasil uji (dev & build produksi):**
+
+- Unit 217/217 (baru: `jalurInternal` termasuk bypass backslash/tab/segmen titik; keputusan rotasi — rotasi/cabang/ditolak/idle/reuse dan salah zona waktu gagal tertutup; syarat rantai pengganti aktif untuk cabang; batas idle env; hitung mundur & pesan antar-tab).
+- E2E sesi & PWA 47/47:
+  - API tanpa sesi → 401 JSON (GET/POST/PATCH/DELETE); refresh palsu → 401 + cookie dihapus;
+  - rantai pemulihan GET/POST/PATCH/POST-aksi/DELETE sampai handler asli (rev naik & status BATAL di DB); token lama dicabut dan `replaced_by` = id pengganti;
+  - dua permintaan paralel → keduanya 200 tanpa mencabut sesi lain; pakai ulang dalam jendela → cabang; logout lalu pakai ulang → 401; "cabut semua sesi" sesudah rotasi → token lama dalam jendela ditolak tanpa sesi baru; di luar jendela → semua sesi dicabut;
+  - idle server → halaman masuk `alasan=idle` / API 401, sesi dalam batas tetap pulih;
+  - 9 varian open redirect (backslash, tab, absolut, segmen titik `/.//`, `/..//`, `%2e`) + login;
+  - manifest, 4 ikon (ukuran sesuai), `sw.js` (no-cache, CSP, nosniff, tanpa Cache Storage); data nyata identik.
+- UI 27/27 (Chrome headless, 2 tab, jam halaman digeser):
+  - simpan otomatis: satu PATCH setelah jeda, tak ada PATCH tanpa perubahan atau Ctrl+S kosong; pindah halaman, tab tersembunyi, dan access habis di tengah isian tetap tersimpan;
+  - penjaga idle: peringatan & hitung mundur, gerak mouse tidak menutup, aktivitas lintas tab, idle → semua tab ke halaman masuk tanpa terpantul ke dasbor, draf tab lain tersimpan sebelum sesi dicabut, token dicabut di DB, Keluar manual diikuti tab lain;
+  - PWA: SW aktif di produksi dan tidak terdaftar di dev; luring → "Tidak terhubung"; tanpa Cache Storage;
+  - ponsel 390 px tanpa tumpang-tindih; tanpa galat JS dan tanpa dialog "tinggalkan situs" saat keluar.
+- Regresi produksi: L1 83/83, L2 56/56, F1 103/103, F2 46/46, F3 42/42; UI L2 29/29 (teks status disesuaikan dengan simpan otomatis), UI F1 29/29, UI F2 23/23, UI F3 14/14; QR publik 74/74. Log produksi tanpa 500 (hanya 22 P2002 yang diharapkan dari uji balapan).
+- Skrip regresi modul lain yang mengharapkan "API tanpa login → 307" (pendapatan unit, verifikasi klaim V0, F1) disesuaikan ke 401.
+- `/security-review` atas diff F5 menemukan **2 temuan Medium pada kode F5 sendiri**, keduanya sudah diperbaiki dan diuji (unit + E2E di atas):
+  1. Open redirect lewat normalisasi segmen titik: `/.//evil.com` lolos pemeriksaan input dan dinormalkan menjadi `//evil.com`. Kini hasil normalisasi diperiksa ulang, dan route refresh juga memastikan tujuan akhir tetap di origin sendiri.
+  2. Jendela cabang 30 detik bisa melewati "cabut semua sesi": token yang sudah dirotasi tidak tersentuh pencabutan massal. Kini cabang hanya sah bila rantai penggantinya masih berujung pada token aktif milik pengguna yang sama.
 
 ## 17. Sumber
 

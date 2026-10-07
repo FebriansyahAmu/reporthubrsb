@@ -66,12 +66,13 @@ export async function signRefreshToken(sub: string, jti: string): Promise<string
     .sign(refreshSecret());
 }
 
+/** `iat` = waktu terbit (detik) — ditandatangani, jadi aman dipakai untuk batas idle sesi. */
 export async function verifyRefreshToken(
   token: string,
-): Promise<{ sub: string; jti: string } | null> {
+): Promise<{ sub: string; jti: string; iat: number } | null> {
   try {
     const { payload } = await jwtVerify(token, refreshSecret());
-    return { sub: String(payload.sub), jti: String(payload.jti ?? "") };
+    return { sub: String(payload.sub), jti: String(payload.jti ?? ""), iat: Number(payload.iat ?? 0) };
   } catch {
     return null;
   }

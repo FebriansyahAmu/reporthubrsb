@@ -26,6 +26,23 @@ const nextConfig: NextConfig = {
    */
   allowedDevOrigins: ["10.202.100.127", "10.10.102.20"],
 
+  /**
+   * Service worker PWA: selalu dicek ulang (pembaruan langsung berlaku) dan
+   * hanya boleh memuat skrip dari origin sendiri.
+   */
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, max-age=0, must-revalidate" },
+          { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self'" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+        ],
+      },
+    ];
+  },
+
   experimental: {
     /**
      * Body request yang melewati `src/proxy.ts` di-buffer & DIPOTONG DIAM-DIAM

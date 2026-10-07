@@ -1,22 +1,19 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import { BarChart3, FileText, ShieldCheck } from "lucide-react";
+import { BarChart3, FileText, ShieldCheck, TimerOff } from "lucide-react";
 import { LoginForm } from "@/features/auth/LoginForm";
+import { jalurInternal } from "@/lib/jalur";
 
 export const metadata: Metadata = { title: "Masuk · AuditTrail RS BOLTIM" };
-
-function safePath(v: string | undefined): string {
-  if (!v || !v.startsWith("/") || v.startsWith("//")) return "/dashboard";
-  return v;
-}
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ callbackUrl?: string }>;
+  searchParams: Promise<{ callbackUrl?: string | string[]; alasan?: string | string[] }>;
 }) {
-  const { callbackUrl } = await searchParams;
-  const target = safePath(callbackUrl);
+  const { callbackUrl, alasan } = await searchParams;
+  const target = (typeof callbackUrl === "string" && jalurInternal(callbackUrl)) || "/dashboard";
+  const idle = alasan === "idle";
 
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
@@ -94,6 +91,16 @@ export default async function LoginPage({
               Masuk untuk melanjutkan ke dasbor.
             </p>
           </div>
+
+          {idle && (
+            <div
+              role="status"
+              className="mb-4 flex items-start gap-2 rounded-[var(--radius-md)] border border-brand/25 bg-brand-soft px-3 py-2.5 text-sm text-brand-soft-fg"
+            >
+              <TimerOff className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span>Anda keluar otomatis karena tidak ada aktivitas. Masuk kembali untuk melanjutkan.</span>
+            </div>
+          )}
 
           <LoginForm callbackUrl={target} />
 

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Figtree, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -20,8 +20,12 @@ export const metadata: Metadata = {
   title: "AuditTrail RS BOLTIM",
   description:
     "Pelaporan & cetak untuk melengkapi cetakan yang tidak disediakan SIMGOS.",
-  icons: { icon: "/logo/logoboltim.png" },
+  icons: { icon: "/logo/logoboltim.png", apple: "/icons/apple-touch-icon.png" },
+  // Manifest PWA dari `app/manifest.ts` (ditautkan otomatis oleh Next).
+  appleWebApp: { capable: true, title: "AuditTrail", statusBarStyle: "default" },
 };
+
+export const viewport: Viewport = { themeColor: "#0b3658" };
 
 export default function RootLayout({
   children,

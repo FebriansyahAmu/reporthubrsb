@@ -248,15 +248,19 @@ function BilahAksi<T>({
       aria-label="Aksi isian"
       className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80 lg:left-64"
     >
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 lg:px-8">
-        <div className="flex min-w-0 items-center gap-2.5 text-xs text-fg-muted">
-          <StatusIsianBadge status={isian.status} />
-          {aksen}
+      {/* Ponsel: status di baris sendiri di atas tombol (chip skor/kategori tak cukup ruang di samping
+          tombol dan dulu menindihnya). Layar lebar: satu baris, sisi kiri terpotong — tak pernah menindih. */}
+      <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:py-3 lg:px-8">
+        <div className="flex min-w-0 items-center gap-2.5 overflow-hidden text-xs text-fg-muted">
+          <span className="shrink-0">
+            <StatusIsianBadge status={isian.status} />
+          </span>
+          {aksen && <span className="shrink-0">{aksen}</span>}
           <span className="min-w-0 truncate" aria-live="polite">
             <TeksSimpan kendali={k} />
           </span>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+        <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
           <Button variant="ghost" size="md" icon={<History className="size-4" />} onClick={onRiwayat} title="Riwayat isian">
             <span className="hidden lg:inline">Riwayat</span>
           </Button>
@@ -314,7 +318,7 @@ function BilahAksi<T>({
 
 function TeksSimpan<T>({ kendali: k }: { kendali: KendaliIsian<T> }) {
   const { isian } = k;
-  if (k.sibuk === "simpan") return <span>Menyimpan…</span>;
+  if (k.sibuk === "simpan" || k.menyimpanOtomatis) return <span>Menyimpan…</span>;
   if (k.sibuk === "simrs") return <span>Menerapkan data SIMRS…</span>;
   if (k.galat && !k.galat.konflik) {
     return (
@@ -326,6 +330,7 @@ function TeksSimpan<T>({ kendali: k }: { kendali: KendaliIsian<T> }) {
       </span>
     );
   }
+  if (k.tertunda) return <span>Perubahan akan disimpan otomatis…</span>;
   if (k.kotor) return <span className="text-warning">Ada perubahan belum disimpan</span>;
   if (isian.status !== "DRAF") return <span>Diperbarui {formatDateTime(isian.updatedAt)}</span>;
   if (isian.rev === 1) return <span>Draf baru — belum diubah</span>;

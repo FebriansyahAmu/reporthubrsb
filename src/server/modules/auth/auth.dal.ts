@@ -37,6 +37,11 @@ export function findRefreshByHash(tokenHash: string) {
   return getAppDb().refreshToken.findUnique({ where: { tokenHash } });
 }
 
+/** Untuk menelusuri rantai pengganti (`replaced_by` = id token pengganti). */
+export function findRefreshById(id: string) {
+  return getAppDb().refreshToken.findUnique({ where: { id } });
+}
+
 export function revokeRefresh(id: string, replacedBy?: string | null) {
   return getAppDb().refreshToken.update({
     where: { id },

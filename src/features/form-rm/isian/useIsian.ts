@@ -2,16 +2,22 @@
 
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ApiError, apiPatch, apiPost, pesanGalat } from "@/lib/api-client";
+import { EVENT_SEBELUM_KELUAR, keluarBerjalan, type DetailSebelumKeluar } from "@/lib/sesi";
 import { definisiForm, type DefinisiForm } from "@/features/form-rm/registry";
 import type { AksiIsian } from "@/features/form-rm/isian.status";
 import type { IsianForm, IzinIsian } from "@/server/modules/form-rm/isian.types";
 import { petaTtdBaru } from "./petaTtd";
 
 /**
- * Status & aksi satu isian Form RM di klien (dipakai keempat tampilan form):
- * simpan draf dengan `rev` (konkurensi optimistis), transisi status, penanda
- * perubahan belum disimpan, dan penggantian TTD baru dengan referensi server.
+ * Status & aksi satu isian Form RM di klien (dipakai semua tampilan form):
+ * simpan draf dengan `rev` (konkurensi optimistis), **simpan otomatis** 3 detik
+ * setelah perubahan terakhir (PRD §6.3/§9 — hanya bila ada perubahan, satu
+ * permintaan sekaligus), transisi status, penanda perubahan belum disimpan, dan
+ * penggantian TTD baru dengan referensi server. Perubahan terakhir juga disimpan
+ * saat tab disembunyikan, saat pindah halaman, dan sebelum keluar (idle / Keluar).
  */
+
+export const JEDA_SIMPAN_OTOMATIS_MS = 3_000;
 
 export type GalatIsian = {
   pesan: string;
@@ -31,6 +37,10 @@ export type KendaliIsian<T> = {
   /** FINAL / BATAL / tanpa izin ubah → kolom tidak bisa disunting. */
   terkunci: boolean;
   kotor: boolean;
+  /** Perubahan menunggu simpan otomatis (belum pernah gagal pada versi ini). */
+  tertunda: boolean;
+  /** Simpan otomatis sedang berjalan — bilah aksi sengaja tidak dikunci. */
+  menyimpanOtomatis: boolean;
   sibuk: "simpan" | "simrs" | AksiIsian | null;
   galat: GalatIsian | null;
   tutupGalat: () => void;
@@ -39,6 +49,9 @@ export type KendaliIsian<T> = {
   /** Terapkan nilai SIMRS terkini ke kolom terpilih; path yang diterapkan, atau null bila gagal. */
   terapkanSimrs: (kolom: string[]) => Promise<string[] | null>;
 };
+
+/** Isi form + nomor versinya, selalu berpasangan: data yang dikirim = versi yang ditandai tersimpan. */
+type StateForm<T> = { data: T; versi: number };
 
 function galatDari(e: unknown): GalatIsian {
   if (e instanceof ApiError) {
@@ -67,65 +80,106 @@ export function useIsian<T extends object>(
   const def = definisiWajib(awal.kode);
 
   const [isian, setIsian] = useState(awal);
-  const [form, setFormMentah] = useState<T>(() => siapkan(awal.data));
-  const [kotor, setKotor] = useState(false);
+  const [state, setState] = useState<StateForm<T>>(() => ({ data: siapkan(awal.data), versi: 0 }));
+  const [versiTersimpan, setVersiTersimpan] = useState(0);
+  /** Versi yang simpannya gagal — simpan otomatis tidak mengulang sebelum ada perubahan baru. */
+  const [versiGagal, setVersiGagal] = useState<number | null>(null);
   const [sibuk, setSibuk] = useState<KendaliIsian<T>["sibuk"]>(null);
+  const [menyimpanOtomatis, setMenyimpanOtomatis] = useState(false);
   const [galat, setGalat] = useState<GalatIsian | null>(null);
 
-  // Dibaca setelah `await` (closure bisa usang) → ref, diubah hanya di handler.
+  // Dibaca setelah `await` (closure bisa usang) → ref.
   const rev = useRef(awal.rev);
-  const versi = useRef(0);
-  const versiTersimpan = useRef(0);
-  const berjalan = useRef(false);
+  const penghitung = useRef(0);
+  const tersimpan = useRef(0);
+  const terkini = useRef(state);
+  /** Permintaan simpan yang sedang berjalan (manual atau otomatis). */
+  const proses = useRef<Promise<boolean> | null>(null);
+  /** Transisi status / terapkan SIMRS sedang berjalan. */
+  const transisi = useRef(false);
 
   const terkunci = isian.status !== "DRAF" || !izin.ubah;
+  const kotor = state.versi !== versiTersimpan;
+  const tertunda = kotor && !terkunci && !galat?.konflik && versiGagal !== state.versi;
 
   // Pengaman kedua (selain <fieldset disabled>): isian terkunci tak pernah berubah di klien.
   const setForm: Dispatch<SetStateAction<T>> = (u) => {
     if (terkunci) return;
-    versi.current++;
-    setFormMentah(u);
-    setKotor(true);
+    const versi = ++penghitung.current;
+    setState((s) => ({ data: typeof u === "function" ? (u as (p: T) => T)(s.data) : u, versi }));
   };
 
   const terima = (baru: IsianForm) => {
     rev.current = baru.rev;
     setIsian(baru);
   };
+  const tandaiTersimpan = (versi: number) => {
+    tersimpan.current = versi;
+    setVersiTersimpan(versi);
+  };
 
-  async function simpan(): Promise<boolean> {
-    if (terkunci || berjalan.current) return false;
-    berjalan.current = true;
-    const kirim = form;
-    const versiKirim = versi.current;
-    setSibuk("simpan");
-    setGalat(null);
+  async function kirimSimpan(otomatis: boolean): Promise<boolean> {
+    const { data: kirim, versi: versiKirim } = terkini.current;
+    if (otomatis) setMenyimpanOtomatis(true);
+    else {
+      setSibuk("simpan");
+      setGalat(null);
+    }
     try {
       const baru = await apiPatch<IsianForm>(`/api/form-rm/isian/${isian.id}`, { rev: rev.current, data: kirim });
       // Edit selama menyimpan dipertahankan; hanya TTD baru yang diganti referensinya.
       const peta = petaTtdBaru(def, kirim, baru.data as object);
-      if (peta.size > 0) setFormMentah((f) => def.petaTtd(f, (v) => peta.get(v) ?? v) as T);
+      if (peta.size > 0) setState((s) => ({ ...s, data: def.petaTtd(s.data, (v) => peta.get(v) ?? v) as T }));
       terima(baru);
-      versiTersimpan.current = versiKirim;
-      if (versi.current === versiKirim) setKotor(false);
+      tandaiTersimpan(versiKirim);
+      if (otomatis) setGalat((g) => (g?.konflik ? g : null));
       return true;
     } catch (e) {
       setGalat(galatDari(e));
+      setVersiGagal(versiKirim);
       return false;
     } finally {
-      berjalan.current = false;
-      setSibuk(null);
+      if (otomatis) setMenyimpanOtomatis(false);
+      else setSibuk(null);
     }
   }
 
+  /** Satu permintaan simpan sekaligus: bila ada yang berjalan, tunggu lalu kirim sisa perubahan. */
+  function simpan(otomatis = false): Promise<boolean> {
+    if (terkunci) return Promise.resolve(false);
+    const jalan = proses.current;
+    // Ctrl+S kebiasaan setelah simpan otomatis: tanpa perubahan → tanpa permintaan (rev & audit tak bertambah).
+    if (!jalan && terkini.current.versi === tersimpan.current) return Promise.resolve(true);
+    if (jalan) {
+      return jalan.then((ok) =>
+        ok && terkini.current.versi === tersimpan.current ? true : simpanTerbaru.current(otomatis),
+      );
+    }
+    const p = kirimSimpan(otomatis).finally(() => {
+      proses.current = null;
+    });
+    proses.current = p;
+    return p;
+  }
+
+  /** Tunggu simpan yang berjalan, lalu simpan perubahan yang tersisa (bila ada). */
+  async function tuntaskanSimpan(): Promise<boolean> {
+    if (proses.current) await proses.current;
+    return terkini.current.versi === tersimpan.current || simpan();
+  }
+
   async function jalankan(aksi: AksiIsian, alasan?: string): Promise<boolean> {
-    if (berjalan.current) return false;
-    // Finalkan selalu atas isi terbaru: simpan dulu bila ada perubahan.
-    if (aksi === "FINALKAN" && versi.current !== versiTersimpan.current && !(await simpan())) return false;
-    berjalan.current = true;
-    setSibuk(aksi);
-    setGalat(null);
+    if (transisi.current) return false;
+    transisi.current = true;
     try {
+      // Finalkan selalu atas isi terbaru; aksi lain cukup menunggu simpan yang berjalan (rev terbaru).
+      if (aksi === "FINALKAN") {
+        if (!(await tuntaskanSimpan())) return false;
+      } else if (proses.current) {
+        await proses.current;
+      }
+      setSibuk(aksi);
+      setGalat(null);
       terima(
         await apiPost<IsianForm>(`/api/form-rm/isian/${isian.id}/aksi`, {
           aksi,
@@ -138,43 +192,69 @@ export function useIsian<T extends object>(
       setGalat(galatDari(e));
       return false;
     } finally {
-      berjalan.current = false;
+      transisi.current = false;
       setSibuk(null);
     }
   }
 
   async function terapkanSimrs(kolom: string[]): Promise<string[] | null> {
-    if (terkunci || berjalan.current) return null;
-    // Server menerapkan atas isi tersimpan: simpan dulu perubahan di layar.
-    if (versi.current !== versiTersimpan.current && !(await simpan())) return null;
-    berjalan.current = true;
-    setSibuk("simrs");
-    setGalat(null);
+    if (terkunci || transisi.current) return null;
+    transisi.current = true;
     try {
+      // Server menerapkan atas isi tersimpan: simpan dulu perubahan di layar.
+      if (!(await tuntaskanSimpan())) return null;
+      setSibuk("simrs");
+      setGalat(null);
       const r = await apiPost<{ isian: IsianForm; diterapkan: string[] }>(`/api/form-rm/isian/${isian.id}/simrs`, {
         rev: rev.current,
         kolom,
       });
-      versi.current++;
-      versiTersimpan.current = versi.current;
-      setFormMentah(siapkan(r.isian.data));
-      setKotor(false);
+      const versi = ++penghitung.current;
+      setState({ data: siapkan(r.isian.data), versi });
+      tandaiTersimpan(versi);
       terima(r.isian);
       return r.diterapkan;
     } catch (e) {
       setGalat(galatDari(e));
       return null;
     } finally {
-      berjalan.current = false;
+      transisi.current = false;
       setSibuk(null);
     }
   }
 
-  // Ctrl/⌘+S = simpan; peringatan saat meninggalkan halaman dengan perubahan.
+  // Ref ke fungsi terbaru (dipakai timer, pendengar, dan rantai simpan setelah `await`).
   const simpanTerbaru = useRef(simpan);
+  const simpanSisa = useRef<() => Promise<boolean>>(() => Promise.resolve(true));
   useEffect(() => {
+    terkini.current = state;
     simpanTerbaru.current = simpan;
+    simpanSisa.current = () => (kotor && !terkunci && !galat?.konflik ? simpan(true) : Promise.resolve(true));
   });
+
+  // Simpan otomatis setelah jeda tanpa perubahan.
+  useEffect(() => {
+    if (!tertunda || sibuk !== null) return;
+    const t = window.setTimeout(() => void simpanTerbaru.current(true), JEDA_SIMPAN_OTOMATIS_MS);
+    return () => window.clearTimeout(t);
+  }, [tertunda, sibuk, state.versi]);
+
+  // Tab disembunyikan / keluar (idle atau tombol Keluar) / pindah halaman → simpan sisa perubahan.
+  useEffect(() => {
+    const sembunyi = () => {
+      if (document.visibilityState === "hidden") void simpanSisa.current();
+    };
+    const sebelumKeluar = (e: Event) => (e as CustomEvent<DetailSebelumKeluar>).detail?.tunggu(simpanSisa.current());
+    document.addEventListener("visibilitychange", sembunyi);
+    window.addEventListener(EVENT_SEBELUM_KELUAR, sebelumKeluar);
+    return () => {
+      document.removeEventListener("visibilitychange", sembunyi);
+      window.removeEventListener(EVENT_SEBELUM_KELUAR, sebelumKeluar);
+      void simpanSisa.current();
+    };
+  }, []);
+
+  // Ctrl/⌘+S = simpan; peringatan saat menutup tab dengan perubahan yang belum tersimpan.
   useEffect(() => {
     const tekan = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
@@ -187,7 +267,9 @@ export function useIsian<T extends object>(
   }, []);
   useEffect(() => {
     if (!kotor) return;
-    const tahan = (e: BeforeUnloadEvent) => e.preventDefault();
+    const tahan = (e: BeforeUnloadEvent) => {
+      if (!keluarBerjalan()) e.preventDefault();
+    };
     window.addEventListener("beforeunload", tahan);
     return () => window.removeEventListener("beforeunload", tahan);
   }, [kotor]);
@@ -196,14 +278,16 @@ export function useIsian<T extends object>(
     isian,
     izin,
     def,
-    form,
+    form: state.data,
     setForm,
     terkunci,
     kotor,
+    tertunda,
+    menyimpanOtomatis,
     sibuk,
     galat,
     tutupGalat: () => setGalat(null),
-    simpan,
+    simpan: () => simpan(),
     jalankan,
     terapkanSimrs,
   };

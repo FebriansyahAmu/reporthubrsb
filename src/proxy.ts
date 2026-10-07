@@ -87,9 +87,20 @@ export async function proxy(req: NextRequest) {
 
   const target = pathname + search;
   if (req.cookies.get(REFRESH_COOKIE)?.value) {
+    // 307 untuk semua metode: route refresh merotasi lalu mengalihkan balik dengan
+    // metode & body yang sama (PATCH/POST/DELETE fetch ikut pulih).
     const url = new URL("/api/auth/refresh", req.url);
     url.searchParams.set("callbackUrl", target);
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(url, 307);
+  }
+
+  // API tanpa sesi → 401 JSON. Dialihkan ke halaman login, fetch menerima HTML 200
+  // dan klien mengira simpan/aksinya berhasil.
+  if (cocokPrefiks(pathname, "/api")) {
+    return NextResponse.json(
+      { error: { code: "UNAUTHORIZED", message: "Sesi berakhir. Silakan masuk kembali." } },
+      { status: 401, headers: { "Cache-Control": "no-store" } },
+    );
   }
 
   const url = new URL("/", req.url);
@@ -98,8 +109,9 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // Lindungi semua kecuali: API auth, aset _next, dan file statis.
+  // Lindungi semua kecuali: API auth, aset _next, dan file statis — termasuk
+  // manifest PWA (diambil browser TANPA cookie) & service worker `/sw.js`.
   matcher: [
-    "/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|ico|webp|gif|css|js|txt|woff|woff2)$).*)",
+    "/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|ico|webp|gif|css|js|txt|woff|woff2|webmanifest)$).*)",
   ],
 };
