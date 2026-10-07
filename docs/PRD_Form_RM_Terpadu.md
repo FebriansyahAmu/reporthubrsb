@@ -4,8 +4,8 @@
 
 **Project:** ReportHub (`reporthubrsb`) · Modul **Form RM** (`form-rm`)
 **Organisasi:** UPTD RSUD Bolaang Mongondow Timur
-**Versi:** 0.6 — K1, K3, K5, K6, K7 diputuskan; K4 ditunda; K8–K10 terbuka (§15)
-**Tanggal:** 7 Oktober 2026 · **Status:** F0–F3 selesai (pilot Morse menunggu templat resmi RS, K10); F4 menunggu formulir RM resmi dari RS (dikerjakan 1:1); F5 selesai — PWA, simpan otomatis, keluar otomatis saat idle, pengerasan sesi — lihat §16
+**Versi:** 0.7 — K1, K3, K5, K6, K7 diputuskan; K4 ditunda; K8–K10 terbuka (§15)
+**Tanggal:** 8 Oktober 2026 · **Status:** F0–F3 selesai (pilot Morse menunggu templat resmi RS, K10); F4 menunggu formulir RM resmi dari RS (dikerjakan 1:1); F5 selesai — PWA, simpan otomatis, keluar otomatis saat idle, pengerasan sesi; F5b selesai — aplikasi desktop Tauri (WebView2) — lihat §16
 **Sifat data SIMGOS:** **FULL READ-ONLY.** Hanya `SELECT` / `information_schema`. Tidak ada DDL/DML, tidak menambah atau mengubah tabel maupun stored procedure apa pun di SIMGOS. Semua isian form, tanda tangan, dan riwayat disimpan di DB aplikasi `reporthub`.
 
 ---
@@ -542,9 +542,11 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 | Cetak langsung ke printer tertentu tanpa dialog | tidak bisa                | bisa, perlu kode Rust untuk API cetak WebView2 |
 | Pad tanda tangan USB, pembaca e-KTP, sidik jari | terbatas (WebHID/WebUSB)  | bisa lewat SDK native                          |
 | Mode kiosk di loket                             | sebagian (kebijakan Edge) | ya                                             |
-| Kamera saat server masih http LAN               | gagal (butuh HTTPS)       | tetap gagal tanpa HTTPS                        |
+| Kamera saat server masih http LAN               | gagal (butuh HTTPS)       | bisa: origin ReportHub diperlakukan sebagai konteks aman (risiko diterima, lihat F5b) |
 
 **Rekomendasi:** pasang HTTPS dulu, dengan PWA sebagai bawaan. Tauri dibangun di Fase F5 hanya bila K3 menyebut kebutuhan perangkat yang nyata.
+
+_Diputuskan 8 Okt 2026:_ pemilik meminta jendela desktop Tauri sekarang (F5b, §16) — hanya jendela WebView2 ke server; perintah native (cetak langsung, pad TTD, e-KTP, kiosk) tetap menunggu kebutuhan nyata.
 
 ---
 
@@ -558,7 +560,8 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 | **F2 — Pustaka isi otomatis** ✅      | Sumber §8.3 + episode IGD asal; tanda asal kolom; "Muat ulang dari SIMRS" dengan perbandingan; RM.21 terisi dari `edukasi_pasien_keluarga`                                                                                                                                                                                               | Pemetaan cocok 100 % dengan SQL independen pada sampel 30 hari; ≥ 80 % kolom yang datanya tersedia terisi |
 | **F3 — Mesin form deklaratif** ✅     | Renderer form & cetak generik; skor terhitung; tabel berulang; batch pertama form baru (sesuai K1)                                                                                                                                                                                                                                       | Form baru cukup ditambah dengan satu berkas definisi; cetak sesuai kertas                                 |
 | **F4 — Perluasan per kategori** ⏸     | Batch form berikutnya — **menunggu formulir RM resmi dari RS**; tiap form dikerjakan 1:1 dengan formulir kertasnya (keputusan 7 Okt 2026)                                                                                                                                                                                                 | Setiap batch: E2E dan suite keamanan lulus                                                                |
-| **F5 — PWA + penyelesaian non-form** ✅ | Manifest PWA + service worker tanpa cache (K3 → PWA, tanpa Tauri); simpan otomatis draf (§6.3/§9); keluar otomatis saat idle (K6); pengerasan sesi                                                                                                                                                                                      | Suite F5 + regresi F0–F3 & QR publik lulus di build produksi                                              |
+| **F5 — PWA + penyelesaian non-form** ✅ | Manifest PWA + service worker tanpa cache (K3 → PWA); simpan otomatis draf (§6.3/§9); keluar otomatis saat idle (K6); pengerasan sesi                                                                                                                                                                                                  | Suite F5 + regresi F0–F3 & QR publik lulus di build produksi                                              |
+| **F5b — Aplikasi desktop Tauri** ✅    | Jendela WebView2 Tauri 2.12 ke satu origin server (§12.3): origin dikunci, tanpa IPC, izin minimal, satu instance, pembaruan bertanda tangan dari server ReportHub; installer NSIS per pengguna; panduan `docs/desktop-tauri.md`                                                                                                           | Uji unit Rust, uji jendela rilis via CDP, uji pembaruan (sah/rusak/versi palsu) & pasang→perbarui→copot  |
 
 ---
 
@@ -581,7 +584,7 @@ ReportHub bergantung pada server: render di server, API, koneksi SIMGOS, dan sec
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | K1  | Daftar Formulir RM resmi RS (nomor, judul, kategori) dan urutan prioritas                                                                                                                                                                 | ✅ **Diputuskan:** mulai dengan 4 form yang ada; form lain menyusul setelah tersedia                                                                                                     |
 | K2  | Peran pengisi per kategori, dan siapa yang boleh membuka isian FINAL                                                                                                                                                                      | Pengisi = peran kategori; membuka FINAL = Instalasi RM (sementara: modul `form-rm.kelola`)                                                                                               |
-| K3  | Kebutuhan perangkat untuk Tauri (cetak langsung, pad TTD, e-KTP, kiosk)                                                                                                                                                                   | ✅ Mengikuti rekomendasi (7 Okt 2026): **PWA** dibangun di F5; Tauri hanya bila kelak ada kebutuhan perangkat nyata                                                                     |
+| K3  | Kebutuhan perangkat untuk Tauri (cetak langsung, pad TTD, e-KTP, kiosk)                                                                                                                                                                   | ✅ **PWA** dibangun di F5 (7 Okt 2026); atas permintaan pemilik, **jendela desktop Tauri** dibangun di F5b (8 Okt 2026). Perintah native (cetak langsung, pad TTD, e-KTP, kiosk) tetap menunggu kebutuhan nyata |
 | K4  | Apakah server produksi sudah HTTPS                                                                                                                                                                                                        | ⏸ **Ditunda** (6 Okt 2026): dimitigasi kemudian. Rekomendasi: sertifikat Let's Encrypt via DNS-01 untuk nama host LAN di reverse proxy. PWA (F5) sudah siap, tetapi pemasangan penuh & halaman "Tidak terhubung" baru aktif di HTTPS; kamera juga butuh HTTPS |
 | K5  | Status awal 10 isian lama setelah migrasi                                                                                                                                                                                                 | ✅ Mengikuti rekomendasi: DRAF (diterapkan di Langkah 2)                                                                                                                                 |
 | K6  | Keluar otomatis saat idle di PC bersama                                                                                                                                                                                                   | ✅ Mengikuti rekomendasi: **15 menit**, untuk seluruh aplikasi; dapat diubah lewat env `SESI_IDLE_MENIT` (5–480; `0` = nonaktif, mis. layar monitor di dinding)                             |
@@ -785,6 +788,71 @@ Keputusan pemilik: formulir baru dikerjakan **setelah formulir RM resmi dikirim*
 - `/security-review` atas diff F5 menemukan **2 temuan Medium pada kode F5 sendiri**, keduanya sudah diperbaiki dan diuji (unit + E2E di atas):
   1. Open redirect lewat normalisasi segmen titik: `/.//evil.com` lolos pemeriksaan input dan dinormalkan menjadi `//evil.com`. Kini hasil normalisasi diperiksa ulang, dan route refresh juga memastikan tujuan akhir tetap di origin sendiri.
   2. Jendela cabang 30 detik bisa melewati "cabut semua sesi": token yang sudah dirotasi tidak tersentuh pencabutan massal. Kini cabang hanya sah bila rantai penggantinya masih berujung pada token aktif milik pengguna yang sama.
+
+### F5b — Aplikasi desktop Tauri / WebView2 (8 Okt 2026)
+
+**Keputusan pemilik (8 Okt 2026):**
+
+- toolchain dipasang di PC pengembang (Rust 1.99 stable-msvc + VS Build Tools 2022);
+- alamat server diatur lewat berkas konfigurasi;
+- kamera diaktifkan walau server masih HTTP, dengan izin tetap ditanyakan;
+- pembaruan disajikan oleh server ReportHub sendiri.
+
+**Yang dibangun** (`desktop/`, panduan IT & pengembang di `docs/desktop-tauri.md`):
+
+- **Satu origin:**
+  - alamat dari `reporthub.json` di folder aplikasi (wajib origin murni; kunci liar atau path ditolak dengan dialog galat), selain itu alamat bawaan build `REPORTHUB_URL`;
+  - navigasi ke origin lain dibatalkan dan http/https/mailto/tel dibuka di browser sistem; skema lain ditolak;
+  - `target="_blank"` / `window.open` same-origin (mis. Cetak) → jendela aplikasi baru dengan sesi dan penguncian yang sama.
+- **Tanpa IPC:**
+  - `capabilities: []`, sehingga semua perintah Tauri dari halaman ditolak ACL;
+  - plugin opener **sengaja tidak didaftarkan**. Skrip suntikannya mencegat klik tautan `_blank`, lalu memanggil IPC yang (benar) ditolak, sehingga tombol Cetak mati. Cacat ini ditemukan lewat uji klik sungguhan.
+- **Izin:**
+  - hanya kamera dan unduhan beruntun yang boleh diminta halaman server; pengguna tetap ditanya;
+  - lokasi, notifikasi, mikrofon, clipboard baca, berkas, MIDI, dan sensor ditolak tanpa dialog.
+- **Server HTTP (K4):**
+  - hanya origin ReportHub yang diberi `--unsafely-treat-insecure-origin-as-secure`, sehingga kamera dan service worker jalan di aplikasi;
+  - otomatis tidak dipakai lagi setelah alamat diganti ke `https://`. Risikonya tercatat di panduan.
+- **Rilis:** DevTools mati, satu instance, penanda tampilan `window.__AUDITTRAIL_DESKTOP__` (bukan kapabilitas), installer NSIS **per pengguna** (tanpa admin, sehingga pembaruan juga tanpa admin), ±1,9 MB.
+- **Pembaruan:**
+  - diperiksa saat dibuka, dari `GET /api/desktop/pembaruan/windows/{arch}/{versi}`;
+  - paket diverifikasi minisign dengan kunci publik tertanam + `requireSignedVersion`;
+  - dialog Pasang sekarang / Nanti; draf formulir diminta disimpan sebelum pemasang berjalan;
+  - kunci privat di `%USERPROFILE%\.tauri\` (akses dibatasi ke akun pembuatnya, tidak pernah masuk repo).
+  - Diagnosis `--cek-pembaruan`: periksa, unduh, verifikasi tanpa memasang.
+- **Server:**
+  - endpoint publik `/api/desktop/pembaruan/...` dan `/api/desktop/unduh/{berkas}` (proxy `PUBLIC_PREFIXES`);
+  - manifest `STORAGE_DIR/desktop/rilis.json` divalidasi strict; hanya installer yang tercantum di manifest yang bisa diunduh;
+  - URL unduhan dari `PUBLIC_APP_ORIGIN`/`SIGN_PUBLIC_ORIGIN` (bukan header Host);
+  - batas laju 30/10 per menit per IP.
+  - Menu pengguna **Unduh aplikasi desktop** muncul di browser Windows bila rilis ada, dan tidak muncul di dalam aplikasi.
+- **Skrip rilis** `npm run rilis` (di `desktop/`): build bertanda tangan → `desktop/rilis/<versi>/{installer, rilis.json}`; `--pasang-ke <STORAGE_DIR>` menyalin installer dulu, lalu manifest secara atomik.
+
+**Hasil uji:**
+
+- Rust: `cargo test` 11/11 (validasi alamat, pencocokan origin termasuk port/skema/`blob:`/`about:blank`, keputusan navigasi/jendela baru/izin, argumen browser, endpoint pembaruan); `cargo clippy -D warnings` bersih. Web: vitest 222/222 (baru: skema rilis), tsc & eslint bersih.
+- Endpoint 28/28 (dev & produksi):
+  - 204 tanpa rilis atau versi tidak lebih baru; 200 format updater Tauri;
+  - parameter, path traversal, berkas di luar manifest → 404;
+  - manifest rusak / menunjuk path liar → diabaikan;
+  - prefiks mirip `/api/desktopx` tetap 401; banjir → 429; storage dipulihkan.
+- Jendela aplikasi **build rilis** via CDP WebView2, 17/17:
+  - `reporthub.json` tidak sah → dialog galat tanpa halaman; `reporthub.json` mengalahkan alamat bawaan;
+  - origin HTTP LAN = konteks aman (kamera & SW tersedia); 5 perintah IPC ditolak ACL;
+  - `file:` & origin lain dibatalkan; Cetak `_blank` → jendela baru berbagi sesi & ikut terkunci; `window.open` luar tidak masuk aplikasi;
+  - lokasi/notifikasi/mikrofon ditolak; menu unduh tersembunyi; instance kedua langsung keluar.
+- Pembaruan dengan paket nyata 1.0.0 → 1.0.1: sah → `TERSEDIA … TANDA_TANGAN_SAH`; tanda tangan dirusak 1 karakter → ditolak; server mengumumkan 1.0.2 untuk paket 1.0.1 → ditolak (`requireSignedVersion`); versi sama → terbaru.
+- Ujung-ke-ujung 6/6:
+  - installer 1.0.0 senyap per pengguna tanpa UAC;
+  - dialog pembaruan berisi versi & catatan;
+  - klik otomatis Pasang sekarang → 1.0.1 terpasang 11 detik kemudian (sesudah jeda simpan draf);
+  - aplikasi terbuka kembali; `reporthub.json` bertahan; pencopotan bersih.
+- Menu unduh di Chrome Windows 3/3 (muncul bila rilis ada, installer byte-identik, hilang bila tidak ada).
+- Regresi produksi: sesi 47/47, F1 103/103, UI sesi 27/27.
+- Data uji (pengguna/peran/token sementara, rilis uji di storage, data WebView2, pemasangan uji) dibersihkan.
+- `/security-review` atas diff F5b: tanpa temuan.
+
+**Belum:** sertifikat code signing installer (SmartScreen memperingatkan), dan alamat server produksi untuk build rilis resmi (`REPORTHUB_URL`, atau `reporthub.json` di tiap PC).
 
 ## 17. Sumber
 

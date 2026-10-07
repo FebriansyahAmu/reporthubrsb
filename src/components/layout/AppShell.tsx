@@ -12,12 +12,15 @@ export function AppShell({
   user,
   allowedModules,
   menitIdle,
+  unduhDesktop,
 }: {
   children: React.ReactNode;
   user: TopbarUser | null;
   allowedModules: string[];
   /** Keluar otomatis setelah sekian menit tanpa aktivitas (0 = nonaktif). */
   menitIdle: number;
+  /** Server punya rilis aplikasi desktop yang bisa diunduh. */
+  unduhDesktop: boolean;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -62,6 +65,7 @@ export function AppShell({
           onMenu={() => setMobileOpen(true)}
           user={user}
           allowedModules={allowedModules}
+          unduhDesktop={unduhDesktop}
         />
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <div className="w-full">{children}</div>

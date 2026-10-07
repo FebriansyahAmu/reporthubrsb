@@ -12,10 +12,13 @@ export function Topbar({
   onMenu,
   user,
   allowedModules,
+  unduhDesktop,
 }: {
   onMenu: () => void;
   user: TopbarUser | null;
   allowedModules: string[];
+  /** Server punya rilis aplikasi desktop yang bisa diunduh. */
+  unduhDesktop: boolean;
 }) {
   return (
     <header className="no-print sticky top-0 z-20 flex h-16 items-center gap-2 border-b border-border bg-surface/80 px-4 backdrop-blur-md sm:gap-3 sm:px-6">
@@ -33,7 +36,7 @@ export function Topbar({
         {user && <NotificationBell />}
         <AdminMenu allowedModules={allowedModules} />
         <div className="hidden h-6 w-px bg-border sm:block" />
-        <UserMenu user={user} />
+        <UserMenu user={user} unduhDesktop={unduhDesktop} />
       </div>
     </header>
   );

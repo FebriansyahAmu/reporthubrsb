@@ -85,6 +85,8 @@ Catatan pemetaan:
   beda izin per sub-halaman, pecah jadi beberapa `key` — tak ada perubahan arsitektur.
 - **`/api/print/simgos/*`** dijadikan bagian `apiPrefixes` `berkas-klaim` (atau modul
   cetak tersendiri bila diinginkan). Tetapkan saat implementasi sesuai kebijakan cetak.
+- **`/api/desktop/*`** (manifest pembaruan & installer aplikasi desktop, tanpa data pasien;
+  lihat `docs/desktop-tauri.md`) juga publik — di `PUBLIC_PREFIXES` proxy, tidak masuk katalog.
 - **`/api/sign/*`** & **`/api/auth/*`** **tidak** masuk katalog — publik/authn-only
   (lihat [02-otorisasi.md](./02-otorisasi.md) §5.1).
 

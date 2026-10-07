@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, KeyRound, LogOut, MonitorDown, ShieldCheck } from "lucide-react";
+import { AppWindow, ChevronDown, KeyRound, LogOut, MonitorDown, ShieldCheck } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { ChangePasswordForm } from "@/features/auth/ChangePasswordForm";
 import { cn } from "@/lib/cn";
+import { useTawarkanUnduhDesktop } from "@/lib/desktop";
 import { pasangAplikasi, useBisaDipasang } from "@/lib/pwa";
 import { keluarSesi } from "@/lib/sesi";
 
@@ -18,12 +19,13 @@ function initials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-export function UserMenu({ user }: { user: MenuUser | null }) {
+export function UserMenu({ user, unduhDesktop = false }: { user: MenuUser | null; unduhDesktop?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const bisaDipasang = useBisaDipasang();
+  const tawarkanDesktop = useTawarkanUnduhDesktop(unduhDesktop);
 
   // Tutup dropdown saat klik di luar.
   useEffect(() => {
@@ -129,6 +131,18 @@ export function UserMenu({ user }: { user: MenuUser | null }) {
                   <MonitorDown className="size-4 text-fg-muted" />
                   Pasang aplikasi
                 </button>
+              )}
+              {tawarkanDesktop && (
+                <a
+                  role="menuitem"
+                  href="/api/desktop/unduh/terbaru"
+                  download
+                  onClick={() => setOpen(false)}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-fg transition-colors hover:bg-surface-2"
+                >
+                  <AppWindow className="size-4 text-fg-muted" />
+                  Unduh aplikasi desktop
+                </a>
               )}
               <button
                 type="button"

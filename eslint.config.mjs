@@ -14,6 +14,11 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Prisma client hasil generate (bukan kode tulisan tangan).
     "src/generated/**",
+    // Aplikasi desktop Tauri: hasil build Rust & dependensinya.
+    "desktop/src-tauri/target/**",
+    "desktop/src-tauri/gen/**",
+    "desktop/node_modules/**",
+    "desktop/rilis/**",
   ]),
 ]);
 

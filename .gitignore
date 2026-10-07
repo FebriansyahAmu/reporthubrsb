@@ -45,3 +45,9 @@ next-env.d.ts
 
 # berkas unggahan, PDF paket klaim & foto barang (STORAGE_DIR) — data, bukan kode
 /storage
+
+# aplikasi desktop Tauri: hasil build Rust, dependensi, dan paket rilis
+/desktop/node_modules
+/desktop/src-tauri/target
+/desktop/src-tauri/gen
+/desktop/rilis

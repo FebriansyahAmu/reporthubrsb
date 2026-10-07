@@ -1,0 +1,114 @@
+# Aplikasi Desktop AuditTrail RS BOLTIM (Tauri / WebView2)
+
+Panduan untuk **IT RSUD** (memasang, mengatur alamat server, memperbarui) dan **pengembang** (membangun & merilis). Latar belakang dan syarat keamanannya ada di PRD Form RM Terpadu §12.
+
+## 1. Apa ini
+
+Aplikasi Windows kecil yang **hanya membuka server ReportHub** dalam jendela sendiri, dengan ikon di taskbar. Isinya sama persis dengan versi browser. Server Next.js, kredensial SIMGOS, dan secret login **tidak pernah ada di PC**.
+
+| Perilaku | Keterangan |
+| --- | --- |
+| Satu alamat server | Jendela hanya menampilkan origin server yang diatur (skema + host + port). |
+| Tautan ke situs lain | Dibuka di browser bawaan Windows, bukan di jendela aplikasi. |
+| Skema berbahaya | `file:`, `javascript:`, `data:`, dan protokol aplikasi lain ditolak. |
+| Halaman cetak (`target="_blank"`) | Dibuka di jendela aplikasi baru dengan sesi dan penguncian yang sama. |
+| IPC | Tidak ada. Halaman server tidak bisa memanggil fungsi aplikasi apa pun. |
+| Izin | Hanya **kamera** (TTD foto, foto barang) dan unduhan beruntun yang boleh **diminta** halaman server; pengguna tetap ditanya. Mikrofon, lokasi, notifikasi sistem, clipboard baca, dan akses berkas ditolak. |
+| DevTools | Mati di build rilis. |
+| Satu instance | Membuka aplikasi lagi hanya memunculkan jendela yang sudah ada. |
+| Pembaruan | Diperiksa saat aplikasi dibuka, dari server ReportHub sendiri. Paket **wajib bertanda tangan** dan diverifikasi sebelum dipasang. |
+| Keluar otomatis saat idle | Sama dengan browser (K6, `SESI_IDLE_MENIT`). |
+
+### Server masih HTTP (K4)
+
+Selama server belum HTTPS, aplikasi memperlakukan **hanya origin ReportHub** sebagai konteks aman (argumen WebView2 `--unsafely-treat-insecure-origin-as-secure`). Akibatnya:
+
+- kamera (TTD foto, foto barang) dan service worker berjalan di aplikasi, padahal di browser biasa tidak;
+- izin kamera tetap ditanyakan kepada pengguna.
+
+> **Risiko yang diterima (keputusan 7 Okt 2026):** lalu lintas HTTP tidak terenkripsi. Pihak yang bisa menyadap atau membelokkan jaringan LAN dapat menyisipkan skrip yang ikut meminta kamera. Setelah server HTTPS dan `reporthub.json` diganti ke `https://…`, pelonggaran ini otomatis tidak dipakai lagi.
+
+## 2. Memasang (IT)
+
+**Syarat PC:** Windows 10/11 64-bit dan jaringan ke server ReportHub. WebView2 sudah ada di Windows 10/11 terbaru; bila belum ada, installer memasangnya otomatis (perlu internet). **Windows 7 tidak didukung** (Tauri 2.12).
+
+1. Unduh installer:
+   - dari menu pengguna **Unduh aplikasi desktop** di ReportHub (muncul di browser Windows bila rilis sudah diterbitkan di server), atau
+   - langsung dari `http://<server>/api/desktop/unduh/terbaru`.
+2. Jalankan installer. Pemasangan dilakukan **per pengguna Windows**, tanpa hak admin, sehingga pembaruan otomatis juga tidak butuh admin. Folder pemasangan: `%LOCALAPPDATA%\AuditTrail RS BOLTIM`.
+3. Installer belum ditandatangani sertifikat code signing, jadi Windows SmartScreen bisa memperingatkan. Pilih **More info → Run anyway** (lihat §6).
+
+### Alamat server
+
+Alamat bawaan ditanam saat build (`REPORTHUB_URL`). Untuk menggantinya tanpa build ulang (mis. pindah ke domain HTTPS), buat berkas `reporthub.json` di folder pemasangan:
+
+```json
+{ "server": "https://reporthub.rsudboltim.go.id" }
+```
+
+- Isinya **wajib origin saja**: `http(s)://host[:port]`, tanpa path, query, atau nama pengguna. Kunci lain ditolak.
+- Berkas ini mengalahkan alamat bawaan. Tutup lalu buka lagi aplikasinya.
+- Isi yang salah memunculkan pesan galat yang menjelaskan formatnya, dan aplikasi tidak membuka apa pun.
+- Berkas ini bertahan saat aplikasi diperbarui maupun dicopot (pencopot hanya menghapus berkas yang dipasangnya).
+
+## 3. Pembaruan otomatis
+
+- Saat dibuka (setelah ±5 detik), aplikasi memeriksa `GET /api/desktop/pembaruan/windows/x86_64/<versi>` di server yang sama.
+- Bila ada versi lebih baru, muncul dialog **Pasang sekarang / Nanti**. Draf formulir diminta disimpan dulu, lalu installer berjalan pasif dan aplikasi dibuka kembali.
+- Paket diverifikasi dengan kunci publik yang tertanam di aplikasi (minisign), dan tanda tangannya wajib memuat versi yang diumumkan. Paket yang tidak cocok ditolak walaupun server atau jaringan dibobol.
+
+**Diagnosis:** `audittrail-rsboltim.exe --cek-pembaruan` memeriksa, mengunduh, dan memverifikasi paket tanpa memasangnya, lalu menulis satu baris ke stdout:
+
+| Keluaran | Arti | Kode keluar |
+| --- | --- | --- |
+| `TERBARU <versi>` | tidak ada versi lebih baru | 0 |
+| `TERSEDIA <versi> TANDA_TANGAN_SAH <n> byte` | ada versi baru dan paketnya sah | 0 |
+| `GAGAL_VERIFIKASI …` | tanda tangan/versi paket tidak cocok | 2 |
+| `GAGAL_PERIKSA …` / `GAGAL_KONFIGURASI …` | server tak terjangkau / konfigurasi salah | 2 |
+
+Karena aplikasi tidak punya jendela konsol, tampilkan keluarannya dengan:
+
+```powershell
+Start-Process "$env:LOCALAPPDATA\AuditTrail RS BOLTIM\audittrail-rsboltim.exe" -ArgumentList "--cek-pembaruan" -Wait -RedirectStandardOutput hasil.txt; Get-Content hasil.txt
+```
+
+## 4. Membangun & merilis (pengembang)
+
+**Prasyarat (sekali per PC build):** Node.js, Rust `stable-x86_64-pc-windows-msvc` (rustup), dan Visual Studio Build Tools 2022 dengan workload *Desktop development with C++*. Lalu jalankan `npm install` di folder `desktop/`.
+
+**Kunci tanda tangan pembaruan:**
+
+- Lokasi: `%USERPROFILE%\.tauri\audittrail-rsboltim.key` dan `…key.password`. Aksesnya dibatasi ke akun pembuatnya, dan **tidak pernah masuk repo**. Kunci publiknya tertanam di `desktop/src-tauri/tauri.conf.json`.
+- **Cadangkan keduanya** ke tempat aman (pengelola kata sandi / media terenkripsi).
+  - Bila hilang, aplikasi yang sudah terpasang tidak bisa diperbarui lagi; semua PC harus memasang ulang installer baru.
+  - Bila bocor, selama server masih HTTP penyerang di LAN bisa menyebarkan paket palsu. Segera buat kunci baru dan pasang ulang di semua PC.
+- Build di mesin lain: isi env `TAURI_SIGNING_PRIVATE_KEY` (isi atau path kunci) dan `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+
+**Merilis versi baru:**
+
+1. Naikkan `version` di `desktop/src-tauri/tauri.conf.json` (juga `Cargo.toml` dan `package.json` agar seragam).
+2. Di folder `desktop/`:
+   ```powershell
+   $env:REPORTHUB_URL = "http://<alamat-server-produksi>"   # alamat bawaan installer
+   npm run rilis -- --catatan "Ringkasan perubahan"
+   ```
+   Hasilnya ada di `desktop/rilis/<versi>/`: `audittrail-rsboltim_<versi>_x64-setup.exe` dan `rilis.json`.
+3. Salin **installer dulu, lalu `rilis.json`** ke folder `storage/desktop/` di server ReportHub (bind mount Docker `./storage` → `/app/storage`; pemilik berkas UID 1001). Aplikasi yang terpasang akan menawarkan pembaruan saat dibuka berikutnya.
+   - Server dev/uji lokal: `npm run rilis -- --pasang-ke <STORAGE_DIR>` menyalin langsung.
+4. Server membuat URL unduhan dari `PUBLIC_APP_ORIGIN` (atau `SIGN_PUBLIC_ORIGIN`). Alamat itu harus bisa dijangkau PC klien.
+
+**Uji:** `npm test` di `desktop/` menjalankan uji unit Rust (konfigurasi, penguncian navigasi, izin). Uji endpoint server ada di suite E2E aplikasi.
+
+## 5. Endpoint server (publik, tanpa login)
+
+| Endpoint | Fungsi |
+| --- | --- |
+| `GET /api/desktop/pembaruan/{windows}/{x86_64\|aarch64\|i686}/{a.b.c}` | 204 = tidak ada pembaruan; 200 = manifest updater Tauri. Parameter lain → 404. Batas 30/menit/IP. |
+| `GET /api/desktop/unduh/{berkas}` | Hanya installer yang tercantum di `rilis.json`; `terbaru` = installer Windows x64. Batas 10/menit/IP. |
+
+Keduanya tidak memuat data pasien. Manifest divalidasi ketat (nama berkas tanpa path, versi `a.b.c`, tanda tangan base64), dan manifest yang rusak dianggap tidak ada.
+
+## 6. Belum dikerjakan
+
+- **Sertifikat code signing** untuk installer (menghilangkan peringatan SmartScreen). Perlu sertifikat dari CA. Setelah tersedia, isi `bundle.windows.certificateThumbprint` / `signCommand` di `tauri.conf.json`.
+- Cetak langsung ke printer tertentu tanpa dialog, pad TTD USB, pembaca e-KTP, dan mode kiosk (PRD §12.4) hanya dibangun bila ada kebutuhan nyata. Masing-masing butuh perintah native dengan capability yang dibatasi.

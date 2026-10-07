@@ -38,3 +38,6 @@ docs
 
 # Berkas unggahan (STORAGE_DIR) — di produksi folder host di-mount, bukan isi image
 storage
+
+# Aplikasi desktop Tauri — dibangun terpisah di PC Windows, bukan bagian image server
+desktop

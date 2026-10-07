@@ -12,8 +12,10 @@ const DEFAULT_HOME = "/dashboard";
  * Rute publik (tanpa login): halaman TTD jarak jauh yang dibuka pasien/keluarga
  * lewat HP + endpoint token-nya. Kapabilitas dijaga oleh token acak, bukan sesi.
  * `POST /api/sign/create` tetap wajib login — dijaga di dalam handler-nya sendiri.
+ * `/api/desktop`: manifest pembaruan & installer aplikasi desktop (updater tak
+ * membawa cookie; tanpa data pasien; paket diverifikasi tanda tangan di klien).
  */
-const PUBLIC_PREFIXES = ["/sign", "/api/sign"];
+const PUBLIC_PREFIXES = ["/sign", "/api/sign", "/api/desktop"];
 
 const cocokPrefiks = (pathname: string, p: string) => pathname === p || pathname.startsWith(`${p}/`);
 
