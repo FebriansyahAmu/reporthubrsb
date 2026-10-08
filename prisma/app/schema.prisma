@@ -276,6 +276,40 @@ model RuanganPejabat {
   @@map("ruangan_pejabat")
 }
 
+/// Pemetaan ruang rawat inap SIMGOS → jenis pelayanan RL 3.2 (SIRS 6) =
+/// `master.refrl.ID`. Pengganti `master.rl32_ruangan_revisi` SIMGOS yang berisi
+/// ID SMF (bukan ruangan) sehingga SP LaporanRL32RuanganRevisi selalu kosong;
+/// SIMGOS tetap READ-ONLY. `rlId` null = ruangan sengaja tidak dilaporkan; tanpa
+/// baris = belum dipetakan. `pisahDpjp` = pasien dikelompokkan menurut SMF DPJP
+/// kunjungan (Rl32SmfPeta), SMF tanpa pemetaan ikut `rlId`. DDL: scripts/db/laporan-rl.sql.
+model Rl32RuanganPeta {
+  ruanganId      String   @id @map("ruangan_id") @db.VarChar(10)
+  rlId           Int?     @map("rl_id")
+  pisahDpjp      Boolean  @default(false) @map("pisah_dpjp")
+  /// Snapshot nama ruangan saat dipetakan (jejak tetap terbaca).
+  ruanganNama    String   @map("ruangan_nama") @db.VarChar(191)
+  diubahOlehId   String?  @map("diubah_oleh_id") @db.VarChar(191)
+  diubahOlehNama String?  @map("diubah_oleh_nama") @db.VarChar(191)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("rl32_ruangan_peta")
+}
+
+/// SMF dokter (`master.pegawai.SMF` milik DPJP kunjungan, via `master.dokter.NIP`)
+/// → jenis pelayanan RL 3.2. Hanya dipakai di ruangan ber-`pisahDpjp`.
+model Rl32SmfPeta {
+  smfId          Int      @id @map("smf_id") @db.SmallInt
+  rlId           Int      @map("rl_id")
+  smfNama        String   @map("smf_nama") @db.VarChar(191)
+  diubahOlehId   String?  @map("diubah_oleh_id") @db.VarChar(191)
+  diubahOlehNama String?  @map("diubah_oleh_nama") @db.VarChar(191)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("rl32_smf_peta")
+}
+
 // ============================================================================
 // MODUL INVENTARISASI BARANG — data aset RSUD (READ-WRITE). Tabel `inv_*`.
 // DDL manual: scripts/db/inventaris.sql + migrate-inventaris.mjs. Model di sini

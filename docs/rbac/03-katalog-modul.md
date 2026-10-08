@@ -76,6 +76,7 @@ Diturunkan dari `src/components/layout/nav.ts` + folder `src/app/api/**` saat in
 | `form-rm.<kategori>` | Form RM | — | — | view, create, update, print | Satu kategori (`administrasi-persetujuan`, `gawat-darurat`, `asesmen-keperawatan`, `edukasi`, `ringkasan-pemulangan`; dibangkitkan dari `src/features/form-rm/kategori.ts`). `view` wajib untuk aksi lain; isian kategori tak terlihat → 404 seragam (PRD Form RM Terpadu §8.4) |
 | `form-rm.kelola` | Form RM | — | — | view, update | Buka koreksi / batalkan isian FINAL (Instalasi RM) |
 | `laporan` | Laporan | `/laporan` | `/api/laporan` | view, print | Pusat Laporan (katalog) |
+| `laporan.pemetaan-rl` | Laporan | — (panel di `/laporan/rl32`) | `/api/laporan/rl32/pemetaan` | view, update | Pemetaan ruang rawat inap → jenis pelayanan RL 3.2 (pengganti `master.rl32_ruangan_revisi` SIMGOS yang salah isi); perubahan tercatat di `audit_log` |
 | **`master.pengguna`** | **Master** | `/master/pengguna` | `/api/master/pengguna` | view, create, update, delete | **Baru** — kelola akun |
 | **`master.peran`** | **Master** | `/master/peran` | `/api/master/peran` | view, create, update, delete | **Baru** — peran & hak akses |
 

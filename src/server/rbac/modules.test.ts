@@ -20,6 +20,14 @@ describe("katalog modul RBAC", () => {
     expect(isValidModuleAction("form-rm.kelola", "update")).toBe(true);
   });
 
+  it("Pemetaan RL terpisah dari Pusat Laporan (least privilege)", () => {
+    expect(moduleKeyForApiPath("/api/laporan/rl32/pemetaan")).toBe("laporan.pemetaan-rl");
+    expect(moduleKeyForApiPath("/api/laporan/rl32")).toBe("laporan");
+    expect(moduleKeyForApiPath("/api/laporan/rl32/export")).toBe("laporan");
+    expect(isValidModuleAction("laporan.pemetaan-rl", "update")).toBe(true);
+    expect(isValidModuleAction("laporan.pemetaan-rl", "delete")).toBe(false);
+  });
+
   it("API Form RM tetap dipetakan ke modul form-rm (kontrak)", () => {
     expect(moduleKeyForApiPath("/api/form-rm/f/RM.04/pasien")).toBe("form-rm");
     expect(moduleKeyForApiPath("/api/form-rm/isian/abc")).toBe("form-rm");

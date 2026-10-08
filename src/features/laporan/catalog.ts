@@ -9,6 +9,7 @@ import {
   FileText,
   FlaskConical,
   HandCoins,
+  Hospital,
   NotebookText,
   Pill,
   ShieldCheck,
@@ -107,6 +108,14 @@ export const LAPORAN_CATALOG: ReportGroup[] = [
         icon: TrendingUp,
         status: "tersedia",
         href: "/laporan/penyakit",
+      },
+      {
+        title: "RL 3.2 — Rawat Inap",
+        description:
+          "Rekap bulanan pelayanan rawat inap per jenis pelayanan (SIRS 6): pasien awal, masuk, pindahan, keluar hidup/mati, hari perawatan per kelas & alokasi TT — dikelompokkan menurut ruang rawat. Ekspor Excel/PDF.",
+        icon: Hospital,
+        status: "tersedia",
+        href: "/laporan/rl32",
       },
       {
         title: "RL 4.1 — Morbiditas Rawat Inap",

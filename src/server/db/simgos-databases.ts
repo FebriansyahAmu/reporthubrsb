@@ -34,6 +34,8 @@ export const SIMGOS_DB = {
   APLIKASI: "aplikasi",
   /** Log SIMGOS: `pengguna_akses_log` (audit CRUD per-record), `bridge_log` (interop). Read-only. */
   LOGS: "logs",
+  /** Informasi/agregat harian: `tempat_tidur` (jumlah TT per ruangan per tanggal). */
+  INFORMASI: "informasi",
 } as const;
 
 export type SimgosDb = (typeof SIMGOS_DB)[keyof typeof SIMGOS_DB];

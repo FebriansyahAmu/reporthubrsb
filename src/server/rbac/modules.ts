@@ -227,6 +227,18 @@ export const MODULES: readonly AppModule[] = [
     actions: ["view", "print"],
     order: 61,
   },
+  // Pemetaan ruangan → jenis pelayanan laporan RL (pengganti tabel pemetaan SIMGOS
+  // yang salah isi). Mengubah angka laporan resmi → izin terpisah dari `laporan`.
+  {
+    key: "laporan.pemetaan-rl",
+    group: "Laporan",
+    label: "Pemetaan Laporan RL",
+    description: "Lihat & ubah pemetaan ruang rawat inap → jenis pelayanan RL 3.2 (memengaruhi angka laporan resmi)",
+    icon: SlidersHorizontal,
+    apiPrefixes: ["/api/laporan/rl32/pemetaan"],
+    actions: ["view", "update"],
+    order: 62,
+  },
   {
     key: "inventaris",
     group: "Inventarisasi Barang",
