@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronRight, PencilLine, Search, Users } from "lucide-react";
+import { ChevronRight, Link2Off, PencilLine, Search, Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { InputWithIcon, Label } from "@/components/ui/Field";
 import { EmptyState } from "@/components/feedback/States";
@@ -17,6 +17,8 @@ export type ItemKatalog = {
   /** Ringkasan sasaran pasien, mis. "Pasien IGD & Rawat Inap". */
   sasaran: string;
   draf: { saya: number; semua: number };
+  /** Isian sebelum pasien terdaftar yang belum ditautkan ke pendaftaran. */
+  belumTertaut: number;
 };
 
 const normal = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
@@ -117,6 +119,12 @@ function BarisForm({ item }: { item: ItemKatalog }) {
               ) : (
                 <span>{item.draf.semua} draf berjalan</span>
               )}
+            </span>
+          )}
+          {item.belumTertaut > 0 && (
+            <span className="inline-flex items-center gap-1 font-semibold text-warning">
+              <Link2Off className="size-3.5" aria-hidden />
+              {item.belumTertaut} belum tertaut
             </span>
           )}
         </span>

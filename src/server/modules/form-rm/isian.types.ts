@@ -5,6 +5,8 @@ import type { AsalIsian } from "@/features/form-rm/asal";
 import type { KategoriForm, KodeForm } from "@/features/form-rm/registry";
 import type { AksiIsian, StatusIsian } from "@/features/form-rm/isian.status";
 import type { HakForm } from "@/features/form-rm/hak";
+import type { IdentitasSementara } from "@/features/form-rm/sementara";
+import type { EpisodeSasaran } from "./form-rm.types";
 
 export type IsianForm = {
   id: string;
@@ -12,7 +14,12 @@ export type IsianForm = {
   versi: number;
   judul: string;
   kategori: KategoriForm;
+  /** "" selama isian belum tertaut ke pendaftaran (lihat `tertaut`). */
   nopen: string;
+  /** false = dibuat sebelum pasien terdaftar dan belum ditautkan ke NOPEN. */
+  tertaut: boolean;
+  /** Ada bila isian dibuat sebelum pasien terdaftar (tetap ada setelah ditautkan). */
+  sementara: IdentitasSementara | null;
   urutan: number;
   norm: string;
   namaPasien: string;
@@ -82,6 +89,35 @@ export type IzinIsian = {
   buat: boolean;
   /** Cetak (print pada kategori form). */
   cetak: boolean;
+};
+
+/** Isian belum tertaut pada daftar pemilih pasien. */
+export type IsianBelumTertaut = {
+  id: string;
+  sebutan: string;
+  jenisKelamin: IdentitasSementara["jenisKelamin"];
+  perkiraanUmur: string;
+  ciri: string;
+  dibuatAt: string;
+  diubahAt: string;
+  /** Dibuat oleh pengguna yang sedang membuka daftar. */
+  milikSaya: boolean;
+};
+
+/** Calon pendaftaran untuk ditautkan + isian aktif form itu (bila ada → tak bisa dipilih). */
+export type KandidatTautan = EpisodeSasaran & {
+  /** id isian aktif form ini pada pendaftaran tsb. */
+  isianLain: string | null;
+  /** Selisih menit masuk pendaftaran terhadap waktu acuan triase (mutlak). */
+  selisihMenit: number;
+};
+
+export type DaftarKandidatTautan = {
+  /** `saran` = pendaftaran di sekitar waktu acuan; `cari` = hasil pencarian. */
+  mode: "saran" | "cari";
+  /** Waktu acuan (jam dinding "YYYY-MM-DDTHH:mm:ss"): kedatangan/triase, atau waktu isian dibuat. */
+  acuan: string;
+  data: KandidatTautan[];
 };
 
 /** Pelaku aksi (dari sesi) + IP untuk audit. */

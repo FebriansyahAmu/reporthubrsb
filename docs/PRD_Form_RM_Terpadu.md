@@ -4,8 +4,8 @@
 
 **Project:** ReportHub (`reporthubrsb`) · Modul **Form RM** (`form-rm`)
 **Organisasi:** UPTD RSUD Bolaang Mongondow Timur
-**Versi:** 0.7 — K1, K3, K5, K6, K7 diputuskan; K4 ditunda; K8–K10 terbuka (§15)
-**Tanggal:** 8 Oktober 2026 · **Status:** F0–F3 selesai (pilot Morse menunggu templat resmi RS, K10); F4 menunggu formulir RM resmi dari RS (dikerjakan 1:1); F5 selesai — PWA, simpan otomatis, keluar otomatis saat idle, pengerasan sesi; F5b selesai — aplikasi desktop Tauri (WebView2) — lihat §16
+**Versi:** 0.8 — K1, K3, K5, K6, K7 diputuskan; K4 ditunda; K8–K10 terbuka (§15)
+**Tanggal:** 8 Oktober 2026 · **Status:** F0–F3 selesai (pilot Morse menunggu templat resmi RS, K10); F4 menunggu formulir RM resmi dari RS (dikerjakan 1:1); F5 selesai — PWA, simpan otomatis, keluar otomatis saat idle, pengerasan sesi; F5b selesai — aplikasi desktop Tauri (WebView2); F6 selesai — Triase IGD sebelum pasien terdaftar ("Belum tertaut", lalu ditautkan ke NOPEN) — lihat §6.5 & §16
 **Sifat data SIMGOS:** **FULL READ-ONLY.** Hanya `SELECT` / `information_schema`. Tidak ada DDL/DML, tidak menambah atau mengubah tabel maupun stored procedure apa pun di SIMGOS. Semua isian form, tanda tangan, dan riwayat disimpan di DB aplikasi `reporthub`.
 
 ---
@@ -214,6 +214,28 @@ stateDiagram-v2
 5. **Kegagalan sumber tidak menggagalkan form.** Kolomnya dibiarkan kosong dan bagian itu diberi catatan "data SIMRS tidak tersedia".
 6. **Identitas dari server.** Kepala form (No.RM, nama, tanggal lahir, jenis kelamin, ruang) selalu diambil server dari SIMGOS saat isian dibuat, lalu disimpan sebagai snapshot. Klien tidak pernah mengirim identitas.
 
+### 6.5. Isian sebelum pasien terdaftar (Triase IGD)
+
+Pasien gawat darurat ditriase lebih dulu, sebelum didaftarkan di SIMRS. Form yang mengizinkannya (registri: `tanpaPendaftaran`, saat ini hanya **RM.04 Triase IGD**) bisa diisi tanpa NOPEN, lalu **ditautkan** ke pendaftaran setelah pasien terdaftar.
+
+```mermaid
+flowchart LR
+  A[Pasien tiba di IGD] --> B[Pemilih RM.04<br/>Pasien belum terdaftar]
+  B --> C[Identitas sementara<br/>sebutan · JK · perkiraan umur · ciri]
+  C --> D[Isian DRAF<br/>Belum tertaut]
+  D -->|pasien didaftarkan di SIMRS| E[Tautkan ke pasien<br/>saran pendaftaran / cari]
+  E --> F[DRAF tertaut ke NOPEN<br/>identitas dari SIMGOS]
+  F --> G[FINAL]
+  D -->|tidak pernah didaftarkan| H[Tutup dengan alasan<br/>status BATAL]
+  F -->|salah pasien, belum pernah FINAL| D
+```
+
+- **Identitas sementara** (nama/sebutan wajib, jenis kelamin, perkiraan umur, ciri/keterangan kedatangan) hanya untuk mengenali pasien. Isinya tidak menambah kolom formulir RM.04, dan tetap disimpan sebagai jejak setelah ditautkan.
+- **Belum tertaut:** isi form diisi manual (tanpa isi otomatis SIMRS), TTD petugas boleh, cetak bertanda air DRAF dengan No. RM kosong. **FINAL menunggu tautan**, karena dokumen RM final wajib beridentitas pasien.
+- **Tautkan:** saran = pendaftaran IGD yang masuk antara 2 jam sebelum s.d. 48 jam sesudah waktu kedatangan/triase di form (atau waktu isian dibuat), yang belum punya isian RM.04 lebih dulu, lalu yang waktunya terdekat; atau cari No. RM/NIK/NOPEN/nama. Petugas memilih dan mengonfirmasi. Identitas isian diganti snapshot SIMGOS; isi form tidak berubah. Pendaftaran yang sudah punya isian RM.04 aktif ditolak (salah satunya dibatalkan dulu). Data SIMRS bisa diterapkan sesudahnya lewat "Muat ulang dari SIMRS".
+- **Lepas tautan** (salah pasien) hanya untuk draf yang belum pernah difinalkan dan belum memakai data SIMRS pasien itu; selain itu: batalkan lalu buat isian baru.
+- **Tutup tanpa pendaftaran:** pasien pulang, menolak, dirujuk, atau meninggal sebelum terdaftar, atau isian ganda → dibatalkan dengan alasan (pilihan baku atau bebas); tetap tersimpan di riwayat. Isian yang belum tertaut **≥ 6 jam** diberi tanda peringatan di daftar.
+
 ---
 
 ## 7. Katalog & Kategori Formulir
@@ -396,6 +418,7 @@ CREATE TABLE form_rm_ttd (
 - **Rantai hash ber-kunci.** `hash = HMAC-SHA256(kunci, hash_sebelum ‖ JSON kanonik revisi)`, dengan kunci rahasia `FORM_RM_KUNCI_INTEGRITAS` (≥ 32 karakter, wajib di env; tanpa kunci → 503). Isi revisi memuat data, aksi, status, alasan, pelaku, waktu, dan sha256 setiap gambar TTD yang dirujuk. Karena memakai kunci server, orang yang hanya punya akses DB tidak bisa membuat ulang segel. Riwayat isian menghitung ulang rantai ini, sehingga manipulasi langsung di DB terdeteksi.
 - **DDL final** ada di `scripts/db/form-rm.sql` (perbedaan dari sketsa: revisi menyimpan `aksi`; TTD menyimpan `slot`, tanpa nama penanda tangan; kolom pelaku `*_oleh_id`; revisi dibuat di **setiap transisi**, termasuk BUKA_KOREKSI).
 - **TTD terpisah.** JSON isian hanya menyimpan id TTD. Revisi tidak menggandakan gambar, dan setiap gambar punya sha256 sendiri.
+- **Isian sebelum pasien terdaftar (F6, §6.5):** tabel `form_rm_identitas_sementara` (satu baris per isian: sebutan, jenis kelamin, perkiraan umur, ciri, jejak penautan). Selama belum tertaut, isian memakai `subjek = "~<16 karakter acak>"`, `nopen`/`norm` kosong. Tautan mengganti subjek ke NOPEN, sehingga kunci unik tetap menjamin satu isian aktif per NOPEN. Karena FINAL menunggu tautan dan tautan hanya untuk isian tanpa revisi, subjek tak pernah berubah setelah ada revisi bersegel.
 - **Migrasi dari tabel lama:**
   - 10 baris `form_rm` dipindah ke `form_rm_isian`, dengan status awal sesuai K5.
   - TTD yang ada di JSON diekstrak ke `form_rm_ttd`.
@@ -562,6 +585,7 @@ _Diputuskan 8 Okt 2026:_ pemilik meminta jendela desktop Tauri sekarang (F5b, §
 | **F4 — Perluasan per kategori** ⏸     | Batch form berikutnya — **menunggu formulir RM resmi dari RS**; tiap form dikerjakan 1:1 dengan formulir kertasnya (keputusan 7 Okt 2026)                                                                                                                                                                                                 | Setiap batch: E2E dan suite keamanan lulus                                                                |
 | **F5 — PWA + penyelesaian non-form** ✅ | Manifest PWA + service worker tanpa cache (K3 → PWA); simpan otomatis draf (§6.3/§9); keluar otomatis saat idle (K6); pengerasan sesi                                                                                                                                                                                                  | Suite F5 + regresi F0–F3 & QR publik lulus di build produksi                                              |
 | **F5b — Aplikasi desktop Tauri** ✅    | Jendela WebView2 Tauri 2.12 ke satu origin server (§12.3): origin dikunci, tanpa IPC, izin minimal, satu instance, pembaruan bertanda tangan dari server ReportHub; installer NSIS per pengguna; panduan `docs/desktop-tauri.md`                                                                                                           | Uji unit Rust, uji jendela rilis via CDP, uji pembaruan (sah/rusak/versi palsu) & pasang→perbarui→copot  |
+| **F6 — Triase sebelum pasien terdaftar** ✅ | Isian RM.04 dengan identitas sementara ("Belum tertaut"); tautkan ke NOPEN (saran + cari); FINAL menunggu tautan; lepas tautan (salah pasien); tutup tanpa pendaftaran beralasan; penanda di katalog & pemilih (§6.5)                                                                                                                    | E2E & UI di build produksi + regresi F0–F5 lulus; saran pendaftaran cocok dengan SQL independen            |
 
 ---
 
@@ -853,6 +877,48 @@ Keputusan pemilik: formulir baru dikerjakan **setelah formulir RM resmi dikirim*
 - `/security-review` atas diff F5b: tanpa temuan.
 
 **Belum:** sertifikat code signing installer (SmartScreen memperingatkan), dan alamat server produksi untuk build rilis resmi (`REPORTHUB_URL`, atau `reporthub.json` di tiap PC).
+
+### F6 — Triase IGD sebelum pasien terdaftar (8 Okt 2026)
+
+**Kebutuhan pemilik:** pasien IGD ditriase sebelum didaftarkan di SIMRS. Triase perlu form kosong sendiri yang diisi manual, berstatus belum tertaut, lalu ditautkan ke data pasien setelah pasien terdaftar.
+
+**Keputusan pemilik (8 Okt 2026):**
+
+- identitas sementara = sebutan + jenis kelamin + perkiraan umur + ciri;
+- FINAL baru setelah tertaut;
+- penautan dengan saran otomatis + pencarian, dikonfirmasi petugas;
+- pasien yang tak pernah didaftarkan ditutup dengan alasan; belum tertaut ≥ 6 jam diberi peringatan.
+
+**Yang dibangun:**
+
+- **Data:** tabel `form_rm_identitas_sementara` (DDL idempoten di `scripts/db/form-rm.sql`, runner `migrate-form-rm.mjs`; tabel lama tidak diubah). Registri: `tanpaPendaftaran.waktuAcuan` pada RM.04 (kedatangan, lalu waktu triase).
+- **API** (semua berizin kategori form, 404 seragam untuk kategori tak terlihat, CSRF + batas laju tulis, skema strict):
+  - `POST /api/form-rm/isian/sementara` — buat isian belum tertaut (create);
+  - `PATCH /api/form-rm/isian/[id]/sementara` — perbaiki identitas sementara sebelum ditautkan (update);
+  - `GET /api/form-rm/isian/[id]/tautan?q=` — saran/cari pendaftaran (update; batas laju cari);
+  - `POST /api/form-rm/isian/[id]/tautan` `{ rev, nopen }` — tautkan; `DELETE …/tautan?rev=` — lepas tautan.
+- **Aturan server:** FINAL ditolak dengan syarat "Tautkan ke pasien yang sudah terdaftar di SIMRS"; banding/terapkan SIMRS ditolak sebelum tertaut; tautan menolak pendaftaran tanpa kunjungan IGD, pendaftaran yang sudah punya isian RM.04 aktif (mengembalikan id isian itu), pendaftaran dengan isian versi lama yang belum dipindahkan, dan isian yang punya revisi; tautan bersamaan ke NOPEN yang sama → satu menang (kunci unik), sisanya 409. Lepas tautan hanya untuk isian sementara, draf, tanpa revisi, tanpa data SIMRS.
+- **UI:**
+  - pemilih RM.04: panel **Belum tertaut** (identitas, umur isian, peringatan ≥ 6 jam, penanda "Anda") + tombol **Pasien belum terdaftar**;
+  - halaman isian: pita **Belum tertaut** dengan **Tautkan ke pasien** / **Ubah identitas**; dialog tautan (saran, cari, penanda "sudah punya isian", peringatan jenis kelamin berbeda); setelah tertaut: catatan asal-usul + **Lepas tautan**;
+  - tombol Batalkan menjadi **Tutup** dengan alasan baku; katalog menampilkan "n belum tertaut"; "Draf Anda" dan hitungan draf hanya memuat isian tertaut.
+- **Audit:** `form-rm.isian.buat-sementara`, `ubah-identitas-sementara`, `tautkan`, `lepas-tautan` (+ `nopenSebelum`); tanpa identitas sementara atau nama pasien.
+
+**Hasil uji:**
+
+- Unit 237/237 (baru: skema identitas sementara, waktu acuan/jendela/urutan saran); tsc & eslint bersih.
+- E2E build produksi 113/113:
+  - buat, validasi & fuzz (422), RBAC (403/401), CSRF, XSS sebutan ter-escape;
+  - FINAL & SIMRS ditolak sebelum tertaut; cetak draf;
+  - saran = SQL independen jendela −2/+48 jam; urutan & penanda isian lain = SQL;
+  - tautkan (identitas SIMGOS, isi form utuh, jejak), tolak ganda/versi lama/tanpa IGD/NOPEN tak ada, buka ulang tanpa ganda;
+  - lepas & tautkan ulang (termasuk NOPEN dengan isian BATAL → urutan 2), tolak lepas setelah data SIMRS/FINAL, segel riwayat utuh;
+  - tutup beralasan; balapan dua tautan → satu menang; IDOR 404 seragam; audit tanpa PHI; snapshot data nyata identik setelah pembersihan.
+- UI Chrome 29/29 (desktop & ponsel, tanpa luapan, tanpa galat JS).
+- Regresi build produksi: F0 Langkah 1 83/83, F0 Langkah 2 56/56, F1 103/103, F2 46/46, F3 41/41.
+- Tinjauan keamanan atas diff F6: tanpa temuan; satu catatan integritas data (isian versi lama terlewati saat menautkan) diperbaiki.
+
+**Catatan penerapan:** jalankan `migrate-form-rm.mjs` di produksi sebelum memakai versi ini; server dev yang sedang berjalan perlu di-restart setelah `db:app:generate` (klien Prisma lama tersimpan di proses).
 
 ## 17. Sumber
 

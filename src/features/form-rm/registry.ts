@@ -69,6 +69,13 @@ export type DefinisiForm<T extends object = object> = {
   /** Boleh lebih dari satu isian per subjek (mis. informed consent per tindakan). */
   readonly berulang: boolean;
   readonly sasaran: SasaranPasien;
+  /**
+   * Ada = boleh diisi sebelum pasien terdaftar di SIMRS: isian dibuat dengan
+   * identitas sementara ("Belum tertaut"), lalu ditautkan ke pendaftaran (lihat
+   * `sementara.ts`). `waktuAcuan` = jam dinding "YYYY-MM-DDTHH:mm" dari isi form
+   * untuk menyarankan pendaftaran yang cocok ("" = pakai waktu isian dibuat).
+   */
+  readonly tanpaPendaftaran?: { waktuAcuan(data: T): string };
   /** Form dihitung wajib (kelengkapan) untuk episode yang punya leg berjenis ini. */
   readonly wajibUntuk: readonly JenisKunjungan[];
   readonly kertas: Kertas;
@@ -266,6 +273,8 @@ const triase: DefinisiForm<z.output<typeof triaseFormSchema>> = {
   cakupan: "EPISODE",
   berulang: false,
   sasaran: SASARAN_TRIASE,
+  // Pasien ditriase saat tiba, sebelum didaftarkan di SIMRS.
+  tanpaPendaftaran: { waktuAcuan: (d) => d.kedatanganWaktu || d.waktuTriase },
   wajibUntuk: [2],
   kertas: { ukuran: "F4", orientasi: "potret" },
   simrs: SIMRS_TRIASE,

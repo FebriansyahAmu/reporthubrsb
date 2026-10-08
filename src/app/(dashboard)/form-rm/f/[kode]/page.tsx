@@ -12,8 +12,9 @@ import { TAMPILAN_FORM } from "@/features/form-rm/tampilan";
 import { requireAnyModule } from "@/server/rbac/guard";
 import { JENIS_KUNJUNGAN_KATEGORI } from "@/server/modules/kunjungan/kunjungan.types";
 import { getRuanganKunjunganList } from "@/server/modules/ruangan/ruangan.service";
+import { BelumTertautPanel } from "@/features/form-rm/isian/BelumTertautPanel";
 import { hakFormRm } from "@/server/modules/form-rm/form-rm.akses";
-import { drafSaya, type DrafSaya } from "@/server/modules/form-rm/isian.cari";
+import { daftarBelumTertaut, drafSaya, type DrafSaya } from "@/server/modules/form-rm/isian.cari";
 
 export const metadata = { title: "Pilih Pasien · Form RM · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
@@ -31,13 +32,15 @@ export default async function PemilihPasienPage({ params }: { params: Promise<{ 
   if (!hak.boleh(def.kategori, "view")) redirect("/403");
 
   const kategoriSasaran = new Set(def.sasaran.jenis.map((j) => JENIS_KUNJUNGAN_KATEGORI[j]));
-  const [ruangan, draf] = await Promise.all([
+  const [ruangan, draf, belumTertaut] = await Promise.all([
     getRuanganKunjunganList()
       .catch(() => [])
       .then((rs) => rs.filter((r) => kategoriSasaran.has(r.kategori)).map((r) => ({ id: r.id, nama: r.nama }))),
     drafSaya(def.kode, user.id),
+    daftarBelumTertaut(def, user.id),
   ]);
   const t = TAMPILAN_FORM[def.kode];
+  const bolehBuat = hak.boleh(def.kategori, "create");
 
   return (
     <FadeIn className="space-y-6">
@@ -53,11 +56,14 @@ export default async function PemilihPasienPage({ params }: { params: Promise<{ 
         description={`${KATEGORI_FORM[def.kategori].label} — pilih pasien untuk mengisi formulir ini. Pasien yang sudah punya isian langsung membuka isiannya.`}
       />
       {draf.length > 0 && <DrafAnda draf={draf} />}
+      {def.tanpaPendaftaran && (
+        <BelumTertautPanel kode={def.kode} items={belumTertaut} sekarang={new Date().toISOString()} bolehBuat={bolehBuat} />
+      )}
       <PemilihPasien
         kode={def.kode}
         keteranganAktif={keteranganAktif(def.sasaran)}
         ruanganOptions={ruangan}
-        bolehBuat={hak.boleh(def.kategori, "create")}
+        bolehBuat={bolehBuat}
       />
     </FadeIn>
   );

@@ -1,5 +1,5 @@
 import "server-only";
-import type { FormRmIsian, Prisma } from "@/generated/app/client";
+import type { FormRmIdentitasSementara, FormRmIsian, Prisma } from "@/generated/app/client";
 import { getAppDb } from "@/server/db/app.client";
 import {
   BusinessRuleError,
@@ -14,6 +14,7 @@ import { ambilPath, normalkanAsal, pasangPath, samaNilai } from "@/features/form
 import type { AksiForm, HakForm } from "@/features/form-rm/hak";
 import { definisiForm, type DefinisiForm } from "@/features/form-rm/registry";
 import { pangkasTeksPanjang } from "@/features/form-rm/skema";
+import { JK_SEMENTARA, SYARAT_TERTAUT, type IdentitasSementara } from "@/features/form-rm/sementara";
 import {
   adalahStatusIsian,
   perluIzinKelola,
@@ -39,12 +40,19 @@ import type { AktorForm, BandingSimrs, IsianForm, RevisiIsian, RiwayatIsian } fr
  * Setiap akses isian/TTD/riwayat berdasarkan ID dicek hak kategori form-nya.
  */
 
-type Tx = Prisma.TransactionClient;
+export type Tx = Prisma.TransactionClient;
+
+/** Baris isian + identitas sementara (bila isian dibuat sebelum pasien terdaftar). */
+export type BarisIsian = FormRmIsian & { identitasSementara: FormRmIdentitasSementara | null };
+export const SERTA_SEMENTARA = { identitasSementara: true } as const;
 
 /** JSON isian setelah TTD dipisah (TTD tidak ikut dihitung). */
 const MAKS_DATA_BYTE = 256 * 1024;
 
-const isUnik = (e: unknown) => (e as { code?: string } | null)?.code === "P2002";
+export const isUnik = (e: unknown) => (e as { code?: string } | null)?.code === "P2002";
+
+/** Isian belum tertaut ke pendaftaran: dibuat sebelum pasien terdaftar, nopen masih kosong. */
+export const tertaut = (row: Pick<FormRmIsian, "nopen">): boolean => row.nopen !== "";
 
 /* ------------------------------------------------------- kunci integritas */
 
@@ -64,7 +72,7 @@ function kunciIntegritas(): Uint8Array {
 
 /* ---------------------------------------------------------------- bantu */
 
-function definisiDari(row: Pick<FormRmIsian, "formKode" | "formVersi">): DefinisiForm {
+export function definisiDari(row: Pick<FormRmIsian, "formKode" | "formVersi">): DefinisiForm {
   const def = definisiForm(row.formKode);
   // Versi dinaikkan bila struktur form berubah; dukungan multi-versi menyusul saat dibutuhkan.
   if (!def || def.versi !== row.formVersi) {
@@ -78,7 +86,20 @@ function statusDari(row: Pick<FormRmIsian, "status">): StatusIsian {
   return row.status;
 }
 
-function keDto(row: FormRmIsian): IsianForm {
+function sementaraDto(s: FormRmIdentitasSementara | null): IdentitasSementara | null {
+  if (!s) return null;
+  return {
+    sebutan: s.sebutan,
+    jenisKelamin: (JK_SEMENTARA as readonly string[]).includes(s.jenisKelamin) ? (s.jenisKelamin as IdentitasSementara["jenisKelamin"]) : "",
+    perkiraanUmur: s.perkiraanUmur,
+    ciri: s.ciri,
+    dibuatAt: s.createdAt.toISOString(),
+    ditautkanAt: s.ditautkanAt?.toISOString() ?? null,
+    ditautkanOlehNama: s.ditautkanOlehNama,
+  };
+}
+
+export function keDto(row: BarisIsian): IsianForm {
   const def = definisiDari(row);
   return {
     id: row.id,
@@ -87,6 +108,8 @@ function keDto(row: FormRmIsian): IsianForm {
     judul: def.judul,
     kategori: def.kategori,
     nopen: row.nopen,
+    tertaut: tertaut(row),
+    sementara: sementaraDto(row.identitasSementara),
     urutan: row.urutan,
     norm: row.norm,
     namaPasien: row.namaPasien,
@@ -106,8 +129,8 @@ function keDto(row: FormRmIsian): IsianForm {
 
 const ISIAN_TAK_ADA = "Isian form tidak ditemukan";
 
-async function cariIsian(id: string, db: Tx = getAppDb()): Promise<FormRmIsian> {
-  const row = await db.formRmIsian.findUnique({ where: { id } });
+export async function cariIsian(id: string, db: Tx = getAppDb()): Promise<BarisIsian> {
+  const row = await db.formRmIsian.findUnique({ where: { id }, include: SERTA_SEMENTARA });
   if (!row) throw new NotFoundError(ISIAN_TAK_ADA);
   return row;
 }
@@ -123,7 +146,7 @@ function jagaKategori(formKode: string, hak: HakForm, aksi: AksiForm): void {
   if (!hak.boleh(def.kategori, aksi)) throw new ForbiddenError();
 }
 
-async function cariIsianBoleh(id: string, hak: HakForm, aksi: AksiForm): Promise<FormRmIsian> {
+export async function cariIsianBoleh(id: string, hak: HakForm, aksi: AksiForm): Promise<BarisIsian> {
   const row = await cariIsian(id);
   jagaKategori(row.formKode, hak, aksi);
   return row;
@@ -152,7 +175,8 @@ export async function bukaAtauBuatIsian(
   const db = getAppDb();
   const subjek = input.nopen; // semua form saat ini bercakupan EPISODE
 
-  const terakhir = () => db.formRmIsian.findFirst({ where: { formKode: def.kode, subjek }, orderBy: { urutan: "desc" } });
+  const terakhir = () =>
+    db.formRmIsian.findFirst({ where: { formKode: def.kode, subjek }, orderBy: { urutan: "desc" }, include: SERTA_SEMENTARA });
   /** Isian aktif milik permintaan lain yang menang balapan (form tidak berulang). */
   const bukaPemenang = async () => {
     const ada = def.berulang ? null : await terakhir();
@@ -196,6 +220,7 @@ export async function bukaAtauBuatIsian(
         dibuatOlehId: aktor.id,
         diubahOlehId: aktor.id,
       },
+      include: SERTA_SEMENTARA,
     });
     await auditIsian(aktor, "buat", row);
     return { isian: keDto(row), baru: true };
@@ -214,11 +239,28 @@ export async function bacaIsian(id: string, aktor: AktorForm): Promise<IsianForm
   return keDto(row);
 }
 
+const LABEL_JK_HEADER = { L: "Laki-Laki", P: "Perempuan", "": "—" } as const;
+
 /**
  * Identitas kepala formulir: No.RM, nama & ruang dari SNAPSHOT isian (diambil
- * server saat dibuat); jenis kelamin, tanggal lahir, dst. dibaca dari SIMGOS.
+ * server saat dibuat/ditautkan); jenis kelamin, tanggal lahir, dst. dibaca dari
+ * SIMGOS. Isian belum tertaut memakai identitas sementara (No.RM kosong).
  */
 export async function identitasIsian(isian: IsianForm): Promise<FormRmHeader> {
+  if (!isian.tertaut) {
+    const s = isian.sementara;
+    return {
+      nopen: "",
+      norm: "",
+      nama: s?.sebutan ?? isian.namaPasien,
+      jenisKelamin: LABEL_JK_HEADER[s?.jenisKelamin ?? ""],
+      tanggalLahir: null,
+      umur: s?.perkiraanUmur || null,
+      ruang: "—",
+      masuk: isian.createdAt,
+      nik: "",
+    };
+  }
   const simgos = await getFormRmHeader(isian.nopen).catch(() => null);
   return {
     nopen: isian.nopen,
@@ -267,8 +309,13 @@ export async function bacaTtd(id: string, hak: HakForm): Promise<{ png: Uint8Arr
 
 /* ---------------------------------------------------------------- simpan */
 
+/** Data SIMRS hanya ada untuk isian yang sudah tertaut ke pendaftaran. */
+function jagaTertaut(row: Pick<FormRmIsian, "nopen">): void {
+  if (!tertaut(row)) throw new BusinessRuleError("Isian belum tertaut ke pasien terdaftar. Tautkan lebih dulu.");
+}
+
 /** Isi isian hanya bisa diubah selama DRAF. */
-function jagaDraf(row: Pick<FormRmIsian, "status">): void {
+export function jagaDraf(row: Pick<FormRmIsian, "status">): void {
   if (statusDari(row) === "DRAF") return;
   throw new BusinessRuleError(
     row.status === "FINAL"
@@ -319,6 +366,7 @@ async function isiSimrsTerkini(def: DefinisiForm, nopen: string) {
 export async function bandingkanSimrs(id: string, aktor: AktorForm): Promise<BandingSimrs> {
   const row = await cariIsianBoleh(id, aktor.hak, "update");
   jagaDraf(row);
+  jagaTertaut(row);
   const def = definisiDari(row);
   const segar = await isiSimrsTerkini(def, row.nopen);
   await auditIsian(aktor, "banding-simrs", row);
@@ -356,6 +404,7 @@ export async function terapkanSimrs(
 ): Promise<{ isian: IsianForm; diterapkan: string[] }> {
   const row = await cariIsianBoleh(id, aktor.hak, "update");
   jagaDraf(row);
+  jagaTertaut(row);
   if (row.rev !== input.rev) throw new ConflictError();
   const def = definisiDari(row);
   const dikenal = new Set(def.simrs.flatMap((b) => b.kolom.map((k) => k.path)));
@@ -418,7 +467,8 @@ export async function aksiIsian(id: string, input: AksiIsianInput, aktor: AktorF
   // pemeriksaan "isian sama dengan revisi terakhir" tak pernah alarm palsu.
   const data = row.data as Prisma.JsonObject;
   if (input.aksi === "FINALKAN") {
-    const kurang = def.syaratFinal(def.skema.parse(data));
+    // Dokumen RM final wajib beridentitas pasien → isian sementara ditautkan dulu.
+    const kurang = [...(tertaut(row) ? [] : [SYARAT_TERTAUT]), ...def.syaratFinal(def.skema.parse(data))];
     if (kurang.length > 0) throw new BusinessRuleError("Isian belum lengkap untuk difinalkan", { kurang });
   }
 

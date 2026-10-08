@@ -74,3 +74,22 @@ CREATE TABLE IF NOT EXISTS form_rm_revisi (
   UNIQUE KEY uq_form_rm_revisi (isian_id, rev),
   CONSTRAINT fk_form_rm_revisi_isian FOREIGN KEY (isian_id) REFERENCES form_rm_isian(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Identitas sementara isian yang dibuat SEBELUM pasien terdaftar di SIMRS (mis.
+-- triase pasien yang baru tiba di IGD). Selama belum tertaut, isian memakai
+-- subjek "~<token>" dan nopen/norm kosong. Saat ditautkan, isian pindah ke NOPEN
+-- pasien; baris ini tetap disimpan sebagai jejak (siapa ditriase sebagai apa,
+-- ditautkan oleh siapa & kapan). Satu baris per isian.
+CREATE TABLE IF NOT EXISTS form_rm_identitas_sementara (
+  isian_id             VARCHAR(30)  NOT NULL PRIMARY KEY,
+  sebutan              VARCHAR(60)  NOT NULL,                    -- nama / sebutan, mis. "Tn. X"
+  jenis_kelamin        VARCHAR(1)   NOT NULL DEFAULT '',         -- L / P / '' (tidak diketahui)
+  perkiraan_umur       VARCHAR(30)  NOT NULL DEFAULT '',
+  ciri                 VARCHAR(300) NOT NULL DEFAULT '',         -- ciri fisik / keterangan kedatangan
+  ditautkan_at         DATETIME(3)  NULL,
+  ditautkan_oleh_id    VARCHAR(191) NULL,
+  ditautkan_oleh_nama  VARCHAR(191) NULL,
+  created_at           DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at           DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  CONSTRAINT fk_form_rm_identitas_sementara_isian FOREIGN KEY (isian_id) REFERENCES form_rm_isian(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

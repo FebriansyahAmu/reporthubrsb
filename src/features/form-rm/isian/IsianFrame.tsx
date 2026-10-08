@@ -31,6 +31,7 @@ import { MuatUlangSimrs } from "./MuatUlangSimrs";
 import { RiwayatIsianDrawer } from "./RiwayatIsianDrawer";
 import { StatusIsianBadge } from "./StatusIsianBadge";
 import { AsalIsianProvider } from "./TandaAsal";
+import { PitaTautan } from "./TautanIsian";
 import type { KendaliIsian } from "./useIsian";
 
 const PESAN_BERHASIL: Record<AksiIsian, string> = {
@@ -38,6 +39,8 @@ const PESAN_BERHASIL: Record<AksiIsian, string> = {
   BUKA_KOREKSI: "Isian dibuka untuk koreksi",
   BATALKAN: "Isian dibatalkan",
 };
+/** Isian belum tertaut yang dibatalkan = ditutup karena pasien tak pernah didaftarkan. */
+const PESAN_DITUTUP = "Isian ditutup tanpa pendaftaran";
 
 /**
  * Bingkai halaman isian (dipakai keempat form): pemberitahuan status, konteks
@@ -67,7 +70,7 @@ export function IsianFrame<T>({
   };
   const berhasil = (aksi: AksiIsian) => {
     setDialog(null);
-    toast.success(PESAN_BERHASIL[aksi]);
+    toast.success(aksi === "BATALKAN" && !isian.tertaut ? PESAN_DITUTUP : PESAN_BERHASIL[aksi]);
   };
   // Perbandingan dihitung server atas isi TERSIMPAN → simpan dulu perubahan di layar.
   async function bukaSimrs() {
@@ -80,6 +83,7 @@ export function IsianFrame<T>({
     <AsalIsianProvider value={{ asal: isian.asal, data: k.form }}>
       <div className="space-y-5 pb-28">
         <PemberitahuanStatus kendali={k} onRiwayat={() => setRiwayat(true)} />
+        <PitaTautan kendali={k} />
         <RingkasAsal kendali={k} onMuatUlang={bukaSimrs} />
         <KunciIsian terkunci={k.terkunci}>{children}</KunciIsian>
 
@@ -95,10 +99,10 @@ export function IsianFrame<T>({
 
 /* ------------------------------------------------------------ asal SIMRS */
 
-/** Ringkasan kolom dari SIMRS + tombol "Muat ulang dari SIMRS" (DRAF & berizin ubah). */
+/** Ringkasan kolom dari SIMRS + tombol "Muat ulang dari SIMRS" (DRAF, tertaut & berizin ubah). */
 function RingkasAsal<T>({ kendali: k, onMuatUlang }: { kendali: KendaliIsian<T>; onMuatUlang: () => void }) {
   const paths = Object.keys(k.isian.asal);
-  const bolehMuat = k.isian.status === "DRAF" && k.izin.ubah;
+  const bolehMuat = k.isian.status === "DRAF" && k.izin.ubah && k.isian.tertaut;
   if (paths.length === 0 && !bolehMuat) return null;
   const diubah = paths.filter((p) => statusAsal(k.isian.asal, k.form, p) === "diubah").length;
 
@@ -166,13 +170,22 @@ function PemberitahuanStatus<T>({ kendali: k, onRiwayat }: { kendali: KendaliIsi
     return (
       <Pita nada="danger" ikon={<Ban className="mt-0.5 size-4 shrink-0" />}>
         <span>
-          Isian ini <b>dibatalkan</b> dan tidak berlaku. Alasannya tercatat di{" "}
+          {isian.tertaut ? (
+            <>
+              Isian ini <b>dibatalkan</b> dan tidak berlaku.
+            </>
+          ) : (
+            <>
+              Isian ini <b>ditutup tanpa pendaftaran</b> — pasien tidak pernah ditautkan.
+            </>
+          )}{" "}
+          Alasannya tercatat di{" "}
           <button type="button" onClick={onRiwayat} className="font-semibold underline underline-offset-2">
             riwayat
           </button>
           .
         </span>
-        {izin.buat && <BuatIsianBaru isian={isian} />}
+        {izin.buat && isian.tertaut && <BuatIsianBaru isian={isian} />}
       </Pita>
     );
   }
@@ -283,9 +296,9 @@ function BilahAksi<T>({
               onClick={() => onAksi("BATALKAN")}
               disabled={k.sibuk !== null}
               className="text-danger hover:text-danger"
-              title="Batalkan isian"
+              title={isian.tertaut ? "Batalkan isian" : "Tutup isian (pasien tidak didaftarkan)"}
             >
-              <span className="hidden xl:inline">Batalkan</span>
+              <span className="hidden xl:inline">{isian.tertaut ? "Batalkan" : "Tutup"}</span>
             </Button>
           )}
           {draf && izin.ubah && (

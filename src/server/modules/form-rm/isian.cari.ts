@@ -1,8 +1,13 @@
 import "server-only";
 import { getAppDb } from "@/server/db/app.client";
-import { KODE_FORM, type KodeForm } from "@/features/form-rm/registry";
+import { KODE_FORM, type DefinisiForm, type KodeForm } from "@/features/form-rm/registry";
 import { adalahStatusIsian } from "@/features/form-rm/isian.status";
-import type { RingkasIsian } from "./isian.types";
+import { JK_SEMENTARA, type JkSementara } from "@/features/form-rm/sementara";
+import type { IsianBelumTertaut, RingkasIsian } from "./isian.types";
+
+/** Isian sementara yang belum ditautkan ke pendaftaran (nopen kosong). */
+const BELUM_TERTAUT = { nopen: "" } as const;
+const SUDAH_TERTAUT = { nopen: { not: "" } } as const;
 
 /**
  * Pencarian isian (reporthub) — query baca murni tanpa efek & tanpa audit,
@@ -40,14 +45,14 @@ export async function isianAktifPerNopen(
   return peta;
 }
 
-/** Jumlah draf per form: milik pengguna (yang membuat) dan seluruhnya — katalog. */
+/** Jumlah draf tertaut per form: milik pengguna (yang membuat) dan seluruhnya — katalog. */
 export async function hitungDraf(
   kodes: readonly KodeForm[],
   userId: string,
 ): Promise<Partial<Record<KodeForm, { saya: number; semua: number }>>> {
   if (kodes.length === 0) return {};
   const db = getAppDb();
-  const where = { formKode: { in: [...kodes] }, status: "DRAF" };
+  const where = { formKode: { in: [...kodes] }, status: "DRAF", ...SUDAH_TERTAUT };
   const [semua, saya] = await Promise.all([
     db.formRmIsian.groupBy({ by: ["formKode"], where, _count: { _all: true } }),
     db.formRmIsian.groupBy({ by: ["formKode"], where: { ...where, dibuatOlehId: userId }, _count: { _all: true } }),
@@ -66,10 +71,50 @@ export type DrafSaya = { id: string; nopen: string; norm: string; namaPasien: st
 
 export async function drafSaya(kode: KodeForm, userId: string, batas = 12): Promise<DrafSaya[]> {
   const rows = await getAppDb().formRmIsian.findMany({
-    where: { formKode: kode, status: "DRAF", dibuatOlehId: userId },
+    where: { formKode: kode, status: "DRAF", dibuatOlehId: userId, ...SUDAH_TERTAUT },
     select: { id: true, nopen: true, norm: true, namaPasien: true, ruang: true, updatedAt: true },
     orderBy: { updatedAt: "desc" },
     take: batas,
   });
   return rows.map((r) => ({ ...r, updatedAt: r.updatedAt.toISOString() }));
+}
+
+/** Jumlah isian DRAF yang belum tertaut ke pendaftaran per form — katalog. */
+export async function hitungBelumTertaut(kodes: readonly KodeForm[]): Promise<Partial<Record<KodeForm, number>>> {
+  if (kodes.length === 0) return {};
+  const rows = await getAppDb().formRmIsian.groupBy({
+    by: ["formKode"],
+    where: { formKode: { in: [...kodes] }, status: "DRAF", ...BELUM_TERTAUT },
+    _count: { _all: true },
+  });
+  return Object.fromEntries(rows.map((r) => [r.formKode, r._count._all]));
+}
+
+const adalahJk = (s: string): s is JkSementara => (JK_SEMENTARA as readonly string[]).includes(s);
+
+/** Isian DRAF belum tertaut satu form (terbaru dulu) — pemilih pasien. Hak lihat dicek pemanggil. */
+export async function daftarBelumTertaut(def: DefinisiForm, userId: string, batas = 100): Promise<IsianBelumTertaut[]> {
+  if (!def.tanpaPendaftaran) return [];
+  const rows = await getAppDb().formRmIsian.findMany({
+    where: { formKode: def.kode, status: "DRAF", ...BELUM_TERTAUT },
+    select: { id: true, dibuatOlehId: true, createdAt: true, updatedAt: true, identitasSementara: true },
+    orderBy: { createdAt: "desc" },
+    take: batas,
+  });
+  return rows.flatMap((r) => {
+    const s = r.identitasSementara;
+    if (!s) return [];
+    return [
+      {
+        id: r.id,
+        sebutan: s.sebutan,
+        jenisKelamin: adalahJk(s.jenisKelamin) ? s.jenisKelamin : "",
+        perkiraanUmur: s.perkiraanUmur,
+        ciri: s.ciri,
+        dibuatAt: r.createdAt.toISOString(),
+        diubahAt: r.updatedAt.toISOString(),
+        milikSaya: r.dibuatOlehId === userId,
+      },
+    ];
+  });
 }

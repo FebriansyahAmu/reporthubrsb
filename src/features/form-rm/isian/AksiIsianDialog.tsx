@@ -5,7 +5,9 @@ import { Ban, CircleAlert, Lock, LockOpen } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Label } from "@/components/ui/Field";
+import { cn } from "@/lib/cn";
 import type { AksiIsian } from "@/features/form-rm/isian.status";
+import { ALASAN_TIDAK_TERDAFTAR, SYARAT_TERTAUT } from "@/features/form-rm/sementara";
 import type { KendaliIsian } from "./useIsian";
 
 const ALASAN_MIN = 5;
@@ -13,9 +15,10 @@ const ALASAN_MAKS = 500;
 
 /** Kekurangan syarat FINAL menurut isi form di layar (server tetap memeriksa ulang). */
 function kekuranganFinal<T>(k: KendaliIsian<T>): string[] {
+  const tautan = k.isian.tertaut ? [] : [SYARAT_TERTAUT];
   const sah = k.def.skema.safeParse(k.form);
-  if (!sah.success) return ["Ada isian yang tidak valid — simpan dulu untuk melihat rinciannya"];
-  return k.def.syaratFinal(sah.data);
+  if (!sah.success) return [...tautan, "Ada isian yang tidak valid — simpan dulu untuk melihat rinciannya"];
+  return [...tautan, ...k.def.syaratFinal(sah.data)];
 }
 
 /** Konfirmasi FINALKAN, atau alasan untuk BUKA_KOREKSI / BATALKAN. */
@@ -110,6 +113,14 @@ const TEKS_ALASAN: Record<Exclude<AksiIsian, "FINALKAN">, { judul: string; keter
   },
 };
 
+/** Membatalkan isian belum tertaut = menutupnya karena pasien tak pernah didaftarkan. */
+const TEKS_TUTUP = {
+  judul: "Tutup isian tanpa pendaftaran",
+  keterangan:
+    "Untuk pasien yang tidak pernah didaftarkan (pulang, menolak, dirujuk, atau meninggal sebelum terdaftar) atau isian ganda. Isian tidak dihapus — tetap ada di riwayat.",
+  tombol: "Tutup isian",
+};
+
 function AlasanDialog<T>({
   kendali: k,
   aksi,
@@ -122,7 +133,8 @@ function AlasanDialog<T>({
   onBerhasil: (aksi: AksiIsian) => void;
 }) {
   const [alasan, setAlasan] = useState("");
-  const teks = aksi && aksi !== "FINALKAN" ? TEKS_ALASAN[aksi] : null;
+  const tutup = aksi === "BATALKAN" && !k.isian.tertaut;
+  const teks = tutup ? TEKS_TUTUP : aksi && aksi !== "FINALKAN" ? TEKS_ALASAN[aksi] : null;
   const sibuk = k.sibuk !== null;
   const cukup = alasan.trim().length >= ALASAN_MIN;
 
@@ -156,6 +168,27 @@ function AlasanDialog<T>({
         </>
       }
     >
+      {tutup && (
+        <div role="group" aria-label="Alasan umum" className="mb-3 flex flex-wrap gap-1.5">
+          {ALASAN_TIDAK_TERDAFTAR.map((a) => (
+            <button
+              key={a}
+              type="button"
+              aria-pressed={alasan === a}
+              onClick={() => setAlasan(a)}
+              className={cn(
+                "inline-flex min-h-8 items-center rounded-full border px-3 text-[13px] font-medium transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring",
+                alasan === a
+                  ? "border-brand bg-brand-soft text-brand-soft-fg"
+                  : "border-border bg-surface text-fg-muted hover:bg-surface-2 hover:text-fg",
+              )}
+            >
+              {a}
+            </button>
+          ))}
+        </div>
+      )}
       <Label htmlFor="alasan-aksi">Alasan (wajib, tercatat di riwayat)</Label>
       <textarea
         id="alasan-aksi"

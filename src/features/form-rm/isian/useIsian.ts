@@ -48,6 +48,11 @@ export type KendaliIsian<T> = {
   jalankan: (aksi: AksiIsian, alasan?: string) => Promise<boolean>;
   /** Terapkan nilai SIMRS terkini ke kolom terpilih; path yang diterapkan, atau null bila gagal. */
   terapkanSimrs: (kolom: string[]) => Promise<string[] | null>;
+  /**
+   * Sebelum aksi di luar hook (mis. tautkan ke pasien): tuntaskan simpan yang
+   * berjalan & sisa perubahan, lalu kembalikan rev terbaru (null bila simpan gagal).
+   */
+  rampungkan: () => Promise<number | null>;
 };
 
 /** Isi form + nomor versinya, selalu berpasangan: data yang dikirim = versi yang ditandai tersimpan. */
@@ -290,5 +295,6 @@ export function useIsian<T extends object>(
     simpan: () => simpan(),
     jalankan,
     terapkanSimrs,
+    rampungkan: async () => ((await tuntaskanSimpan()) ? rev.current : null),
   };
 }

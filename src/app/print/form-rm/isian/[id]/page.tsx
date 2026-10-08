@@ -86,7 +86,7 @@ export default async function CetakIsianPage({ params }: { params: Promise<{ id:
       `}</style>
       <PrintToolbar
         title={`${def.judul} ${isian.kode} · ${header.nama}`}
-        subtitle={`${header.norm} · ${isian.status} rev ${isian.rev}`}
+        subtitle={`${isian.tertaut ? header.norm : "Belum tertaut"} · ${isian.status} rev ${isian.rev}`}
         backHref={`/form-rm/isian/${isian.id}`}
       />
       {tandaAir && (

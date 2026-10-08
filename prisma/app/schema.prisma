@@ -184,8 +184,10 @@ model FormRmIsian {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  ttd    FormRmTtd[]
-  revisi FormRmRevisi[]
+  ttd                FormRmTtd[]
+  revisi             FormRmRevisi[]
+  /// Ada = isian dibuat sebelum pasien terdaftar (nopen "" sampai ditautkan).
+  identitasSementara FormRmIdentitasSementara?
 
   @@unique([formKode, subjek, urutan], map: "uq_form_rm_isian")
   @@index([nopen], map: "idx_form_rm_isian_nopen")
@@ -231,6 +233,26 @@ model FormRmRevisi {
 
   @@unique([isianId, rev], map: "uq_form_rm_revisi")
   @@map("form_rm_revisi")
+}
+
+/// Identitas sementara isian yang dibuat sebelum pasien terdaftar di SIMRS (mis.
+/// triase IGD). Isian belum tertaut: subjek "~<token>", nopen & norm kosong.
+/// Tetap disimpan setelah ditautkan sebagai jejak. DDL: scripts/db/form-rm.sql.
+model FormRmIdentitasSementara {
+  isianId           String      @id @map("isian_id") @db.VarChar(30)
+  sebutan           String      @db.VarChar(60)
+  /// L | P | "" (tidak diketahui)
+  jenisKelamin      String      @default("") @map("jenis_kelamin") @db.VarChar(1)
+  perkiraanUmur     String      @default("") @map("perkiraan_umur") @db.VarChar(30)
+  ciri              String      @default("") @db.VarChar(300)
+  ditautkanAt       DateTime?   @map("ditautkan_at")
+  ditautkanOlehId   String?     @map("ditautkan_oleh_id") @db.VarChar(191)
+  ditautkanOlehNama String?     @map("ditautkan_oleh_nama") @db.VarChar(191)
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+  isian             FormRmIsian @relation(fields: [isianId], references: [id], onDelete: Restrict, map: "fk_form_rm_identitas_sementara_isian")
+
+  @@map("form_rm_identitas_sementara")
 }
 
 /// Penetapan pejabat per ruangan (Kepala Instalasi, Kepala Ruangan, Ketua Tim, dll).

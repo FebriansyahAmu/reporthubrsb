@@ -8,7 +8,7 @@ import { labelSasaran } from "@/features/form-rm/registry";
 import { PindahDataLama } from "@/features/form-rm/isian/PindahDataLama";
 import { requireAnyModule } from "@/server/rbac/guard";
 import { formBoleh, hakFormRm } from "@/server/modules/form-rm/form-rm.akses";
-import { hitungDraf } from "@/server/modules/form-rm/isian.cari";
+import { hitungBelumTertaut, hitungDraf } from "@/server/modules/form-rm/isian.cari";
 import { hitungDataLamaTertunda } from "@/server/modules/form-rm/isian.lama";
 
 export const metadata = { title: "Form RM · AuditTrail RS BOLTIM" };
@@ -22,8 +22,9 @@ export default async function KatalogFormRmPage() {
   const user = await requireAnyModule(MODUL_AKSES_FORM_RM);
   const hak = await hakFormRm(user);
   const forms = formBoleh(hak);
-  const [draf, dataLama] = await Promise.all([
+  const [draf, belumTertaut, dataLama] = await Promise.all([
     hitungDraf(forms.map((d) => d.kode), user.id),
+    hitungBelumTertaut(forms.filter((d) => d.tanpaPendaftaran).map((d) => d.kode)),
     // Hanya pengelola RM yang melihat & memicu pemindahan data lama.
     hak.kelola ? hitungDataLamaTertunda().catch(() => 0) : 0,
   ]);
@@ -32,6 +33,7 @@ export default async function KatalogFormRmPage() {
     kategori: d.kategori,
     sasaran: labelSasaran(d.sasaran),
     draf: draf[d.kode] ?? { saya: 0, semua: 0 },
+    belumTertaut: belumTertaut[d.kode] ?? 0,
   }));
 
   return (

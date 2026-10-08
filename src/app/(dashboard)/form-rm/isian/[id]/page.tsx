@@ -38,13 +38,16 @@ export default async function IsianPage({ params }: { params: Promise<{ id: stri
   if (!isian) notFound();
 
   // Rujukan SIMRS baca-saja (bukan isi isian): dibaca langsung tiap halaman dibuka.
+  // Isian belum tertaut belum punya pendaftaran → tanpa rujukan.
   const [header, rujukan] = await Promise.all([
     identitasIsian(isian),
-    isian.kode === "RM.04"
-      ? bacaTriaseSimrs(isian.nopen).then((triase) => ({ triase, edukasi: null }))
-      : isian.kode === "RM.21"
-        ? bacaKebutuhanEdukasi(isian.nopen).then((edukasi) => ({ triase: null, edukasi }))
-        : { triase: null, edukasi: null },
+    !isian.tertaut
+      ? { triase: null, edukasi: null }
+      : isian.kode === "RM.04"
+        ? bacaTriaseSimrs(isian.nopen).then((triase) => ({ triase, edukasi: null }))
+        : isian.kode === "RM.21"
+          ? bacaKebutuhanEdukasi(isian.nopen).then((edukasi) => ({ triase: null, edukasi }))
+          : { triase: null, edukasi: null },
   ]);
   const { hak } = aktor;
   const izin: IzinIsian = {
@@ -64,17 +67,21 @@ export default async function IsianPage({ params }: { params: Promise<{ id: stri
           <ArrowLeft className="size-4" />
           Pasien {isian.kode}
         </Link>
-        <Link
-          href={`/form-rm/pasien/${isian.nopen}`}
-          className="inline-flex items-center gap-1.5 text-fg-muted transition-colors hover:text-fg"
-        >
-          <UserRound className="size-4" />
-          Semua formulir pasien ini
-        </Link>
+        {isian.tertaut && (
+          <Link
+            href={`/form-rm/pasien/${isian.nopen}`}
+            className="inline-flex items-center gap-1.5 text-fg-muted transition-colors hover:text-fg"
+          >
+            <UserRound className="size-4" />
+            Semua formulir pasien ini
+          </Link>
+        )}
       </nav>
       <PageHeader
         title={isian.judul}
-        description={`${isian.kode} · ${KATEGORI_FORM[isian.kategori].label} · ${header.nama} · No. RM ${header.norm}`}
+        description={`${isian.kode} · ${KATEGORI_FORM[isian.kategori].label} · ${header.nama} · ${
+          isian.tertaut ? `No. RM ${header.norm}` : "belum tertaut ke pasien terdaftar"
+        }`}
       />
       <TampilanForm isian={isian} header={header} izin={izin} rujukan={rujukan} />
     </FadeIn>
