@@ -1,6 +1,6 @@
 import "server-only";
 import ExcelJS from "exceljs";
-import { grupMetrik, LABEL_TEMPAT_TIDUR, METRIK_RL32 } from "./rl32.constants";
+import { grupMetrik, labelTempatTidur, METRIK_RL32 } from "./rl32.constants";
 import { barisPerRuangan, JUDUL_RL32, labelPeta, metaRl32, subjudulRl32 } from "./rl32.dokumen";
 import type { NilaiRl32, Rl32Result } from "./rl32.types";
 
@@ -100,7 +100,7 @@ function tulisSheet<T>(wb: ExcelJS.Workbook, r: Rl32Result, m: Matriks<T>, meta:
 
   m.kolomDepan.forEach((k, i) => header(h1, i + 1, h3, i + 1, k.header, false, i === nDepan - 1));
   let c = awalAngka;
-  for (const g of grupMetrik()) {
+  for (const g of grupMetrik(r.satuan)) {
     if (g.grup) header(h1, c, h1, c + g.metrik.length * 3 - 1, g.grup);
     for (const mt of g.metrik) {
       if (g.grup) header(h2, c, h2, c + 2, mt.sub);
@@ -111,7 +111,7 @@ function tulisSheet<T>(wb: ExcelJS.Workbook, r: Rl32Result, m: Matriks<T>, meta:
       c += 3;
     }
   }
-  header(h1, kolomTT, h3, kolomTT, LABEL_TEMPAT_TIDUR);
+  header(h1, kolomTT, h3, kolomTT, labelTempatTidur(r.satuan));
   ws.getRow(h1).height = 30;
   ws.getRow(h2).height = 30;
   ws.getRow(h3).height = 14;

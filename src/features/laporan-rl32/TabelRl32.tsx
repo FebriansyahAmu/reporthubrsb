@@ -3,10 +3,9 @@
 import { Fragment } from "react";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format";
-import { grupMetrik, LABEL_TEMPAT_TIDUR, METRIK_RL32 } from "@/server/modules/rl32/rl32.constants";
+import { grupMetrik, labelTempatTidur, METRIK_RL32 } from "@/server/modules/rl32/rl32.constants";
+import type { SatuanPeriode } from "@/server/modules/rl32/rl32.periode";
 import type { Angka, NilaiRl32 } from "@/server/modules/rl32/rl32.types";
-
-const GRUP = grupMetrik();
 
 const TH = "border-b border-l border-border px-2 py-2 text-center text-[11px] font-semibold leading-tight text-fg-muted";
 const TD = "border-l border-border px-2 py-2 text-right tabular";
@@ -18,10 +17,12 @@ function Bilangan({ n, tebal }: { n: number; tebal?: boolean }) {
 /**
  * Matriks RL 3.2: satu kolom pengenal (lengket saat digeser) + 17 kolom angka
  * (grup bertingkat sesuai formulir) + alokasi TT. `lp` merinci tiap kolom jadi
- * L / P / Jml. Dipakai untuk tab per jenis pelayanan & per ruangan.
+ * L / P / Jml; `satuan` menamai kolom awal/akhir ("Awal Bulan", "Awal Triwulan").
+ * Dipakai untuk tab per jenis pelayanan & per ruangan.
  */
 export function TabelRl32<T>({
   lp,
+  satuan,
   baris,
   kunci,
   nilai,
@@ -33,6 +34,7 @@ export function TabelRl32<T>({
   labelTotal,
 }: {
   lp: boolean;
+  satuan: SatuanPeriode;
   baris: T[];
   kunci: (row: T) => string;
   nilai: (row: T) => NilaiRl32;
@@ -46,6 +48,7 @@ export function TabelRl32<T>({
 }) {
   const lebar = lp ? 3 : 1;
   const tingkat = lp ? 3 : 2;
+  const grup = grupMetrik(satuan);
 
   const selAngka = (a: Angka, tebal = false) =>
     lp ? (
@@ -82,7 +85,7 @@ export function TabelRl32<T>({
             >
               {kepala}
             </th>
-            {GRUP.map((g) =>
+            {grup.map((g) =>
               g.grup ? (
                 <th key={g.grup} colSpan={g.metrik.length * lebar} scope="colgroup" className={TH}>
                   {g.grup}
@@ -100,12 +103,12 @@ export function TabelRl32<T>({
                 </th>
               ),
             )}
-            <th rowSpan={tingkat} scope="col" title={LABEL_TEMPAT_TIDUR} className={cn(TH, "min-w-[4.75rem]")}>
+            <th rowSpan={tingkat} scope="col" title={labelTempatTidur(satuan)} className={cn(TH, "min-w-[4.75rem]")}>
               Alokasi TT
             </th>
           </tr>
           <tr>
-            {GRUP.filter((g) => g.grup).flatMap((g) =>
+            {grup.filter((g) => g.grup).flatMap((g) =>
               g.metrik.map((m) => (
                 <th key={m.key} colSpan={lebar} scope="col" title={m.label} className={cn(TH, lp ? "min-w-[7.5rem]" : "min-w-[4.75rem]")}>
                   {m.sub}

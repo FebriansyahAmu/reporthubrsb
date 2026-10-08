@@ -5,6 +5,7 @@
  * disimpan di DB aplikasi.
  */
 import type { MetrikRl32 } from "./rl32.constants";
+import type { SatuanPeriode } from "./rl32.periode";
 
 /** Cacah satu kolom: jumlah + laki-laki + perempuan (sesuai SP: P = JENIS_KELAMIN ≠ 1). */
 export type Angka = { total: number; lk: number; pr: number };
@@ -56,9 +57,12 @@ export type BarisRl32 = KategoriRl32 & {
 export type InstansiRl32 = { kodeRs: string; nama: string; kodeProp: string; kota: string };
 
 export type Rl32Result = {
-  periode: { from: string; to: string };
-  /** "September 2026" untuk satu bulan penuh, selain itu rentang tanggal. */
+  /** `hpSampai` = hari terakhir yang dihitung hari perawatannya (≤ hari ini); `berjalan` = periode belum berakhir. */
+  periode: { from: string; to: string; hpSampai: string; berjalan: boolean };
+  /** "September 2026", "Triwulan III 2026", "Tahun 2025", selain itu rentang tanggal. */
   judulPeriode: string;
+  /** Satuan label kolom ("Pasien Awal Bulan/Triwulan/Tahun/Periode"). */
+  satuan: SatuanPeriode;
   instansi: InstansiRl32 | null;
   /** Semua jenis pelayanan RL 3.2 (urut ID, termasuk yang kosong). */
   baris: BarisRl32[];

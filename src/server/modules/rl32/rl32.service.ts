@@ -11,7 +11,7 @@ import {
 import { nilaiKosong, nilaiPerRuanganSmf, susunRl32 } from "./rl32.hitung";
 import { daftarSmf, kategoriRl32 } from "./rl32.kategori";
 import { bacaPetaSmf, bacaPetaTersimpan } from "./rl32.pemetaan";
-import { judulPeriode, tambahHari } from "./rl32.periode";
+import { judulPeriode, satuanPeriode, tambahHari } from "./rl32.periode";
 import type { Rl32Query } from "./rl32.schema";
 import type { InstansiRl32, Rl32Result } from "./rl32.types";
 
@@ -26,9 +26,14 @@ const str = (x: unknown): string => (typeof x === "string" ? x : x == null ? "" 
  */
 export async function getRl32(input: Rl32Query): Promise<Rl32Result> {
   const { from, to } = input;
+  // Hari perawatan periode berjalan dihitung s.d. hari ini (SP: master.tanggal
+  // hanya berisi tanggal yang sudah lewat), bukan s.d. akhir periode.
+  const hariIni = tanggalHariIniWita();
+  const hpSampai = to < hariIni ? to : hariIni;
   const base = {
-    periode: { from, to },
+    periode: { from, to, hpSampai, berjalan: to >= hariIni },
     judulPeriode: judulPeriode(from, to),
+    satuan: satuanPeriode(from, to),
     tempatTidur: { tanggal: from, tersedia: false },
     updatedAt: new Date().toISOString(),
   };
@@ -37,9 +42,6 @@ export async function getRl32(input: Rl32Query): Promise<Rl32Result> {
     return { ...base, instansi: null, baris: [], total: nilaiKosong(), ruangan: [], belumDipetakan: [], pemisahan: [] };
   }
 
-  // Hari perawatan periode berjalan dihitung s.d. hari ini (SP: master.tanggal
-  // hanya berisi tanggal yang sudah lewat), bukan s.d. akhir bulan.
-  const hariIni = tanggalHariIniWita();
   const [agregat, tempatTidur, ruanganRi, kategori, smf, peta, petaSmf, instansiRow] = await Promise.all([
     queryAgregatRuangan({
       dari: `${from} 00:00:00`,
@@ -47,7 +49,7 @@ export async function getRl32(input: Rl32Query): Promise<Rl32Result> {
       awal: from,
       awalBesok: tambahHari(from, 1),
       akhirBesok: tambahHari(to, 1),
-      hpAkhirBesok: tambahHari(to < hariIni ? to : hariIni, 1),
+      hpAkhirBesok: tambahHari(hpSampai, 1),
     }),
     queryTempatTidur(from),
     queryRuanganRawatInap(),

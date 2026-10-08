@@ -29,7 +29,7 @@ export default async function Rl32Page() {
       </Link>
       <PageHeader
         title="RL 3.2 — Rawat Inap"
-        description="Rekapitulasi kegiatan pelayanan rawat inap per bulan (format SIRS 6): pasien awal, masuk, pindahan, keluar hidup/mati, lama dirawat, hari perawatan per kelas, dan alokasi tempat tidur — dikelompokkan per jenis pelayanan menurut ruang rawatnya."
+        description="Rekapitulasi kegiatan pelayanan rawat inap (format SIRS 6) per bulan, triwulan, atau rentang tanggal: pasien awal, masuk, pindahan, keluar hidup/mati, lama dirawat, hari perawatan per kelas, dan alokasi tempat tidur — dikelompokkan per jenis pelayanan menurut ruang rawatnya."
       />
       <Rl32View bolehLihatPeta={lihatPeta} bolehUbahPeta={lihatPeta && ubahPeta} />
     </FadeIn>

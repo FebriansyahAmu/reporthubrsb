@@ -5,8 +5,6 @@ import {
   AlertCircle,
   AlertTriangle,
   BedDouble,
-  ChevronLeft,
-  ChevronRight,
   Clock,
   DoorOpen,
   FileSpreadsheet,
@@ -19,8 +17,6 @@ import {
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { Label } from "@/components/ui/Field";
-import { Select } from "@/components/ui/Select";
 import { Switch } from "@/components/ui/Switch";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState, ErrorState } from "@/components/feedback/States";
@@ -29,9 +25,11 @@ import { apiGet } from "@/lib/api-client";
 import { useAsyncData } from "@/lib/useAsyncData";
 import { downloadFromEndpoint } from "@/lib/download";
 import { formatJam, formatNumber, tanggalHariIniWita } from "@/lib/format";
-import { MONTHS_ID } from "@/server/modules/rl41/rl41.constants";
+import { satuanPeriode } from "@/server/modules/rl32/rl32.periode";
 import type { BagianRuangan, NilaiRl32, Rl32Result, RuanganRl32 } from "@/server/modules/rl32/rl32.types";
 import { PemetaanRl32Drawer } from "./PemetaanRl32Drawer";
+import { PemilihPeriode } from "./PemilihPeriode";
+import { pilihanAwal, rentangPilihan, type PilihanPeriode } from "./periode";
 import { TabelRl32 } from "./TabelRl32";
 
 type BarisTabRuangan = { kunci: string; r: RuanganRl32; nilai: NilaiRl32; bagian?: BagianRuangan };
@@ -39,34 +37,11 @@ type BarisTabRuangan = { kunci: string; r: RuanganRl32; nilai: NilaiRl32; bagian
 /** "PERAWATAN INTERNA KELAS 3 (DPJP Saraf)" — sumbangan ruangan ke satu jenis pelayanan. */
 const labelSumber = (x: { nama: string; smf: string[] | null }) => (x.smf ? `${x.nama} (DPJP ${x.smf.join(", ")})` : x.nama);
 
-/* ------------------------------------------------------------------ periode */
-
-type Bulan = { tahun: number; bulan: number }; // bulan 1..12
-
-const p2 = (n: number) => String(n).padStart(2, "0");
-const geser = (b: Bulan, n: number): Bulan => {
-  const i = b.tahun * 12 + (b.bulan - 1) + n;
-  return { tahun: Math.floor(i / 12), bulan: (i % 12) + 1 };
-};
-const sama = (a: Bulan, b: Bulan) => a.tahun === b.tahun && a.bulan === b.bulan;
-const rentang = (b: Bulan) => {
-  const akhir = new Date(Date.UTC(b.tahun, b.bulan, 0)).getUTCDate();
-  return { from: `${b.tahun}-${p2(b.bulan)}-01`, to: `${b.tahun}-${p2(b.bulan)}-${p2(akhir)}` };
-};
-
-/** Data SIMGOS tersedia sejak 2023 (RL 3.2 bulanan). */
-const TAHUN_AWAL = 2023;
-
-const OPSI_BULAN = MONTHS_ID.map((m, i) => ({ value: String(i + 1), label: m }));
-
 /* -------------------------------------------------------------------- view */
 
 export function Rl32View({ bolehLihatPeta, bolehUbahPeta }: { bolehLihatPeta: boolean; bolehUbahPeta: boolean }) {
-  const kini = useMemo<Bulan>(() => {
-    const h = tanggalHariIniWita();
-    return { tahun: Number(h.slice(0, 4)), bulan: Number(h.slice(5, 7)) };
-  }, []);
-  const [periode, setPeriode] = useState<Bulan>(() => geser(kini, -1));
+  const hariIni = useMemo(() => tanggalHariIniWita(), []);
+  const [pilihan, setPilihan] = useState<PilihanPeriode>(() => pilihanAwal(hariIni));
   const [tab, setTab] = useState<"jenis" | "ruangan">("jenis");
   const [lp, setLp] = useState(false);
   const [semuaBaris, setSemuaBaris] = useState(false);
@@ -74,18 +49,15 @@ export function Rl32View({ bolehLihatPeta, bolehUbahPeta }: { bolehLihatPeta: bo
   const [exporting, setExporting] = useState<"" | "xlsx" | "pdf">("");
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const { from, to } = rentang(periode);
+  const { from, to } = rentangPilihan(pilihan);
   const { result, loading, error, reload } = useAsyncData<Rl32Result>(
     () => apiGet<Rl32Result>(`/api/laporan/rl32?${new URLSearchParams({ from, to })}`),
     [from, to],
   );
 
-  const opsiTahun = useMemo(
-    () => Array.from({ length: kini.tahun - TAHUN_AWAL + 1 }, (_, i) => String(kini.tahun - i)),
-    [kini.tahun],
-  );
-  const bulanBerjalan = sama(periode, kini);
-  const bisaMaju = !sama(periode, kini);
+  // Label ikut periode yang dipilih (tak menunggu hasil): "akhir bulan" / "akhir triwulan" / "akhir periode".
+  const satuan = satuanPeriode(from, to).toLowerCase();
+  const berjalan = to >= hariIni;
 
   const total = result?.total ?? null;
   // Ada pasien/TT di ruangan mana pun (termasuk yang belum dipetakan)?
@@ -179,45 +151,8 @@ export function Rl32View({ bolehLihatPeta, bolehUbahPeta }: { bolehLihatPeta: bo
 
       {/* Periode & tampilan */}
       <Card className="p-4">
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
-          <div>
-            <Label htmlFor="rl32-bulan">Bulan laporan</Label>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setPeriode((b) => geser(b, -1))}
-                disabled={periode.tahun === TAHUN_AWAL && periode.bulan === 1}
-                aria-label="Bulan sebelumnya"
-                className="flex size-10 items-center justify-center rounded-[var(--radius-md)] border border-border bg-surface text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:pointer-events-none disabled:opacity-40"
-              >
-                <ChevronLeft className="size-4" />
-              </button>
-              <div className="w-36">
-                <Select
-                  id="rl32-bulan"
-                  value={String(periode.bulan)}
-                  options={OPSI_BULAN}
-                  onChange={(v) => setPeriode((b) => ({ ...b, bulan: Number(v) }))}
-                />
-              </div>
-              <div className="w-24">
-                <Select
-                  value={String(periode.tahun)}
-                  options={opsiTahun}
-                  onChange={(v) => setPeriode((b) => ({ ...b, tahun: Number(v) }))}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => setPeriode((b) => geser(b, 1))}
-                disabled={!bisaMaju}
-                aria-label="Bulan berikutnya"
-                className="flex size-10 items-center justify-center rounded-[var(--radius-md)] border border-border bg-surface text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:pointer-events-none disabled:opacity-40"
-              >
-                <ChevronRight className="size-4" />
-              </button>
-            </div>
-          </div>
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+          <PemilihPeriode nilai={pilihan} onChange={setPilihan} hariIni={hariIni} />
           <div className="flex flex-wrap items-center gap-x-5 gap-y-3 pb-2">
             <label className="flex items-center gap-2 text-sm text-fg-muted">
               <Switch checked={lp} onChange={setLp} label="Rincian laki-laki dan perempuan" />
@@ -231,9 +166,10 @@ export function Rl32View({ bolehLihatPeta, bolehUbahPeta }: { bolehLihatPeta: bo
             )}
           </div>
         </div>
-        {bulanBerjalan && (
+        {berjalan && (
           <p className="mt-3 text-xs text-fg-subtle">
-            Bulan berjalan — pasien akhir bulan dan hari perawatan dihitung sampai hari ini.
+            Periode berjalan — pasien akhir {satuan} adalah pasien yang masih dirawat, dan hari perawatan dihitung sampai
+            hari ini.
           </p>
         )}
       </Card>
@@ -277,9 +213,9 @@ export function Rl32View({ bolehLihatPeta, bolehUbahPeta }: { bolehLihatPeta: bo
         />
         <Tile
           icon={DoorOpen}
-          label={bulanBerjalan ? "Pasien dirawat saat ini" : "Pasien akhir bulan"}
+          label={berjalan ? "Pasien dirawat saat ini" : `Pasien akhir ${satuan}`}
           nilai={total?.sisa.total}
-          hint={total ? `Awal bulan ${formatNumber(total.awal.total)}` : ""}
+          hint={total ? `Awal ${satuan} ${formatNumber(total.awal.total)}` : ""}
           loading={loading}
         />
       </div>
@@ -309,12 +245,13 @@ export function Rl32View({ bolehLihatPeta, bolehUbahPeta }: { bolehLihatPeta: bo
               description={
                 adaData
                   ? "Pasien ada, tetapi ruangannya belum dipetakan ke jenis pelayanan."
-                  : "Tidak ada pasien rawat inap pada bulan ini. Pilih bulan lain."
+                  : "Tidak ada pasien rawat inap pada periode ini. Pilih periode lain."
               }
             />
           ) : (
             <TabelRl32
               lp={lp}
+              satuan={result.satuan}
               baris={barisJenis}
               kunci={(b) => String(b.id)}
               nilai={(b) => b.nilai}
@@ -341,6 +278,7 @@ export function Rl32View({ bolehLihatPeta, bolehUbahPeta }: { bolehLihatPeta: bo
         ) : (
           <TabelRl32
             lp={lp}
+            satuan={result.satuan}
             baris={barisRuangan}
             kunci={(x) => x.kunci}
             nilai={(x) => x.nilai}
@@ -396,8 +334,9 @@ export function Rl32View({ bolehLihatPeta, bolehUbahPeta }: { bolehLihatPeta: bo
       <p className="text-xs leading-relaxed text-fg-subtle">
         Sumber: SIMGOS (hanya dibaca), logika SP <span className="font-mono">LaporanRL32RuanganRevisi</span>. Jenis
         pelayanan ditentukan oleh ruang rawat pasien menurut pemetaan ruangan ReportHub. Pasien dipindahkan = (awal +
-        masuk + pindahan) − (keluar hidup + keluar mati + akhir bulan). Mati &lt; / ≥ 48 jam dihitung sejak pendaftaran.
-        Alokasi TT diambil per tanggal 1.
+        masuk + pindahan) − (keluar hidup + keluar mati + akhir periode). Mati &lt; / ≥ 48 jam dihitung sejak
+        pendaftaran. Alokasi TT diambil per tanggal awal periode. Formulir SIRS 6 bulanan; triwulan dan rentang tanggal
+        dihitung dengan rumus yang sama atas seluruh periode.
       </p>
 
       <PemetaanRl32Drawer

@@ -10,6 +10,8 @@
  * tetap READ-ONLY. Analisis: docs/analisis-rl32-ruangan-revisi.sql.
  */
 
+import type { SatuanPeriode } from "./rl32.periode";
+
 /** Jenis laporan SIMGOS (`master.jenis_laporan_detil`) "RL 3.2 (SIRS 6)" — kategori di `master.refrl`. */
 export const RL32_JENIS_LAPORAN = { jenis: "100103", id: 102 } as const;
 
@@ -68,6 +70,17 @@ export const METRIK_RL32: readonly InfoMetrik[] = [
 
 export const LABEL_TEMPAT_TIDUR = "Jumlah Alokasi TT Awal Bulan";
 
+/**
+ * Label kolom menurut satuan periode: formulir SIRS 6 bulanan ("Pasien Awal
+ * Bulan"); untuk triwulan/tahun/rentang bebas "Bulan" diganti satuannya.
+ */
+export function metrikRl32(satuan: SatuanPeriode = "Bulan"): readonly InfoMetrik[] {
+  if (satuan === "Bulan") return METRIK_RL32;
+  return METRIK_RL32.map((m) => ({ ...m, label: m.label.replace("Bulan", satuan), sub: m.sub.replace("Bulan", satuan) }));
+}
+
+export const labelTempatTidur = (satuan: SatuanPeriode = "Bulan") => LABEL_TEMPAT_TIDUR.replace("Bulan", satuan);
+
 /** Kolom hari perawatan per kelas ← `master.kelas_simrs_rl.RL_KELAS` (1..6). */
 export const METRIK_KELAS: Record<number, MetrikRl32> = {
   1: "vvip",
@@ -79,9 +92,9 @@ export const METRIK_KELAS: Record<number, MetrikRl32> = {
 };
 
 /** Kelompok kolom bertingkat untuk header tabel (urutan tampil). */
-export function grupMetrik(): { grup: string | null; metrik: InfoMetrik[] }[] {
+export function grupMetrik(satuan: SatuanPeriode = "Bulan"): { grup: string | null; metrik: InfoMetrik[] }[] {
   const out: { grup: string | null; metrik: InfoMetrik[] }[] = [];
-  for (const m of METRIK_RL32) {
+  for (const m of metrikRl32(satuan)) {
     const akhir = out.at(-1);
     if (m.grup && akhir?.grup === m.grup) akhir.metrik.push(m);
     else out.push({ grup: m.grup ?? null, metrik: [m] });

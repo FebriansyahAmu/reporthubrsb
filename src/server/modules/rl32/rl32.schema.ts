@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { RL32_MAKS_HARI } from "./rl32.constants";
+import { selisihHari } from "./rl32.periode";
 
 const TANGGAL = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "format tanggal harus YYYY-MM-DD");
 
@@ -9,12 +10,10 @@ const tanggalValid = (s: string) => {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
 };
 
-const selisihHari = (a: string, b: string) =>
-  (Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000;
-
 /**
- * Periode RL 3.2 (SP: TGLAWAL, TGLAKHIR). Umumnya satu bulan; rentang lain
- * diizinkan s.d. RL32_MAKS_HARI. Tanggal di-bind (`?`) di DAL → aman injeksi.
+ * Periode RL 3.2 (SP: TGLAWAL, TGLAKHIR): bulan, triwulan, atau rentang tanggal
+ * bebas s.d. RL32_MAKS_HARI hari (satu tahun penuh muat). Tanggal di-bind (`?`)
+ * di DAL → aman injeksi.
  */
 export const rl32QuerySchema = z
   .object({ from: TANGGAL, to: TANGGAL })

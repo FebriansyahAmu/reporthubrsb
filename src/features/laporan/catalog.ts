@@ -112,7 +112,7 @@ export const LAPORAN_CATALOG: ReportGroup[] = [
       {
         title: "RL 3.2 — Rawat Inap",
         description:
-          "Rekap bulanan pelayanan rawat inap per jenis pelayanan (SIRS 6): pasien awal, masuk, pindahan, keluar hidup/mati, hari perawatan per kelas & alokasi TT — dikelompokkan menurut ruang rawat. Ekspor Excel/PDF.",
+          "Rekap pelayanan rawat inap per jenis pelayanan (SIRS 6) per bulan, triwulan, atau rentang tanggal: pasien awal, masuk, pindahan, keluar hidup/mati, hari perawatan per kelas & alokasi TT — dikelompokkan menurut ruang rawat. Ekspor Excel/PDF.",
         icon: Hospital,
         status: "tersedia",
         href: "/laporan/rl32",

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { grupMetrik, METRIK_RL32, saranJenisPelayanan } from "./rl32.constants";
+import { grupMetrik, labelTempatTidur, METRIK_RL32, metrikRl32, saranJenisPelayanan } from "./rl32.constants";
 import { jumlahkan, nilaiKosong, nilaiPerRuangan, nilaiPerRuanganSmf, statusPeta, susunRl32, type MasukanSusun } from "./rl32.hitung";
-import { judulPeriode, tambahHari } from "./rl32.periode";
+import { judulPeriode, rentangBulan, rentangTriwulan, satuanPeriode, selisihHari, tambahHari } from "./rl32.periode";
 import { rl32QuerySchema, simpanPemetaanSchema } from "./rl32.schema";
 import type { BarisAgregat, KategoriRl32, PetaTersimpan } from "./rl32.types";
 
@@ -220,11 +220,38 @@ describe("periode", () => {
     expect(tambahHari("2026-12-31", 1)).toBe("2027-01-01");
     expect(tambahHari("2028-02-28", 1)).toBe("2028-02-29");
   });
-  it("judul: satu bulan penuh vs rentang lain", () => {
+  it("judul: bulan, triwulan, tahun penuh vs rentang lain", () => {
     expect(judulPeriode("2026-09-01", "2026-09-30")).toBe("September 2026");
     expect(judulPeriode("2026-02-01", "2026-02-28")).toBe("Februari 2026");
     expect(judulPeriode("2026-09-01", "2026-09-15")).toBe("1 Sep 2026 – 15 Sep 2026");
-    expect(judulPeriode("2026-01-01", "2026-03-31")).toBe("1 Jan 2026 – 31 Mar 2026");
+    expect(judulPeriode("2026-01-01", "2026-03-31")).toBe("Triwulan I 2026");
+    expect(judulPeriode("2026-07-01", "2026-09-30")).toBe("Triwulan III 2026");
+    expect(judulPeriode("2026-10-01", "2026-12-31")).toBe("Triwulan IV 2026");
+    expect(judulPeriode("2025-01-01", "2025-12-31")).toBe("Tahun 2025");
+    // Tiga bulan tetapi bukan batas triwulan → rentang.
+    expect(judulPeriode("2026-02-01", "2026-04-30")).toBe("1 Feb 2026 – 30 Apr 2026");
+    expect(judulPeriode("2026-07-01", "2026-09-29")).toBe("1 Jul 2026 – 29 Sep 2026");
+  });
+  it("satuan label kolom & rentang triwulan/bulan (kabisat)", () => {
+    expect(satuanPeriode("2026-09-01", "2026-09-30")).toBe("Bulan");
+    expect(satuanPeriode("2026-04-01", "2026-06-30")).toBe("Triwulan");
+    expect(satuanPeriode("2024-01-01", "2024-12-31")).toBe("Tahun");
+    expect(satuanPeriode("2026-01-01", "2026-06-30")).toBe("Periode");
+    expect(satuanPeriode("2026-09-02", "2026-09-30")).toBe("Periode");
+    expect(rentangTriwulan(2024, 1)).toEqual({ from: "2024-01-01", to: "2024-03-31" });
+    expect(rentangTriwulan(2026, 4)).toEqual({ from: "2026-10-01", to: "2026-12-31" });
+    expect(rentangBulan(2028, 2)).toEqual({ from: "2028-02-01", to: "2028-02-29" });
+    expect(selisihHari("2026-07-01", "2026-09-30")).toBe(91);
+  });
+  it("label kolom awal/akhir & alokasi TT mengikuti satuan; kunci & urutan tetap", () => {
+    const tw = metrikRl32("Triwulan");
+    expect(tw.find((m) => m.key === "awal")).toMatchObject({ label: "Pasien Awal Triwulan", sub: "Awal Triwulan" });
+    expect(tw.find((m) => m.key === "sisa")).toMatchObject({ label: "Pasien Akhir Triwulan", sub: "Akhir Triwulan" });
+    expect(tw.map((m) => m.key)).toEqual(METRIK_RL32.map((m) => m.key));
+    expect(metrikRl32()).toBe(METRIK_RL32);
+    expect(metrikRl32("Periode").find((m) => m.key === "awal")?.label).toBe("Pasien Awal Periode");
+    expect(labelTempatTidur("Tahun")).toBe("Jumlah Alokasi TT Awal Tahun");
+    expect(grupMetrik("Triwulan")[0].metrik[0].sub).toBe("Awal Triwulan");
   });
 });
 

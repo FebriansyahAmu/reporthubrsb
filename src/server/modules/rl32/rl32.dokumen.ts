@@ -49,7 +49,10 @@ export function metaRl32(r: Rl32Result, opts: { oleh: string; waktu: Date }): st
   const terpetakan = r.ruangan.filter((x) => x.status === "terpetakan").length;
   const dikecualikan = r.ruangan.filter((x) => x.status === "dikecualikan").length;
   const meta = [
-    `Periode: ${r.judulPeriode} (${tglId(r.periode.from)} s.d. ${tglId(r.periode.to)})`,
+    `Periode: ${r.judulPeriode} (${tglId(r.periode.from)} s.d. ${tglId(r.periode.to)})` +
+      (r.periode.berjalan
+        ? ` — periode belum berakhir: hari perawatan dihitung s.d. ${tglId(r.periode.hpSampai)}, pasien akhir = pasien yang masih dirawat.`
+        : ""),
     `Dasar pengelompokan: ruangan rawat inap → jenis pelayanan (${terpetakan} ruangan dipetakan${dikecualikan ? `, ${dikecualikan} tidak dilaporkan` : ""}). ` +
       (r.tempatTidur.tersedia
         ? `Alokasi TT per ${tglId(r.tempatTidur.tanggal)}.`
