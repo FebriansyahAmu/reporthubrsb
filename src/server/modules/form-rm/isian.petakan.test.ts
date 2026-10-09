@@ -39,6 +39,7 @@ import {
   teksDiagnosis,
   type HasilSumber,
   type PetaForm,
+  CARA_PULANG_APS,
 } from "./isian.petakan";
 import type { EdukasiRow, EpisodeRow, KeluargaRow, MorseRow, RujukanRow, SosialRow } from "./isian.sumber.dal";
 
@@ -179,7 +180,7 @@ const lengkap: HasilSumber = {
     { UTAMA: 2, KODE: "D64.9", DIAGNOSA: "anemia" },
     { UTAMA: 2, KODE: "E86", DIAGNOSA: "dehidrasi" },
   ],
-  pulang: { CARA: 1, KEADAAN: 2 },
+  pulang: { CARA: 1, KEADAAN: 2, WAKTU: "2026-10-09T14:05", PETUGAS: "Ns. Pulang" },
   triase,
   edukasi: { ...nolEdukasi(), HAMBATAN: 1, HAMBATAN_PENDENGARAN: 1, HAMBATAN_KOGNITIF: 1, HAMBATAN_BAHASA: 1, PENERJEMAH: 1 },
 };
@@ -423,6 +424,31 @@ describe("peta isi otomatis per form", () => {
     });
     const tanpaFaskes = petaRujukan({ ...rujukanRow, TUJUAN: null, RENCANA: null, TANGGAL: "2026-02-30x" });
     expect([tanpaFaskes.tujuanRujukan, tanpaFaskes.tanggalRujuk, tanpaFaskes["informasi.tindakan.isi"]]).toEqual(["", "", ""]);
+  });
+
+  it("RM.41: identitas pasien + alamat (cadangan yang menyatakan); waktu & petugas hanya bila SIMRS mencatat pulang APS", () => {
+    const n = petaWajib("RM.41").petakan(lengkap);
+    expect(Object.fromEntries(Object.entries(n).map(([p, v]) => [p, [v.nilai, v.sumber]]))).toEqual({
+      pasienNama: ["PASIEN UJI", "identitas"],
+      pasienJk: ["Perempuan", "identitas"],
+      pasienTglLahir: ["1990-01-01", "identitas"],
+      pasienNorm: ["12345", "identitas"],
+      pernyataAlamat: ["Desa Uji RT 001", "sosial"],
+    });
+    const aps = petaWajib("RM.41").petakan({ ...lengkap, pulang: { ...lengkap.pulang!, CARA: CARA_PULANG_APS } });
+    expect(aps.waktu).toEqual({ nilai: "2026-10-09T14:05", sumber: "pulang" });
+    expect(aps.petugasNama).toEqual({ nilai: "Ns. Pulang", sumber: "pulang" });
+    const def = DEFINISI_FORM.find((x) => x.kode === "RM.41")!;
+    const data = def.kosong() as Record<string, unknown>;
+    for (const [path, v] of Object.entries(aps)) expect(pasangPath(data, path, v.nilai), path).toBe(true);
+    expect(def.skema.safeParse(data).success).toBe(true);
+    expect(def.simrs.flatMap((b) => b.kolom.map((k) => k.path)).filter((p) => !(p in aps))).toEqual([]);
+    // Waktu rusak / petugas kosong tidak diisi; identitas tak dikenal tidak diisi.
+    const rusak = petaWajib("RM.41").petakan({ pulang: { CARA: 2, KEADAAN: 2, WAKTU: "0000-00-00T00:00x", PETUGAS: " " } });
+    expect(rusak).toEqual({});
+    expect(
+      petaWajib("RM.41").petakan({ identitas: { ...header, nama: "—", jenisKelamin: "—", tanggalLahir: null, norm: "—" } }),
+    ).toEqual({});
   });
 
   it("teks diagnosis: utama dulu, tanpa duplikat, kode/nama boleh salah satu", () => {

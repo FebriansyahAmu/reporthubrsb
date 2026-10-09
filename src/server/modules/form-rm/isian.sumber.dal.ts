@@ -145,11 +145,21 @@ export async function queryEpisode(nopen: string): Promise<EpisodeRow | null> {
 /* ------------------------------------------------------------------ pulang */
 
 /** Cara (referensi 45) & keadaan (referensi 46) keluar episode (`layanan.pasien_pulang`). */
-export type PulangRow = { CARA: Id; KEADAAN: Id };
+export type PulangRow = {
+  /** Cara keluar (referensi JENIS 45; 2 = pulang paksa / atas permintaan sendiri). */
+  CARA: Id;
+  KEADAAN: Id;
+  /** "YYYY-MM-DDTHH:mm" jam dinding pasien dipulangkan. */
+  WAKTU: string | null;
+  /** Petugas yang mencatat kepulangan (pegawai + gelar; cadangan nama pengguna). */
+  PETUGAS: string | null;
+};
 
 export async function queryPulang(nopen: string): Promise<PulangRow | null> {
   const sql = `
-    SELECT ${CAP} p.CARA, p.KEADAAN
+    SELECT ${CAP} p.CARA, p.KEADAAN, DATE_FORMAT(p.TANGGAL, '%Y-%m-%dT%H:%i') AS WAKTU,
+      (SELECT COALESCE(NULLIF(${PEGAWAI_NAMA}, ''), u.NAMA) FROM ${SIMGOS_DB.APLIKASI}.pengguna u
+         LEFT JOIN ${M}.pegawai pg ON pg.NIP = u.NIP WHERE u.ID = p.OLEH LIMIT 1) AS PETUGAS
     FROM ${SIMGOS_DB.LAYANAN}.pasien_pulang p
     WHERE p.NOPEN = ? AND p.STATUS <> 0
     ORDER BY p.TANGGAL DESC, p.ID DESC

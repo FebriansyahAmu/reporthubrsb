@@ -7,6 +7,7 @@ import { morse } from "./forms/morse";
 import { emptyRingkasanForm, RINGKASAN_JENIS } from "./ringkasan.constants";
 import { cekTtdPernyataan, emptyRm22Form, kekuranganRm22, ringkasRm22, type Rm22Data } from "./rm22.constants";
 import { cekTtdRm33, emptyRm33Form, kekuranganRm33, ringkasRm33, type Rm33Data } from "./rm33.constants";
+import { cekTtdRm41, emptyRm41Form, kekuranganRm41 } from "./rm41.constants";
 import { emptyTriaseForm, hitungKategori, TRIASE_JENIS } from "./triase.constants";
 import { KATEGORI_FORM, type KategoriForm } from "./kategori";
 import {
@@ -15,6 +16,7 @@ import {
   ringkasanFormSchema,
   rm22FormSchema,
   rm33FormSchema,
+  rm41FormSchema,
   triaseFormSchema,
 } from "./skema";
 
@@ -33,7 +35,7 @@ import {
 export { KATEGORI_FORM, type KategoriForm };
 
 /** "RM.MORSE" = kode sementara — diganti nomor RM resmi dari templat RS sebelum dipakai di produksi. */
-export const KODE_FORM = ["RM.04", "RM.21", "RM.01", "RM.03", "RM.22", "RM.33", "RM.MORSE"] as const;
+export const KODE_FORM = ["RM.04", "RM.21", "RM.01", "RM.03", "RM.22", "RM.33", "RM.41", "RM.MORSE"] as const;
 export type KodeForm = (typeof KODE_FORM)[number];
 
 /** EPISODE = satu isian per pendaftaran (NOPEN); KUNJUNGAN = per kunjungan ruang. */
@@ -525,6 +527,58 @@ const persetujuanRujukan: DefinisiForm<z.output<typeof rm33FormSchema>> = {
   cekPerubahan: cekTtdRm33,
 };
 
+/*
+ * RM.41: satu isian per episode — pasien pulang sekali. Pulang atas
+ * permintaan sendiri (SIMGOS: cara keluar 2 "Pulang Paksa") tercatat dari IGD
+ * dan rawat inap. Tidak wajib per episode — hanya bila pasien pulang APS. Isi
+ * otomatis: identitas pasien, alamat (cadangan alamat yang menyatakan), dan —
+ * bila kepulangan APS sudah dicatat di SIMRS — waktu serta petugas pencatatnya.
+ */
+const SIMRS_RM41: readonly BagianSimrs[] = [
+  {
+    id: "pasien",
+    judul: "Identitas pasien",
+    kolom: [
+      { path: "pasienNama", label: "Nama pasien", sumber: "identitas" },
+      { path: "pasienJk", label: "Jenis kelamin pasien", sumber: "identitas" },
+      { path: "pasienTglLahir", label: "Tanggal lahir pasien", sumber: "identitas" },
+      { path: "pasienNorm", label: "Nomor RM", sumber: "identitas" },
+      { path: "pernyataAlamat", label: "Alamat yang menyatakan (alamat pasien)", sumber: "sosial" },
+    ],
+  },
+  {
+    id: "pulang",
+    judul: "Kepulangan APS di SIMRS",
+    kolom: [
+      { path: "waktu", label: "Tanggal & jam pulang", sumber: "pulang" },
+      { path: "petugasNama", label: "Petugas RS (pencatat kepulangan)", sumber: "pulang" },
+    ],
+  },
+];
+
+const pulangAps: DefinisiForm<z.output<typeof rm41FormSchema>> = {
+  kode: "RM.41",
+  versi: 1,
+  judul: "Surat Pernyataan Pulang Atas Permintaan Sendiri",
+  kategori: "ringkasan-pemulangan",
+  cakupan: "EPISODE",
+  berulang: false,
+  sasaran: { jenis: [2, 3], jendelaJam: 72 },
+  wajibUntuk: [],
+  kertas: { ukuran: "F4", orientasi: "potret" },
+  simrs: SIMRS_RM41,
+  skema: rm41FormSchema,
+  kosong: () => rm41FormSchema.parse(emptyRm41Form()),
+  petaTtd: (d, f) => ({
+    ...d,
+    petugasTtd: f(d.petugasTtd, "petugasTtd"),
+    saksiTtd: f(d.saksiTtd, "saksiTtd"),
+    pernyataTtd: f(d.pernyataTtd, "pernyataTtd"),
+  }),
+  syaratFinal: (d) => Object.values(kekuranganRm41(d)).flat(),
+  cekPerubahan: cekTtdRm41,
+};
+
 /** Urutan = urutan tampil di katalog. */
 export const DEFINISI_FORM: readonly DefinisiForm[] = [
   triase,
@@ -533,6 +587,7 @@ export const DEFINISI_FORM: readonly DefinisiForm[] = [
   consent,
   persetujuanTindakan,
   persetujuanRujukan,
+  pulangAps,
   morse,
 ];
 

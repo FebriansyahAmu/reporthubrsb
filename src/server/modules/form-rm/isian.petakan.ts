@@ -355,6 +355,39 @@ export function petaRujukan(r: RujukanRow): Record<string, unknown> {
   };
 }
 
+/* ------------------------------------------------------------ pulang APS */
+
+/** Cara keluar SIMGOS "Pulang Paksa + Alasan" (referensi JENIS 45) = pulang atas permintaan sendiri. */
+export const CARA_PULANG_APS = 2;
+
+/** Tanggal lahir kepala formulir (ISO, jam dinding di field UTC) → "YYYY-MM-DD"; tanggal nol / mustahil dibuang. */
+const tanggalLahir = (iso: string | null) => {
+  const t = bersih(iso).slice(0, 10);
+  return /^(19|20)\d{2}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(t) ? t : "";
+};
+
+/**
+ * RM.41: identitas pasien, alamat pasien sebagai cadangan alamat yang
+ * menyatakan (keluarga umumnya serumah; ditandai SIMRS, dapat diubah), dan —
+ * hanya bila SIMRS mencatat kepulangan APS — waktu pulang & petugas pencatatnya.
+ */
+function petaPulangAps(h: HasilSumber): NilaiSimrs {
+  const out: NilaiSimrs = {};
+  if (h.identitas) {
+    isi(out, "identitas", {
+      pasienNama: bukanStrip(h.identitas.nama),
+      pasienJk: jkDariHeader(h.identitas.jenisKelamin),
+      pasienTglLahir: tanggalLahir(h.identitas.tanggalLahir),
+      pasienNorm: /^\d{1,12}$/.test(bersih(h.identitas.norm)) ? bersih(h.identitas.norm) : "",
+    });
+  }
+  if (h.sosial) isi(out, "sosial", { pernyataAlamat: komposeAlamat(h.sosial) });
+  if (h.pulang && kode(h.pulang.CARA) === CARA_PULANG_APS) {
+    isi(out, "pulang", { waktu: waktu(h.pulang.WAKTU), petugasNama: bersih(h.pulang.PETUGAS) });
+  }
+  return out;
+}
+
 /* ---------------------------------------------------------------- edukasi */
 
 const ya = (v: Id) => kode(v) === 1;
@@ -619,6 +652,10 @@ export const PETA_FORM: Readonly<Partial<Record<KodeForm, PetaForm>>> = {
     bawaan(d, hariIni) {
       d.tanggal = hariIni;
     },
+  },
+  "RM.41": {
+    sumber: ["identitas", "sosial", "pulang"],
+    petakan: petaPulangAps,
   },
   "RM.MORSE": {
     sumber: ["morse"],

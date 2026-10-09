@@ -1,4 +1,4 @@
-import { Ambulance, FileHeart, FilePenLine, FileText, GraduationCap, ShieldAlert, Siren, type LucideIcon } from "lucide-react";
+import { Ambulance, DoorOpen, FileHeart, FilePenLine, FileText, GraduationCap, ShieldAlert, Siren, type LucideIcon } from "lucide-react";
 import type { KodeForm } from "./registry";
 
 type TampilanForm = {
@@ -52,6 +52,12 @@ export const TAMPILAN_FORM: Record<KodeForm, TampilanForm> = {
     keterangan: "Per rujukan: pemberian informasi, lalu pasien setuju, menunda, atau menolak dirujuk.",
     ikon: Ambulance,
     berulang: { satuan: "rujukan", bila: "Diisi bila pasien dirujuk" },
+  },
+  "RM.41": {
+    singkat: "Pulang APS",
+    label: "Surat Pernyataan Pulang Atas Permintaan Sendiri",
+    keterangan: "Pernyataan pasien / keluarga pulang atas permintaan sendiri beserta alasannya, disaksikan petugas RS.",
+    ikon: DoorOpen,
   },
   "RM.MORSE": {
     singkat: "Risiko Jatuh",

@@ -75,6 +75,7 @@ describe("registri form RM", () => {
     expect(slot("RM.21")).toEqual([0, 1, 2, 3, 4].map((i) => `entries.${i}.sasaranTtd`));
     expect(slot("RM.22")).toEqual(["pemberiTtd", "penerimaTtd", "pernyataTtd", "saksi1Ttd", "saksi2Ttd"]);
     expect(slot("RM.33")).toEqual(["pemberiTtd", "penerimaTtd", "pernyataTtd", "dokterTtd", "saksi1Ttd", "saksi2Ttd"]);
+    expect(slot("RM.41")).toEqual(["petugasTtd", "saksiTtd", "pernyataTtd"]);
   });
 
   it("form berulang punya pembeda isian (ringkasIsian); form tak berulang tidak memerlukannya", () => {
@@ -86,6 +87,10 @@ describe("registri form RM", () => {
     }
     // Rujukan keluar SIMGOS dibuat dari rawat jalan, IGD, dan rawat inap.
     expect(definisiForm("RM.33")?.sasaran.jenis).toEqual([1, 2, 3]);
+    // Pulang APS: sekali per episode, dari IGD & rawat inap, hanya bila terjadi (tidak wajib); TTD terikat slot & "selaku".
+    const rm41 = definisiForm("RM.41")!;
+    expect([rm41.berulang, rm41.wajibUntuk, rm41.sasaran.jenis, rm41.kategori]).toEqual([false, [], [2, 3], "ringkasan-pemulangan"]);
+    expect(rm41.cekPerubahan).toBeTypeOf("function");
     // Form berulang menyebut satuan isiannya di profil pasien & pemilih ("Satu isian per rujukan").
     for (const d of DEFINISI_FORM) if (d.berulang) expect(TAMPILAN_FORM[d.kode].berulang?.satuan, d.kode).toBeTruthy();
   });
@@ -178,5 +183,16 @@ describe("registri form RM", () => {
     });
     expect(rm33.skema.safeParse(r33).success).toBe(true);
     expect(rm33.syaratFinal(r33)).toEqual([]);
+
+    const rm41 = definisiForm("RM.41")!;
+    const r41 = {
+      ...(rm41.kosong() as object),
+      selaku: "anak", pernyataNama: "B", pernyataUmur: "40", pernyataAlamat: "Modayag",
+      pasienNama: "P", pasienJk: "Laki-laki", pasienTglLahir: "1950-02-03", pasienNorm: "12345",
+      alasan: "Ingin dirawat di rumah", waktu: "2026-10-09T14:05",
+      petugasNama: "Ns. C", petugasTtd: ttd, saksiNama: "D", saksiTtd: ttd, pernyataTtd: ttd,
+    };
+    expect(rm41.skema.safeParse(r41).success).toBe(true);
+    expect(rm41.syaratFinal(r41)).toEqual([]);
   });
 });

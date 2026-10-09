@@ -490,7 +490,7 @@ export function PilihanBesar({
   );
 }
 
-function PilihJk({ id, nilai, onUbah }: { id: string; nilai: "" | JkPilihan; onUbah: (v: "" | JkPilihan) => void }) {
+export function PilihJk({ id, nilai, onUbah }: { id: string; nilai: "" | JkPilihan; onUbah: (v: "" | JkPilihan) => void }) {
   return (
     <div id={id} role="radiogroup" aria-label="Jenis kelamin" className="inline-flex h-10 w-full rounded-[var(--radius-md)] border border-border bg-surface-2 p-1">
       {JK_PILIHAN.map((jk) => (

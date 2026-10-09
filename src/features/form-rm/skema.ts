@@ -2,6 +2,7 @@ import { z } from "zod";
 import { JENIS_INFORMASI, JK_PILIHAN, type IdInformasi } from "./persetujuan/informasi";
 import { LEMBAR_RM22 } from "./rm22.constants";
 import { KEPUTUSAN_RM33 } from "./rm33.constants";
+import { SELAKU_RM41 } from "./rm41.constants";
 import {
   CARA_DATANG_OPTS,
   EMERGENCY_OPTS,
@@ -272,6 +273,26 @@ export const rm33FormSchema = z.strictObject({
   dokterNama: str(120),
   dokterTtd: ttdSchema,
   ...saksiShape,
+});
+
+/* --------------------------- RM.41 Surat Pernyataan Pulang Atas Permintaan Sendiri */
+
+export const rm41FormSchema = z.strictObject({
+  pernyataNama: str(120),
+  pernyataUmur: umurTahunSchema,
+  pernyataAlamat: str(300),
+  selaku: z.enum(["", ...SELAKU_RM41]).default(""),
+  pasienNama: str(120),
+  pasienJk: jkPilihanSchema,
+  pasienTglLahir: tanggalSchema,
+  pasienNorm: z.string().regex(/^\d{0,12}$/, "Nomor RM diisi angka").default(""),
+  alasan: str(300),
+  waktu: z.string().regex(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})?$/, "Format waktu YYYY-MM-DDTHH:mm").default(""),
+  petugasNama: str(120),
+  petugasTtd: ttdSchema,
+  saksiNama: str(120),
+  saksiTtd: ttdSchema,
+  pernyataTtd: ttdSchema,
 });
 
 /* --------------------------------------------------- penyesuaian data */

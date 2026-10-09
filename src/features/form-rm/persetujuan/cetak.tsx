@@ -61,7 +61,8 @@ export function LembarPersetujuan({
   );
 }
 
-function Kop({ header, kode }: { header: FormRmHeader; kode: string }) {
+/** Kop RS + identitas pasien (No. RM · Nama (L/P) · NIK) + kotak nomor formulir — sama di semua formulir F4 RS. */
+export function Kop({ header, kode }: { header: FormRmHeader; kode: string }) {
   const laki = header.jenisKelamin === "Laki-Laki";
   const perempuan = header.jenisKelamin === "Perempuan";
   return (
