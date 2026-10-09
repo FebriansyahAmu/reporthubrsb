@@ -3,7 +3,7 @@ import { kelengkapanDari, statusPasien, wajibBagi } from "./kelengkapan";
 import { DEFINISI_FORM, type JenisKunjungan, type KodeForm } from "./registry";
 import type { RingkasIsian } from "@/server/modules/form-rm/isian.types";
 
-const isian = (status: RingkasIsian["status"]): RingkasIsian => ({ id: "x", status, rev: 1, updatedAt: "2026-10-06T00:00:00.000Z" });
+const isian = (status: RingkasIsian["status"]): RingkasIsian => ({ id: "x", status, rev: 1, updatedAt: "2026-10-06T00:00:00.000Z", jumlah: 1 });
 const jenis = (...j: JenisKunjungan[]) => new Set(j);
 const status = (k: ReturnType<typeof kelengkapanDari>, kode: string) => k.formulir.find((f) => f.kode === kode)?.status;
 

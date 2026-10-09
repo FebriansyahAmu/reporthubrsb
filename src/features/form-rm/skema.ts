@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { JENIS_INFORMASI, JK_RM22, LEMBAR_RM22, type IdInformasi } from "./rm22.constants";
 import {
   CARA_DATANG_OPTS,
   EMERGENCY_OPTS,
@@ -8,7 +9,7 @@ import {
 } from "./triase.constants";
 
 /**
- * Skema data isian 4 form RM — sumber tunggal validasi (API simpan & finalkan,
+ * Skema data isian form RM khusus — sumber tunggal validasi (API simpan & finalkan,
  * migrasi data lama). Murni & aman untuk klien. Semua objek `strictObject`:
  * kunci yang tidak dikenal DITOLAK (bukan dibuang diam-diam), di setiap tingkat.
  */
@@ -198,6 +199,45 @@ export const triaseFormSchema = z.strictObject({
   waktuTriase: str(30),
   petugasNama: str(120),
   petugasTtd: ttdSchema,
+});
+
+/* ------------------------- RM.22 Informasi & Persetujuan/Penolakan Tindakan */
+
+const barisInformasiSchema = z.strictObject({ isi: str(1000), tanda: z.boolean().default(false) });
+/** Umur dalam tahun (angka saja, mengikuti "umur ___ tahun" di formulir). */
+const umurTahunSchema = z.string().regex(/^(\d{1,3})?$/, "Umur diisi angka tahun").default("");
+const jkRm22Schema = z.enum(["", ...JK_RM22]).default("");
+
+export const rm22FormSchema = z.strictObject({
+  lembar: z.enum(["", ...LEMBAR_RM22]).default(""),
+  dokterPelaksana: str(120),
+  pemberiInformasi: str(120),
+  penerimaInformasi: str(120),
+  informasi: z.strictObject(
+    Object.fromEntries(JENIS_INFORMASI.map((j) => [j.id, barisInformasiSchema])) as Record<
+      IdInformasi,
+      typeof barisInformasiSchema
+    >,
+  ),
+  pemberiTtd: ttdSchema,
+  penerimaTtd: ttdSchema,
+  pernyataNama: str(120),
+  pernyataUmur: umurTahunSchema,
+  pernyataJk: jkRm22Schema,
+  pernyataAlamat: str(300),
+  tindakan: str(300),
+  terhadap: z.enum(["", "diri", "keluarga"]).default(""),
+  hubungan: str(60),
+  pasienNama: str(120),
+  pasienUmur: umurTahunSchema,
+  pasienJk: jkRm22Schema,
+  pasienAlamat: str(300),
+  tanggal: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/, "Format tanggal YYYY-MM-DD").default(""),
+  pernyataTtd: ttdSchema,
+  saksi1Nama: str(120),
+  saksi1Ttd: ttdSchema,
+  saksi2Nama: str(120),
+  saksi2Ttd: ttdSchema,
 });
 
 /* --------------------------------------------------- penyesuaian data */

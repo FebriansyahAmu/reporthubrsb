@@ -43,12 +43,15 @@ export function PemilihPasien({
   keteranganAktif,
   ruanganOptions,
   bolehBuat,
+  berulang = false,
 }: {
   kode: KodeForm;
   /** Penjelasan daftar bawaan, mis. "Pasien IGD yang masuk 24 jam terakhir atau masih dilayani". */
   keteranganAktif: string;
   ruanganOptions: { id: string; nama: string }[];
   bolehBuat: boolean;
+  /** Form berulang: pasien ber-isian menampilkan jumlah isian + tombol isian baru. */
+  berulang?: boolean;
 }) {
   const [cariInput, setCariInput] = useState("");
   const [ruanganId, setRuanganId] = useState("");
@@ -184,7 +187,7 @@ export function PemilihPasien({
           <ul className={cn("divide-y divide-border", loading && "opacity-60")} aria-busy={loading}>
             {items.map((p) => (
               <li key={p.nopen}>
-                <BarisPasien p={p} kode={kode} bolehBuat={bolehBuat} />
+                <BarisPasien p={p} kode={kode} bolehBuat={bolehBuat} berulang={berulang} />
               </li>
             ))}
           </ul>
@@ -195,7 +198,17 @@ export function PemilihPasien({
   );
 }
 
-function BarisPasien({ p, kode, bolehBuat }: { p: PasienSasaran; kode: KodeForm; bolehBuat: boolean }) {
+function BarisPasien({
+  p,
+  kode,
+  bolehBuat,
+  berulang,
+}: {
+  p: PasienSasaran;
+  kode: KodeForm;
+  bolehBuat: boolean;
+  berulang: boolean;
+}) {
   const st = statusPasien(p.isian);
   return (
     // Kolom aksi lebar tetap → kolom tengah sejajar antarbaris (tiap baris grid sendiri).
@@ -232,6 +245,20 @@ function BarisPasien({ p, kode, bolehBuat }: { p: PasienSasaran; kode: KodeForm;
         <div className="text-xs text-fg-muted">Masuk {formatDateTime(p.masuk)}</div>
       </div>
 
+      {berulang && p.isian ? (
+        // Form berulang (satu isian per tindakan): daftar isian di profil pasien + isian baru.
+        <div className="flex items-center justify-between gap-2 md:justify-end">
+          <Link
+            href={`/form-rm/pasien/${p.nopen}#form-${kode}`}
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-sm font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+            title="Lihat semua isian pasien ini"
+          >
+            <span className="tabular">{p.isian.jumlah}</span> isian
+            <ArrowRight className="size-4" />
+          </Link>
+          {bolehBuat && <BukaIsianButton kode={kode} nopen={p.nopen} className="" label="Baru" varian="kedua" />}
+        </div>
+      ) : (
       <div className="flex items-center justify-between gap-3 md:justify-end">
         {p.isian ? <StatusIsianBadge status={p.isian.status} /> : <Badge tone="neutral">Belum ada</Badge>}
         {p.isian ? (
@@ -253,6 +280,7 @@ function BarisPasien({ p, kode, bolehBuat }: { p: PasienSasaran; kode: KodeForm;
           <span className="text-xs text-fg-subtle">Belum diisi</span>
         )}
       </div>
+      )}
     </div>
   );
 }

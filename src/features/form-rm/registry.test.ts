@@ -8,7 +8,10 @@ describe("registri form RM", () => {
     const kode = DEFINISI_FORM.map((d) => d.kode);
     expect(new Set(kode).size).toBe(kode.length);
     expect([...kode].sort()).toEqual([...KODE_FORM].sort());
-    expect(new Set(DEFINISI_FORM.map((d) => d.jenisLama)).size).toBe(DEFINISI_FORM.length);
+    // jenisLama hanya pada 4 form awal; form baru tanpa data tabel lama.
+    const lama = DEFINISI_FORM.flatMap((d) => (d.jenisLama ? [d.jenisLama] : []));
+    expect(new Set(lama).size).toBe(lama.length);
+    expect(lama).toHaveLength(4);
     for (const d of DEFINISI_FORM) expect(Object.keys(KATEGORI_FORM)).toContain(d.kategori);
   });
 
@@ -69,6 +72,13 @@ describe("registri form RM", () => {
     expect(slot("RM.03")).toEqual(["pasienTtd", "petugasTtd"]);
     expect(slot("RM.01")).toEqual(["dokterMerawatTtd", "dokterKematianTtd"]);
     expect(slot("RM.21")).toEqual([0, 1, 2, 3, 4].map((i) => `entries.${i}.sasaranTtd`));
+    expect(slot("RM.22")).toEqual(["pemberiTtd", "penerimaTtd", "pernyataTtd", "saksi1Ttd", "saksi2Ttd"]);
+  });
+
+  it("form berulang punya pembeda isian (ringkasIsian); form tak berulang tidak memerlukannya", () => {
+    for (const d of DEFINISI_FORM) if (d.berulang) expect(d.ringkasIsian, d.kode).toBeTypeOf("function");
+    expect(definisiForm("RM.22")?.berulang).toBe(true);
+    expect(definisiForm("RM.22")?.wajibUntuk).toEqual([]);
   });
 
   it("petaTtd mengganti nilai tanpa mengubah kolom lain", () => {
@@ -128,5 +138,17 @@ describe("registri form RM", () => {
     expect(edukasi.syaratFinal(ed)).toEqual(["Keperawatan: tanda tangan sasaran edukasi"]);
     ed.entries[0].sasaranTtd = ttd;
     expect(edukasi.syaratFinal(ed)).toEqual([]);
+
+    const rm22 = definisiForm("RM.22")!;
+    const r = rm22.kosong() as Record<string, unknown> & { informasi: Record<string, { isi: string; tanda: boolean }> };
+    for (const id of Object.keys(r.informasi)) r.informasi[id] = { isi: id === "lainLain" ? "" : "-", tanda: id !== "lainLain" };
+    Object.assign(r, {
+      lembar: "persetujuan", dokterPelaksana: "dr. A", pemberiInformasi: "dr. A", penerimaInformasi: "B",
+      pemberiTtd: ttd, penerimaTtd: ttd, pernyataNama: "B", pernyataUmur: "40", pernyataJk: "Perempuan",
+      pernyataAlamat: "Modayag", tindakan: "Appendektomi", terhadap: "diri", tanggal: "2026-10-09",
+      pernyataTtd: ttd, saksi1Nama: "Ns. C", saksi1Ttd: ttd,
+    });
+    expect(rm22.skema.safeParse(r).success).toBe(true);
+    expect(rm22.syaratFinal(r)).toEqual([]);
   });
 });

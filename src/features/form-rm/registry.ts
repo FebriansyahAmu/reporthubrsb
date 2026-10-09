@@ -5,9 +5,10 @@ import type { StrukturDeklaratif } from "./deklaratif";
 import { emptyEdukasiForm, EDUKASI_JENIS } from "./edukasi.constants";
 import { morse } from "./forms/morse";
 import { emptyRingkasanForm, RINGKASAN_JENIS } from "./ringkasan.constants";
+import { cekTtdPernyataan, emptyRm22Form, kekuranganRm22, ringkasRm22, type Rm22Data } from "./rm22.constants";
 import { emptyTriaseForm, hitungKategori, TRIASE_JENIS } from "./triase.constants";
 import { KATEGORI_FORM, type KategoriForm } from "./kategori";
-import { consentFormSchema, edukasiFormSchema, ringkasanFormSchema, triaseFormSchema } from "./skema";
+import { consentFormSchema, edukasiFormSchema, ringkasanFormSchema, rm22FormSchema, triaseFormSchema } from "./skema";
 
 /**
  * REGISTRI FORM RM — sumber kebenaran daftar formulir (di kode, bukan DB; pola
@@ -24,7 +25,7 @@ import { consentFormSchema, edukasiFormSchema, ringkasanFormSchema, triaseFormSc
 export { KATEGORI_FORM, type KategoriForm };
 
 /** "RM.MORSE" = kode sementara — diganti nomor RM resmi dari templat RS sebelum dipakai di produksi. */
-export const KODE_FORM = ["RM.04", "RM.21", "RM.01", "RM.03", "RM.MORSE"] as const;
+export const KODE_FORM = ["RM.04", "RM.21", "RM.01", "RM.03", "RM.22", "RM.MORSE"] as const;
 export type KodeForm = (typeof KODE_FORM)[number];
 
 /** EPISODE = satu isian per pendaftaran (NOPEN); KUNJUNGAN = per kunjungan ruang. */
@@ -92,6 +93,22 @@ export type DefinisiForm<T extends object = object> = {
   petaTtd(data: T, f: PetaSlotTtd): T;
   /** Kekurangan yang menghalangi FINAL (kosong = boleh difinalkan). */
   syaratFinal(data: T): string[];
+  /**
+   * Form berulang: pembeda satu isian dari isian lain milik pasien yang sama
+   * (mis. nama tindakan + keputusan) untuk daftar isian per pasien. Menerima
+   * data tersimpan apa adanya → wajib defensif.
+   */
+  ringkasIsian?(data: unknown): RingkasanIsianForm;
+  /**
+   * Aturan perubahan antar-simpan (lama = data tersimpan apa adanya, baru =
+   * data lolos skema). Kembalikan pesan untuk menolak simpan, atau null.
+   */
+  cekPerubahan?(lama: unknown, baru: T): string | null;
+};
+
+export type RingkasanIsianForm = {
+  judul: string;
+  lencana?: { label: string; nada: "success" | "danger" | "warning" | "neutral" };
 };
 
 const kosongBila = (kondisi: boolean, pesan: string) => (kondisi ? [pesan] : []);
@@ -378,8 +395,61 @@ const consent: DefinisiForm<z.output<typeof consentFormSchema>> = {
   ],
 };
 
+/*
+ * RM.22: satu isian per tindakan kedokteran (berulang). Formulir resmi ada di
+ * berkas form IGD dan rawat inap. Tidak wajib per episode — hanya bila ada
+ * tindakan. Isi otomatis: DPJP, diagnosis, dan identitas pasien (dipakai bila
+ * yang menyatakan adalah keluarga).
+ */
+const SIMRS_RM22: readonly BagianSimrs[] = [
+  {
+    id: "informasi",
+    judul: "Pemberian informasi",
+    kolom: [
+      { path: "pemberiInformasi", label: "Pemberi informasi / DPJP", sumber: "episode" },
+      { path: "informasi.diagnosis.isi", label: "Diagnosis (WD & DD)", sumber: "diagnosa" },
+    ],
+  },
+  {
+    id: "pasien",
+    judul: "Identitas pasien (pernyataan oleh keluarga)",
+    kolom: [
+      { path: "pasienNama", label: "Nama pasien", sumber: "identitas" },
+      { path: "pasienUmur", label: "Umur pasien", sumber: "identitas" },
+      { path: "pasienJk", label: "Jenis kelamin pasien", sumber: "identitas" },
+      { path: "pasienAlamat", label: "Alamat pasien", sumber: "sosial" },
+    ],
+  },
+];
+
+const persetujuanTindakan: DefinisiForm<z.output<typeof rm22FormSchema>> = {
+  kode: "RM.22",
+  versi: 1,
+  judul: "Informasi dan Persetujuan / Penolakan Tindakan Kedokteran",
+  kategori: "administrasi-persetujuan",
+  cakupan: "EPISODE",
+  berulang: true,
+  sasaran: { jenis: [2, 3], jendelaJam: 72 },
+  wajibUntuk: [],
+  kertas: { ukuran: "F4", orientasi: "potret" },
+  simrs: SIMRS_RM22,
+  skema: rm22FormSchema,
+  kosong: () => rm22FormSchema.parse(emptyRm22Form()),
+  petaTtd: (d, f) => ({
+    ...d,
+    pemberiTtd: f(d.pemberiTtd, "pemberiTtd"),
+    penerimaTtd: f(d.penerimaTtd, "penerimaTtd"),
+    pernyataTtd: f(d.pernyataTtd, "pernyataTtd"),
+    saksi1Ttd: f(d.saksi1Ttd, "saksi1Ttd"),
+    saksi2Ttd: f(d.saksi2Ttd, "saksi2Ttd"),
+  }),
+  syaratFinal: (d) => Object.values(kekuranganRm22(d)).flat(),
+  ringkasIsian: (data) => ringkasRm22(data && typeof data === "object" ? (data as Partial<Rm22Data>) : null),
+  cekPerubahan: cekTtdPernyataan,
+};
+
 /** Urutan = urutan tampil di katalog. */
-export const DEFINISI_FORM: readonly DefinisiForm[] = [triase, edukasi, ringkasan, consent, morse];
+export const DEFINISI_FORM: readonly DefinisiForm[] = [triase, edukasi, ringkasan, consent, persetujuanTindakan, morse];
 
 const BY_KODE = new Map(DEFINISI_FORM.map((d) => [d.kode, d]));
 const BY_JENIS_LAMA = new Map(DEFINISI_FORM.flatMap((d) => (d.jenisLama ? [[d.jenisLama, d] as const] : [])));

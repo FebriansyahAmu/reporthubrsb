@@ -39,8 +39,18 @@ export type IsianForm = {
   updatedAt: string;
 };
 
-/** Ringkasan isian aktif satu form untuk daftar / profil pasien. */
-export type RingkasIsian = { id: string; status: StatusIsian; rev: number; updatedAt: string };
+/**
+ * Ringkasan isian aktif satu form untuk daftar / profil pasien. `jumlah` =
+ * banyaknya isian aktif form itu untuk pasien (> 1 hanya pada form berulang).
+ */
+export type RingkasIsian = { id: string; status: StatusIsian; rev: number; updatedAt: string; jumlah: number };
+
+/** Satu isian form berulang di profil pasien (mis. RM.22 per tindakan). */
+export type IsianBerulang = RingkasIsian & {
+  urutan: number;
+  judul: string;
+  lencana: { label: string; nada: "success" | "danger" | "warning" | "neutral" } | null;
+};
 
 export type RevisiIsian = {
   rev: number;

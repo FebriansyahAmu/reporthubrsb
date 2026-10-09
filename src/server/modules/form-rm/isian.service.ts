@@ -204,14 +204,14 @@ export async function bukaAtauBuatIsian(
   if (!header) throw new NotFoundError("Pendaftaran tidak ditemukan atau tidak aktif");
   const { data, asal } = await isiOtomatis(def, input.nopen, header);
 
-  try {
-    const row = await db.formRmIsian.create({
+  const buat = (urutan: number) =>
+    db.formRmIsian.create({
       data: {
         formKode: def.kode,
         formVersi: def.versi,
         subjek,
         nopen: input.nopen,
-        urutan: (awal?.urutan ?? 0) + 1,
+        urutan,
         norm: header.norm,
         namaPasien: header.nama,
         ruang: header.ruang === "—" ? null : header.ruang,
@@ -222,12 +222,21 @@ export async function bukaAtauBuatIsian(
       },
       include: SERTA_SEMENTARA,
     });
-    await auditIsian(aktor, "buat", row);
-    return { isian: keDto(row), baru: true };
-  } catch (e) {
-    // Dua permintaan bersamaan: yang kalah membuka isian milik pemenang.
-    if (!isUnik(e)) throw e;
-    return bukaPemenang();
+
+  let urutan = (awal?.urutan ?? 0) + 1;
+  // Form berulang: dua isian baru bersamaan sama-sama sah → yang bentrok cukup
+  // mengambil urutan berikutnya (paling banyak 3 kali). Form tidak berulang:
+  // yang kalah membuka isian milik pemenang.
+  for (let coba = 0; ; coba++) {
+    try {
+      const row = await buat(urutan);
+      await auditIsian(aktor, "buat", row);
+      return { isian: keDto(row), baru: true };
+    } catch (e) {
+      if (!isUnik(e)) throw e;
+      if (!def.berulang || coba >= 2) return bukaPemenang();
+      urutan = ((await terakhir())?.urutan ?? urutan) + 1;
+    }
   }
 }
 
@@ -332,6 +341,8 @@ export async function simpanIsian(id: string, input: SimpanIsianInput, aktor: Ak
   if (row.rev !== input.rev) throw new ConflictError();
   const def = definisiDari(row);
   const sah = def.skema.parse(input.data);
+  const tolak = def.cekPerubahan?.(row.data, sah);
+  if (tolak) throw new BusinessRuleError(tolak);
 
   const hasil = await getAppDb().$transaction(async (tx) => {
     const data = await pisahkanTtd(tx, id, def, sah, aktor.id);

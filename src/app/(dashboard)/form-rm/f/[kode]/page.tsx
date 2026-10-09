@@ -36,7 +36,7 @@ export default async function PemilihPasienPage({ params }: { params: Promise<{ 
     getRuanganKunjunganList()
       .catch(() => [])
       .then((rs) => rs.filter((r) => kategoriSasaran.has(r.kategori)).map((r) => ({ id: r.id, nama: r.nama }))),
-    drafSaya(def.kode, user.id),
+    drafSaya(def, user.id),
     daftarBelumTertaut(def, user.id),
   ]);
   const t = TAMPILAN_FORM[def.kode];
@@ -53,7 +53,11 @@ export default async function PemilihPasienPage({ params }: { params: Promise<{ 
       </Link>
       <PageHeader
         title={`${def.kode} · ${t.label}`}
-        description={`${KATEGORI_FORM[def.kategori].label} — pilih pasien untuk mengisi formulir ini. Pasien yang sudah punya isian langsung membuka isiannya.`}
+        description={
+          def.berulang
+            ? `${KATEGORI_FORM[def.kategori].label} — pilih pasien untuk mengisi formulir ini. Satu isian per tindakan: pasien bisa punya lebih dari satu isian.`
+            : `${KATEGORI_FORM[def.kategori].label} — pilih pasien untuk mengisi formulir ini. Pasien yang sudah punya isian langsung membuka isiannya.`
+        }
       />
       {draf.length > 0 && <DrafAnda draf={draf} />}
       {def.tanpaPendaftaran && (
@@ -64,6 +68,7 @@ export default async function PemilihPasienPage({ params }: { params: Promise<{ 
         keteranganAktif={keteranganAktif(def.sasaran)}
         ruanganOptions={ruangan}
         bolehBuat={bolehBuat}
+        berulang={def.berulang}
       />
     </FadeIn>
   );
@@ -90,6 +95,7 @@ function DrafAnda({ draf }: { draf: DrafSaya[] }) {
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-fg">{d.namaPasien}</span>
+                  {d.ringkas && <span className="block truncate text-xs text-fg">{d.ringkas}</span>}
                   <span className="block truncate text-xs text-fg-muted">
                     {d.norm}
                     {d.ruang ? ` · ${d.ruang}` : ""}

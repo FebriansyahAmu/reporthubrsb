@@ -17,8 +17,8 @@ import { formBoleh, hakFormRm } from "@/server/modules/form-rm/form-rm.akses";
 import { jenisEpisode } from "@/server/modules/form-rm/form-rm.pasien";
 import { getFormRmHeader } from "@/server/modules/form-rm/form-rm.service";
 import { nopenSchema } from "@/server/modules/form-rm/isian.schema";
-import { isianAktifPerNopen } from "@/server/modules/form-rm/isian.cari";
-import type { RingkasIsian } from "@/server/modules/form-rm/isian.types";
+import { isianAktifPerNopen, isianBerulangPerNopen } from "@/server/modules/form-rm/isian.cari";
+import type { IsianBerulang, RingkasIsian } from "@/server/modules/form-rm/isian.types";
 
 export const metadata = { title: "Formulir Pasien · Form RM · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
@@ -51,8 +51,9 @@ export default async function ProfilPasienFormRm({ params }: { params: Promise<{
 
   const hak = await hakFormRm(user);
   const forms = formBoleh(hak);
-  const [isian, jenis] = await Promise.all([
+  const [isian, berulang, jenis] = await Promise.all([
     isianAktifPerNopen([nopen], forms.map((d) => d.kode)).then((m) => m.get(nopen) ?? {}),
+    isianBerulangPerNopen(nopen, forms),
     jenisEpisode(nopen),
   ]);
   const k = kelengkapanDari(isian, forms, jenis);
@@ -98,16 +99,27 @@ export default async function ProfilPasienFormRm({ params }: { params: Promise<{
             {KATEGORI_FORM[kat].label}
           </h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-            {daftar.map((def) => (
-              <FormCard
-                key={def.kode}
-                def={def}
-                nopen={nopen}
-                isian={isian[def.kode]}
-                wajib={wajib.has(def.kode)}
-                bolehBuat={hak.boleh(def.kategori, "create")}
-              />
-            ))}
+            {daftar.map((def) =>
+              def.berulang ? (
+                <FormBerulangCard
+                  key={def.kode}
+                  def={def}
+                  nopen={nopen}
+                  daftar={berulang[def.kode] ?? []}
+                  wajib={wajib.has(def.kode)}
+                  bolehBuat={hak.boleh(def.kategori, "create")}
+                />
+              ) : (
+                <FormCard
+                  key={def.kode}
+                  def={def}
+                  nopen={nopen}
+                  isian={isian[def.kode]}
+                  wajib={wajib.has(def.kode)}
+                  bolehBuat={hak.boleh(def.kategori, "create")}
+                />
+              ),
+            )}
           </div>
         </section>
       ))}
@@ -194,6 +206,95 @@ function FormCard({
         <p className="mt-4 rounded-[var(--radius-md)] border border-dashed border-border px-3 py-2 text-center text-xs text-fg-subtle">
           Belum diisi
         </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Form berulang (mis. RM.22 per tindakan): semua isian aktif pasien, masing-masing
+ * dengan pembedanya (tindakan + keputusan), dan tombol menambah isian baru.
+ * Selebar dua kolom agar judul tindakan tak terpotong.
+ */
+function FormBerulangCard({
+  def,
+  nopen,
+  daftar,
+  wajib,
+  bolehBuat,
+}: {
+  def: DefinisiForm;
+  nopen: string;
+  daftar: IsianBerulang[];
+  wajib: boolean;
+  bolehBuat: boolean;
+}) {
+  const t = TAMPILAN_FORM[def.kode];
+  const Icon = t.ikon;
+  const final = daftar.filter((x) => x.status === "FINAL").length;
+
+  return (
+    <div
+      id={`form-${def.kode}`}
+      className="flex scroll-mt-24 flex-col rounded-[var(--radius-lg)] border border-border bg-surface p-4 shadow-xs sm:col-span-2"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-brand-soft text-brand-soft-fg">
+            <Icon className="size-4.5" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-fg">
+              <span className="font-mono text-xs text-fg-subtle">{def.kode}</span> · {t.label}
+            </p>
+            <p className="text-xs text-fg-muted">
+              Satu isian per tindakan · {wajib ? "Wajib untuk episode ini" : "Diisi bila ada tindakan"}
+            </p>
+          </div>
+        </div>
+        {daftar.length > 0 ? (
+          <Badge tone={final === daftar.length ? "success" : "warning"}>
+            {final}/{daftar.length} final
+          </Badge>
+        ) : (
+          <Badge tone="neutral">Belum ada</Badge>
+        )}
+      </div>
+
+      {daftar.length > 0 && (
+        <ul className="mt-3 divide-y divide-border rounded-[var(--radius-md)] border border-border">
+          {daftar.map((x) => (
+            <li key={x.id}>
+              <Link
+                href={`/form-rm/isian/${x.id}`}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5 transition-colors hover:bg-surface-2/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-ring"
+              >
+                <span className="font-mono text-xs text-fg-subtle">#{x.urutan}</span>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">{x.judul}</span>
+                {x.lencana && <Badge tone={x.lencana.nada}>{x.lencana.label}</Badge>}
+                <StatusIsianBadge status={x.status} />
+                <span className="text-xs text-fg-subtle">{formatDateTime(x.updatedAt)}</span>
+                <ArrowRight className="size-4 text-fg-subtle" aria-hidden />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {bolehBuat ? (
+        <BukaIsianButton
+          kode={def.kode}
+          nopen={nopen}
+          label={daftar.length > 0 ? "Tambah isian (tindakan lain)" : "Isi Form"}
+          varian={daftar.length > 0 ? "kedua" : "utama"}
+          className="mt-3 self-start"
+        />
+      ) : (
+        daftar.length === 0 && (
+          <p className="mt-4 rounded-[var(--radius-md)] border border-dashed border-border px-3 py-2 text-center text-xs text-fg-subtle">
+            Belum diisi
+          </p>
+        )
       )}
     </div>
   );

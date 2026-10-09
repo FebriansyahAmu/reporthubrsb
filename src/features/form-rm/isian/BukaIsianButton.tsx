@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, FileSignature, Loader2 } from "lucide-react";
+import { ArrowRight, FileSignature, Loader2, Plus } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { apiPost, pesanGalat } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
@@ -14,7 +14,20 @@ import type { IsianForm } from "@/server/modules/form-rm/isian.types";
  * SIMRS dijalankan server) lalu buka halamannya. Isian dibuat hanya lewat aksi
  * eksplisit ini, tidak pernah saat sekadar melihat halaman.
  */
-export function BukaIsianButton({ kode, nopen, className = "mt-4" }: { kode: KodeForm; nopen: string; className?: string }) {
+export function BukaIsianButton({
+  kode,
+  nopen,
+  className = "mt-4",
+  label = "Isi Form",
+  varian = "utama",
+}: {
+  kode: KodeForm;
+  nopen: string;
+  className?: string;
+  label?: string;
+  /** "kedua" = tombol bergaris (mis. tambah isian baru di samping tautan isian yang ada). */
+  varian?: "utama" | "kedua";
+}) {
   const router = useRouter();
   const toast = useToast();
   const [sibuk, setSibuk] = useState(false);
@@ -36,13 +49,22 @@ export function BukaIsianButton({ kode, nopen, className = "mt-4" }: { kode: Kod
       onClick={buka}
       disabled={sibuk}
       className={cn(
-        "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-brand bg-brand px-3 py-2 text-sm font-medium text-brand-fg transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring disabled:opacity-60",
+        "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-[var(--radius-md)] border px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring disabled:opacity-60",
+        varian === "utama"
+          ? "border-brand bg-brand text-brand-fg hover:bg-brand-hover"
+          : "border-brand/40 bg-surface text-brand hover:bg-brand-soft",
         className,
       )}
     >
-      {sibuk ? <Loader2 className="size-4 animate-spin" /> : <FileSignature className="size-4" />}
-      {sibuk ? "Menyiapkan form…" : "Isi Form"}
-      {!sibuk && <ArrowRight className="size-4" />}
+      {sibuk ? (
+        <Loader2 className="size-4 animate-spin" />
+      ) : varian === "utama" ? (
+        <FileSignature className="size-4" />
+      ) : (
+        <Plus className="size-4" />
+      )}
+      {sibuk ? "Menyiapkan form…" : label}
+      {!sibuk && varian === "utama" && <ArrowRight className="size-4" />}
     </button>
   );
 }

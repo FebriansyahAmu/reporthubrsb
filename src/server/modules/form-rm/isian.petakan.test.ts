@@ -35,6 +35,7 @@ import {
   petaMorse,
   petaPerkawinan,
   ringkasDiagnosa,
+  teksDiagnosis,
   type HasilSumber,
   type PetaForm,
 } from "./isian.petakan";
@@ -360,6 +361,36 @@ describe("peta isi otomatis per form", () => {
     expect(n["persiapan.hambatan"].nilai).toEqual(["Tidak Ada"]);
     expect(n["persiapan.bahasa"].nilai).toEqual(["Indonesia", "Inggris"]);
     expect(n["persiapan.pendidikan"].nilai).toBe("S1");
+  });
+
+  it("RM.22: DPJP, diagnosis (koding menimpa diagnosa masuk), identitas pasien dengan umur tahun & JK formulir", () => {
+    const n = petaWajib("RM.22").petakan(lengkap);
+    expect(Object.fromEntries(Object.entries(n).map(([p, v]) => [p, [v.nilai, v.sumber]]))).toEqual({
+      pemberiInformasi: ["dr. Uji, Sp.OG", "episode"],
+      "informasi.diagnosis.isi": ["persalinan spontan (O80); anemia (D64.9); dehidrasi (E86)", "diagnosa"],
+      pasienNama: ["PASIEN UJI", "identitas"],
+      pasienUmur: ["36", "identitas"],
+      pasienJk: ["Perempuan", "identitas"],
+      pasienAlamat: ["Desa Uji RT 001", "sosial"],
+    });
+    // Belum dikoding → diagnosa masuk episode.
+    const tanpaKoding = petaWajib("RM.22").petakan({ episode });
+    expect(tanpaKoding["informasi.diagnosis.isi"]).toEqual({ nilai: episode.DIAGNOSA_MASUK, sumber: "episode" });
+    // Identitas tak dikenal tidak diisi.
+    expect(petaWajib("RM.22").petakan({ identitas: { ...header, nama: "—", umur: null, jenisKelamin: "—" } })).toEqual({});
+  });
+
+  it("teks diagnosis: utama dulu, tanpa duplikat, kode/nama boleh salah satu", () => {
+    expect(
+      teksDiagnosis([
+        { UTAMA: 2, KODE: "E86", DIAGNOSA: "dehidrasi" },
+        { UTAMA: 1, KODE: "A09", DIAGNOSA: "diare" },
+        { UTAMA: 2, KODE: "E86", DIAGNOSA: "dehidrasi" },
+        { UTAMA: 2, KODE: null, DIAGNOSA: "observasi" },
+        { UTAMA: 2, KODE: "R50", DIAGNOSA: " " },
+      ]),
+    ).toBe("diare (A09); dehidrasi (E86); observasi; R50");
+    expect(teksDiagnosis([])).toBe("");
   });
 
   it("RM.03: identitas + kelas kamar rawat inap", () => {

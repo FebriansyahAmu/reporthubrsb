@@ -1,4 +1,4 @@
-import { FileHeart, FileText, GraduationCap, ShieldAlert, Siren, type LucideIcon } from "lucide-react";
+import { FileHeart, FilePenLine, FileText, GraduationCap, ShieldAlert, Siren, type LucideIcon } from "lucide-react";
 import type { KodeForm } from "./registry";
 
 /**
@@ -29,6 +29,12 @@ export const TAMPILAN_FORM: Record<KodeForm, { singkat: string; label: string; k
     label: "Persetujuan Umum (General Consent)",
     keterangan: "Persetujuan umum rawat inap pasien.",
     ikon: FileHeart,
+  },
+  "RM.22": {
+    singkat: "Persetujuan Tindakan",
+    label: "Informasi dan Persetujuan / Penolakan Tindakan Kedokteran",
+    keterangan: "Informed consent per tindakan: pemberian informasi, lalu lembar persetujuan atau penolakan.",
+    ikon: FilePenLine,
   },
   "RM.MORSE": {
     singkat: "Risiko Jatuh",

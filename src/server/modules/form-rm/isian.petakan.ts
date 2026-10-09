@@ -1,5 +1,6 @@
 import { terisi, type SumberId } from "@/features/form-rm/asal";
 import type { KodeForm } from "@/features/form-rm/registry";
+import { jkRm22, umurTahun } from "@/features/form-rm/rm22.constants";
 import type { DiagnosaRow, TriaseSimgosRow } from "./form-rm.dal";
 import type { FormRmHeader, TriaseForm, TriaseSimrs } from "./form-rm.types";
 import type { EdukasiRow, EpisodeRow, KeluargaRow, MorseRow, PulangRow, SosialRow } from "./isian.sumber.dal";
@@ -289,6 +290,17 @@ export function ringkasDiagnosa(rows: readonly DiagnosaRow[]) {
   };
 }
 
+/** Diagnosis RM.22: "Nama (KODE)" utama lebih dulu, lalu sekunder, dipisah "; ". */
+export function teksDiagnosis(rows: readonly DiagnosaRow[]): string {
+  const urut = [...rows.filter((r) => Number(r.UTAMA) === 1), ...rows.filter((r) => Number(r.UTAMA) !== 1)];
+  const teks = urut.map((r) => {
+    const nama = bersih(r.DIAGNOSA);
+    const k = bersih(r.KODE);
+    return nama && k ? `${nama} (${k})` : nama || k;
+  });
+  return [...new Set(teks.filter(Boolean))].join("; ");
+}
+
 /* ---------------------------------------------------------------- edukasi */
 
 const ya = (v: Id) => kode(v) === 1;
@@ -534,6 +546,29 @@ export const PETA_FORM: Readonly<Partial<Record<KodeForm, PetaForm>>> = {
     },
     bawaan(d, hariIni) {
       d.tanggalTtd = hariIni;
+    },
+  },
+  "RM.22": {
+    sumber: ["identitas", "sosial", "episode", "diagnosa"],
+    petakan(h) {
+      const out: NilaiSimrs = {};
+      if (h.identitas) {
+        isi(out, "identitas", {
+          pasienNama: bukanStrip(h.identitas.nama),
+          pasienUmur: umurTahun(h.identitas.umur),
+          pasienJk: jkRm22(h.identitas.jenisKelamin),
+        });
+      }
+      if (h.sosial) isi(out, "sosial", { pasienAlamat: komposeAlamat(h.sosial) });
+      if (h.episode) {
+        // Diagnosa masuk = cadangan; diagnosa episode (bila sudah dikoding) menimpanya.
+        isi(out, "episode", { pemberiInformasi: bersih(h.episode.DPJP), "informasi.diagnosis.isi": bersih(h.episode.DIAGNOSA_MASUK) });
+      }
+      if (h.diagnosa) isi(out, "diagnosa", { "informasi.diagnosis.isi": teksDiagnosis(h.diagnosa) });
+      return out;
+    },
+    bawaan(d, hariIni) {
+      d.tanggal = hariIni;
     },
   },
   "RM.MORSE": {

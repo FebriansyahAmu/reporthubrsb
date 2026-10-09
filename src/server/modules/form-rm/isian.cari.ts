@@ -3,7 +3,7 @@ import { getAppDb } from "@/server/db/app.client";
 import { KODE_FORM, type DefinisiForm, type KodeForm } from "@/features/form-rm/registry";
 import { adalahStatusIsian } from "@/features/form-rm/isian.status";
 import { JK_SEMENTARA, type JkSementara } from "@/features/form-rm/sementara";
-import type { IsianBelumTertaut, RingkasIsian } from "./isian.types";
+import type { IsianBelumTertaut, IsianBerulang, RingkasIsian } from "./isian.types";
 
 /** Isian sementara yang belum ditautkan ke pendaftaran (nopen kosong). */
 const BELUM_TERTAUT = { nopen: "" } as const;
@@ -39,10 +39,46 @@ export async function isianAktifPerNopen(
   for (const r of rows) {
     if (!adalahStatusIsian(r.status)) continue;
     const perForm = peta.get(r.nopen) ?? {};
-    perForm[r.formKode as KodeForm] = { id: r.id, status: r.status, rev: r.rev, updatedAt: r.updatedAt.toISOString() };
+    const jumlah = (perForm[r.formKode as KodeForm]?.jumlah ?? 0) + 1;
+    perForm[r.formKode as KodeForm] = { id: r.id, status: r.status, rev: r.rev, updatedAt: r.updatedAt.toISOString(), jumlah };
     peta.set(r.nopen, perForm);
   }
   return peta;
+}
+
+/**
+ * Semua isian aktif form BERULANG satu pendaftaran, urut isian ke-n, beserta
+ * ringkasan pembedanya (mis. tindakan & keputusan RM.22) dari `ringkasIsian`.
+ */
+export async function isianBerulangPerNopen(
+  nopen: string,
+  defs: readonly DefinisiForm[],
+): Promise<Partial<Record<KodeForm, IsianBerulang[]>>> {
+  const berulang = defs.filter((d) => d.berulang);
+  if (berulang.length === 0) return {};
+  const rows = await getAppDb().formRmIsian.findMany({
+    where: { nopen, formKode: { in: berulang.map((d) => d.kode) }, status: { not: "BATAL" } },
+    select: { id: true, formKode: true, status: true, rev: true, urutan: true, data: true, updatedAt: true },
+    orderBy: { urutan: "asc" },
+  });
+  const hasil: Partial<Record<KodeForm, IsianBerulang[]>> = {};
+  for (const r of rows) {
+    const def = berulang.find((d) => d.kode === r.formKode);
+    if (!def || !adalahStatusIsian(r.status)) continue;
+    const ringkas = def.ringkasIsian?.(r.data) ?? { judul: `Isian ke-${r.urutan}` };
+    (hasil[def.kode] ??= []).push({
+      id: r.id,
+      status: r.status,
+      rev: r.rev,
+      updatedAt: r.updatedAt.toISOString(),
+      jumlah: 0,
+      urutan: r.urutan,
+      judul: ringkas.judul,
+      lencana: ringkas.lencana ?? null,
+    });
+  }
+  for (const daftar of Object.values(hasil)) if (daftar) for (const x of daftar) x.jumlah = daftar.length;
+  return hasil;
 }
 
 /** Jumlah draf tertaut per form: milik pengguna (yang membuat) dan seluruhnya — katalog. */
@@ -66,17 +102,32 @@ export async function hitungDraf(
   return hasil;
 }
 
-/** Draf terbaru yang dibuat pengguna untuk satu form (identitas = snapshot isian). */
-export type DrafSaya = { id: string; nopen: string; norm: string; namaPasien: string; ruang: string | null; updatedAt: string };
+/**
+ * Draf terbaru yang dibuat pengguna untuk satu form (identitas = snapshot isian).
+ * Form berulang menyertakan pembeda isian (`ringkas`, mis. nama tindakan RM.22).
+ */
+export type DrafSaya = {
+  id: string;
+  nopen: string;
+  norm: string;
+  namaPasien: string;
+  ruang: string | null;
+  updatedAt: string;
+  ringkas: string | null;
+};
 
-export async function drafSaya(kode: KodeForm, userId: string, batas = 12): Promise<DrafSaya[]> {
+export async function drafSaya(def: DefinisiForm, userId: string, batas = 12): Promise<DrafSaya[]> {
   const rows = await getAppDb().formRmIsian.findMany({
-    where: { formKode: kode, status: "DRAF", dibuatOlehId: userId, ...SUDAH_TERTAUT },
-    select: { id: true, nopen: true, norm: true, namaPasien: true, ruang: true, updatedAt: true },
+    where: { formKode: def.kode, status: "DRAF", dibuatOlehId: userId, ...SUDAH_TERTAUT },
+    select: { id: true, nopen: true, norm: true, namaPasien: true, ruang: true, updatedAt: true, data: !!def.ringkasIsian },
     orderBy: { updatedAt: "desc" },
     take: batas,
   });
-  return rows.map((r) => ({ ...r, updatedAt: r.updatedAt.toISOString() }));
+  return rows.map(({ data, ...r }) => ({
+    ...r,
+    updatedAt: r.updatedAt.toISOString(),
+    ringkas: def.ringkasIsian ? def.ringkasIsian(data).judul : null,
+  }));
 }
 
 /** Jumlah isian DRAF yang belum tertaut ke pendaftaran per form — katalog. */
