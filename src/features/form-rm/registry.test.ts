@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ambilPath, PATH_RE, SUMBER_SIMRS } from "./asal";
 import { DAFTAR_KATEGORI } from "./kategori";
-import { DEFINISI_FORM, definisiDariJenisLama, definisiForm, JENIS_KUNJUNGAN, KATEGORI_FORM, KODE_FORM } from "./registry";
+import { DEFINISI_FORM, definisiDariJenisLama, definisiForm, JENIS_KUNJUNGAN, KATEGORI_FORM, KODE_FORM, labelSasaran } from "./registry";
+import { TAMPILAN_FORM } from "./tampilan";
 
 describe("registri form RM", () => {
   it("kode & jenis lama unik, sesuai KODE_FORM, kategori dikenal", () => {
@@ -73,12 +74,26 @@ describe("registri form RM", () => {
     expect(slot("RM.01")).toEqual(["dokterMerawatTtd", "dokterKematianTtd"]);
     expect(slot("RM.21")).toEqual([0, 1, 2, 3, 4].map((i) => `entries.${i}.sasaranTtd`));
     expect(slot("RM.22")).toEqual(["pemberiTtd", "penerimaTtd", "pernyataTtd", "saksi1Ttd", "saksi2Ttd"]);
+    expect(slot("RM.33")).toEqual(["pemberiTtd", "penerimaTtd", "pernyataTtd", "dokterTtd", "saksi1Ttd", "saksi2Ttd"]);
   });
 
   it("form berulang punya pembeda isian (ringkasIsian); form tak berulang tidak memerlukannya", () => {
     for (const d of DEFINISI_FORM) if (d.berulang) expect(d.ringkasIsian, d.kode).toBeTypeOf("function");
-    expect(definisiForm("RM.22")?.berulang).toBe(true);
-    expect(definisiForm("RM.22")?.wajibUntuk).toEqual([]);
+    for (const kode of ["RM.22", "RM.33"]) {
+      expect(definisiForm(kode)?.berulang, kode).toBe(true);
+      expect(definisiForm(kode)?.wajibUntuk, kode).toEqual([]);
+      expect(definisiForm(kode)?.cekPerubahan, kode).toBeTypeOf("function");
+    }
+    // Rujukan keluar SIMGOS dibuat dari rawat jalan, IGD, dan rawat inap.
+    expect(definisiForm("RM.33")?.sasaran.jenis).toEqual([1, 2, 3]);
+    // Form berulang menyebut satuan isiannya di profil pasien & pemilih ("Satu isian per rujukan").
+    for (const d of DEFINISI_FORM) if (d.berulang) expect(TAMPILAN_FORM[d.kode].berulang?.satuan, d.kode).toBeTruthy();
+  });
+
+  it("label sasaran: daftar jenis kunjungan dibaca wajar", () => {
+    expect(labelSasaran({ jenis: [2], jendelaJam: 24 })).toBe("Pasien IGD");
+    expect(labelSasaran({ jenis: [2, 3], jendelaJam: 24 })).toBe("Pasien IGD & Rawat Inap");
+    expect(labelSasaran({ jenis: [1, 2, 3], jendelaJam: 24 })).toBe("Pasien Rawat Jalan, IGD & Rawat Inap");
   });
 
   it("petaTtd mengganti nilai tanpa mengubah kolom lain", () => {
@@ -150,5 +165,18 @@ describe("registri form RM", () => {
     });
     expect(rm22.skema.safeParse(r).success).toBe(true);
     expect(rm22.syaratFinal(r)).toEqual([]);
+
+    const rm33 = definisiForm("RM.33")!;
+    const r33 = rm33.kosong() as Record<string, unknown> & { informasi: Record<string, { isi: string; tanda: boolean }> };
+    for (const id of Object.keys(r33.informasi)) r33.informasi[id] = { isi: id === "lainLain" ? "" : "-", tanda: id !== "lainLain" };
+    Object.assign(r33, {
+      keputusan: "menunda", tujuanRujukan: "RSUD Kotamobagu", tanggalRujuk: "2026-10-10",
+      dokterPelaksana: "dr. A", pemberiInformasi: "dr. A", penerimaInformasi: "B",
+      pemberiTtd: ttd, penerimaTtd: ttd, pernyataNama: "B", pernyataUmur: "40", pernyataJk: "Perempuan",
+      pernyataAlamat: "Sumber Rejo", terhadap: "diri", tanggal: "2026-10-09",
+      pernyataTtd: ttd, dokterNama: "dr. A", dokterTtd: ttd, saksi1Nama: "Ns. C", saksi1Ttd: ttd,
+    });
+    expect(rm33.skema.safeParse(r33).success).toBe(true);
+    expect(rm33.syaratFinal(r33)).toEqual([]);
   });
 });

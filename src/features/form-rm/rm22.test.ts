@@ -1,20 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { JENIS_INFORMASI, PESAN_TTD_LAMA } from "./persetujuan/informasi";
 import {
   cekTtdPernyataan,
   emptyRm22Form,
-  INFORMASI_WAJIB,
-  JENIS_INFORMASI,
-  jkRm22,
   kekuranganRm22,
-  kolomIsiLebar,
   LANGKAH_RM22,
   PESAN_GANTI_LEMBAR,
-  PESAN_TTD_LAMA,
-  pecahBaris,
   ringkasRm22,
   statusLangkah,
-  tanggalPanjang,
-  umurTahun,
   type Rm22Data,
 } from "./rm22.constants";
 import { rm22FormSchema } from "./skema";
@@ -55,25 +48,6 @@ function lengkap(): Rm22Data {
 }
 
 describe("RM.22 — konstanta formulir", () => {
-  it("11 jenis informasi sesuai formulir (1–10 + Lain-lain), id unik", () => {
-    expect(JENIS_INFORMASI.map((j) => j.label)).toEqual([
-      "Diagnosis (WD & DD)",
-      "Dasar Diagnosis",
-      "Tindakan Kedokteran",
-      "Indikasi Tindakan",
-      "Tata Cara",
-      "Tujuan",
-      "Risiko",
-      "Komplikasi",
-      "Prognosis",
-      "Alternatif & Risiko",
-      "Lain-lain",
-    ]);
-    expect(JENIS_INFORMASI.map((j) => j.no)).toEqual(["1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9.", "10.", ""]);
-    expect(new Set(JENIS_INFORMASI.map((j) => j.id)).size).toBe(11);
-    expect(INFORMASI_WAJIB).toHaveLength(10);
-  });
-
   it("isian kosong & lengkap lolos skema strict; langkah berurutan 6", () => {
     expect(rm22FormSchema.safeParse(emptyRm22Form()).success).toBe(true);
     expect(rm22FormSchema.safeParse(lengkap()).success).toBe(true);
@@ -212,7 +186,7 @@ describe("RM.22 — TTD pernyataan terikat pada lembar & slot", () => {
   });
 });
 
-describe("RM.22 — bantu tampilan & cetak", () => {
+describe("RM.22 — bantu tampilan", () => {
   it("ringkasan isian: tindakan pernyataan → informasi no. 3 → belum diisi; lencana keputusan", () => {
     expect(ringkasRm22(lengkap())).toEqual({ judul: "Appendektomi", lencana: { label: "Persetujuan", nada: "success" } });
     const d = { ...emptyRm22Form(), lembar: "penolakan" as const };
@@ -220,41 +194,5 @@ describe("RM.22 — bantu tampilan & cetak", () => {
     expect(ringkasRm22(d)).toEqual({ judul: "Transfusi darah", lencana: { label: "Penolakan", nada: "danger" } });
     expect(ringkasRm22(null)).toEqual({ judul: "Tindakan belum diisi", lencana: { label: "Keputusan belum dipilih", nada: "warning" } });
     expect(ringkasRm22({ lembar: "x" as never, informasi: "rusak" as never }).judul).toBe("Tindakan belum diisi");
-  });
-
-  it("umur tahun, jenis kelamin, tanggal panjang", () => {
-    expect(umurTahun("45 th 3 bl")).toBe("45");
-    expect(umurTahun("0 th 5 bl")).toBe("0");
-    expect(umurTahun(null)).toBe("");
-    expect(umurTahun("—")).toBe("");
-    expect(jkRm22("Laki-Laki")).toBe("Laki-laki");
-    expect(jkRm22("Perempuan")).toBe("Perempuan");
-    expect(jkRm22("—")).toBe("");
-    expect(tanggalPanjang("2026-10-09")).toBe("9 Oktober 2026");
-    expect(tanggalPanjang("2026-13-01")).toBe("");
-    expect(tanggalPanjang("")).toBe("");
-  });
-
-  it("kolom Isi cetak: lebar kertas untuk isi singkat, diperlebar untuk isi panjang", () => {
-    const d = emptyRm22Form();
-    expect(kolomIsiLebar(d.informasi)).toBe(false);
-    for (const j of JENIS_INFORMASI) d.informasi[j.id] = { isi: "Penjelasan singkat", tanda: true };
-    // Diagnosis SIMRS 3–4 baris + satu baris 2 baris masih muat lebar asli.
-    d.informasi.diagnosis.isi = "Susp. close fracture 1/3 proximal femur sinistra (S72.0); HPT (I10); Ulkus dekubitus (L89.9)";
-    d.informasi.alternatif.isi = "Antibiotik konservatif — risiko kambuh";
-    expect(kolomIsiLebar(d.informasi)).toBe(false);
-    for (const j of JENIS_INFORMASI) d.informasi[j.id].isi = "x".repeat(85);
-    expect(kolomIsiLebar(d.informasi)).toBe(true);
-    expect(kolomIsiLebar({ risiko: { isi: "a\nb\nc\nd\ne\nf", tanda: true } })).toBe(true);
-    expect(kolomIsiLebar(undefined)).toBe(false);
-  });
-
-  it("pecah baris tindakan di batas kata", () => {
-    expect(pecahBaris("Appendektomi", 46)).toEqual(["Appendektomi", ""]);
-    const [a, b] = pecahBaris("Laparotomi eksplorasi dengan reseksi usus dan anastomosis end to end", 46);
-    expect(a.length).toBeLessThanOrEqual(46);
-    expect(`${a} ${b}`).toBe("Laparotomi eksplorasi dengan reseksi usus dan anastomosis end to end");
-    expect(a.endsWith(" ")).toBe(false);
-    expect(pecahBaris("x".repeat(60), 46)).toEqual(["x".repeat(46), "x".repeat(14)]);
   });
 });

@@ -55,7 +55,7 @@ export default async function PemilihPasienPage({ params }: { params: Promise<{ 
         title={`${def.kode} · ${t.label}`}
         description={
           def.berulang
-            ? `${KATEGORI_FORM[def.kategori].label} — pilih pasien untuk mengisi formulir ini. Satu isian per tindakan: pasien bisa punya lebih dari satu isian.`
+            ? `${KATEGORI_FORM[def.kategori].label} — pilih pasien untuk mengisi formulir ini. Satu isian per ${t.berulang?.satuan ?? "kejadian"}: pasien bisa punya lebih dari satu isian.`
             : `${KATEGORI_FORM[def.kategori].label} — pilih pasien untuk mengisi formulir ini. Pasien yang sudah punya isian langsung membuka isiannya.`
         }
       />

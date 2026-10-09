@@ -10,6 +10,7 @@ import {
   queryKeluarga,
   queryMorse,
   queryPulang,
+  queryRujukan,
   querySosial,
 } from "./isian.sumber.dal";
 
@@ -43,6 +44,8 @@ const SUMBER: { readonly [S in SumberId]: DefSumber<S> } = {
   triase: { igdAsal: true, ambil: (k) => queryTriaseSimgos(k.nopen) },
   edukasi: { igdAsal: true, ambil: (k) => queryEdukasi(k.nopen) },
   morse: { igdAsal: true, ambil: (k) => queryMorse(k.nopen) },
+  // Rujukan milik episode tempat dibuat (episode RI membuat rujukannya sendiri).
+  rujukan: { igdAsal: false, ambil: (k) => queryRujukan(k.nopen) },
 };
 
 /** Jalankan `fn` atas `items` dengan paling banyak `batas` sekaligus; urutan hasil = urutan masukan. */

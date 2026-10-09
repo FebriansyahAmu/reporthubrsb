@@ -7,6 +7,8 @@ import { EdukasiDocument } from "@/features/form-rm/EdukasiDocument";
 import { RingkasanDocument } from "@/features/form-rm/RingkasanDocument";
 import { Rm22Document } from "@/features/form-rm/Rm22Document";
 import type { Rm22Data } from "@/features/form-rm/rm22.constants";
+import { Rm33Document } from "@/features/form-rm/Rm33Document";
+import type { Rm33Data } from "@/features/form-rm/rm33.constants";
 import { TriaseDocument } from "@/features/form-rm/TriaseDocument";
 import { MODUL_AKSES_FORM_RM } from "@/features/form-rm/kategori";
 import { definisiForm, type Kertas } from "@/features/form-rm/registry";
@@ -117,6 +119,8 @@ async function Dokumen({ isian, header }: { isian: IsianForm; header: FormRmHead
       return <ConsentDocument header={header} data={isian.data as ConsentForm} />;
     case "RM.22":
       return <Rm22Document header={header} data={isian.data as Rm22Data} />;
+    case "RM.33":
+      return <Rm33Document header={header} data={isian.data as Rm33Data} />;
     default: {
       // Form deklaratif: dokumen cetak generik dari struktur registri.
       const def = definisiForm(isian.kode);

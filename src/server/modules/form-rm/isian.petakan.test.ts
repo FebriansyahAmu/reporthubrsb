@@ -34,12 +34,13 @@ import {
   petaPendidikan,
   petaMorse,
   petaPerkawinan,
+  petaRujukan,
   ringkasDiagnosa,
   teksDiagnosis,
   type HasilSumber,
   type PetaForm,
 } from "./isian.petakan";
-import type { EdukasiRow, EpisodeRow, KeluargaRow, MorseRow, SosialRow } from "./isian.sumber.dal";
+import type { EdukasiRow, EpisodeRow, KeluargaRow, MorseRow, RujukanRow, SosialRow } from "./isian.sumber.dal";
 
 /* ------------------------------------------------------- baris sintetis */
 
@@ -157,7 +158,17 @@ const morseRow: MorseRow = {
   PETUGAS: "Ns. Morse",
 };
 
+const rujukanRow: RujukanRow = {
+  TANGGAL: "2026-10-07",
+  RENCANA: "2026-10-08",
+  TUJUAN: "RSUP Prof. DR. R. D. Kandou",
+  POLI: "PENYAKIT DALAM",
+  KETERANGAN: " PERAWATAN LEBIH LANJUT ",
+  DOKTER: "dr. Perujuk",
+};
+
 const lengkap: HasilSumber = {
+  rujukan: rujukanRow,
   morse: morseRow,
   identitas: header,
   sosial,
@@ -378,6 +389,40 @@ describe("peta isi otomatis per form", () => {
     expect(tanpaKoding["informasi.diagnosis.isi"]).toEqual({ nilai: episode.DIAGNOSA_MASUK, sumber: "episode" });
     // Identitas tak dikenal tidak diisi.
     expect(petaWajib("RM.22").petakan({ identitas: { ...header, nama: "—", umur: null, jenisKelamin: "—" } })).toEqual({});
+  });
+
+  it("RM.33: rujukan keluar (tujuan + poli, rencana kunjungan, dokter perujuk, keterangan) + bagian bersama RM.22", () => {
+    const n = petaWajib("RM.33").petakan(lengkap);
+    expect(Object.fromEntries(Object.entries(n).map(([p, v]) => [p, [v.nilai, v.sumber]]))).toEqual({
+      pemberiInformasi: ["dr. Uji, Sp.OG", "episode"],
+      "informasi.diagnosis.isi": ["persalinan spontan (O80); anemia (D64.9); dehidrasi (E86)", "diagnosa"],
+      pasienNama: ["PASIEN UJI", "identitas"],
+      pasienUmur: ["36", "identitas"],
+      pasienJk: ["Perempuan", "identitas"],
+      pasienAlamat: ["Desa Uji RT 001", "sosial"],
+      tujuanRujukan: ["RSUP Prof. DR. R. D. Kandou (PENYAKIT DALAM)", "rujukan"],
+      tanggalRujuk: ["2026-10-08", "rujukan"],
+      dokterPelaksana: ["dr. Perujuk", "rujukan"],
+      dokterNama: ["dr. Perujuk", "rujukan"],
+      "informasi.tindakan.isi": ["Rujukan ke RSUP Prof. DR. R. D. Kandou (PENYAKIT DALAM)", "rujukan"],
+      "informasi.tujuan.isi": ["PERAWATAN LEBIH LANJUT", "rujukan"],
+    });
+    // Tanpa rujukan keluar di SIMRS → hanya bagian bersama.
+    const tanpa = petaWajib("RM.33").petakan({ ...lengkap, rujukan: undefined });
+    expect(Object.keys(tanpa).sort()).toEqual(Object.keys(petaWajib("RM.22").petakan(lengkap)).sort());
+  });
+
+  it("rujukan: tanggal nol → tanggal surat; tanpa poli / dokter / keterangan; tanpa faskes → tujuan kosong", () => {
+    expect(petaRujukan({ ...rujukanRow, RENCANA: "0000-00-00", POLI: " ", DOKTER: null, KETERANGAN: null })).toEqual({
+      tujuanRujukan: "RSUP Prof. DR. R. D. Kandou",
+      tanggalRujuk: "2026-10-07",
+      dokterPelaksana: "",
+      dokterNama: "",
+      "informasi.tindakan.isi": "Rujukan ke RSUP Prof. DR. R. D. Kandou",
+      "informasi.tujuan.isi": "",
+    });
+    const tanpaFaskes = petaRujukan({ ...rujukanRow, TUJUAN: null, RENCANA: null, TANGGAL: "2026-02-30x" });
+    expect([tanpaFaskes.tujuanRujukan, tanpaFaskes.tanggalRujuk, tanpaFaskes["informasi.tindakan.isi"]]).toEqual(["", "", ""]);
   });
 
   it("teks diagnosis: utama dulu, tanpa duplikat, kode/nama boleh salah satu", () => {

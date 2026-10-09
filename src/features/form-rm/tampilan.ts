@@ -1,11 +1,20 @@
-import { FileHeart, FilePenLine, FileText, GraduationCap, ShieldAlert, Siren, type LucideIcon } from "lucide-react";
+import { Ambulance, FileHeart, FilePenLine, FileText, GraduationCap, ShieldAlert, Siren, type LucideIcon } from "lucide-react";
 import type { KodeForm } from "./registry";
+
+type TampilanForm = {
+  singkat: string;
+  label: string;
+  keterangan: string;
+  ikon: LucideIcon;
+  /** Form berulang: satuan satu isian ("Satu isian per tindakan") & kapan diisi bila tak wajib. */
+  berulang?: { satuan: string; bila: string };
+};
 
 /**
  * Metadata tampilan per form (label ringkas, keterangan, ikon) — pelengkap
  * registri. Terpisah dari registri agar katalog & daftar tak memuat skema form.
  */
-export const TAMPILAN_FORM: Record<KodeForm, { singkat: string; label: string; keterangan: string; ikon: LucideIcon }> = {
+export const TAMPILAN_FORM: Record<KodeForm, TampilanForm> = {
   "RM.04": {
     singkat: "Triase",
     label: "Triase IGD",
@@ -35,6 +44,14 @@ export const TAMPILAN_FORM: Record<KodeForm, { singkat: string; label: string; k
     label: "Informasi dan Persetujuan / Penolakan Tindakan Kedokteran",
     keterangan: "Informed consent per tindakan: pemberian informasi, lalu lembar persetujuan atau penolakan.",
     ikon: FilePenLine,
+    berulang: { satuan: "tindakan", bila: "Diisi bila ada tindakan" },
+  },
+  "RM.33": {
+    singkat: "Persetujuan Rujukan",
+    label: "Informasi dan Persetujuan / Penundaan & Penolakan Rujukan",
+    keterangan: "Per rujukan: pemberian informasi, lalu pasien setuju, menunda, atau menolak dirujuk.",
+    ikon: Ambulance,
+    berulang: { satuan: "rujukan", bila: "Diisi bila pasien dirujuk" },
   },
   "RM.MORSE": {
     singkat: "Risiko Jatuh",

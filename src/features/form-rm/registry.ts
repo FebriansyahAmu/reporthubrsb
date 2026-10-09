@@ -6,9 +6,17 @@ import { emptyEdukasiForm, EDUKASI_JENIS } from "./edukasi.constants";
 import { morse } from "./forms/morse";
 import { emptyRingkasanForm, RINGKASAN_JENIS } from "./ringkasan.constants";
 import { cekTtdPernyataan, emptyRm22Form, kekuranganRm22, ringkasRm22, type Rm22Data } from "./rm22.constants";
+import { cekTtdRm33, emptyRm33Form, kekuranganRm33, ringkasRm33, type Rm33Data } from "./rm33.constants";
 import { emptyTriaseForm, hitungKategori, TRIASE_JENIS } from "./triase.constants";
 import { KATEGORI_FORM, type KategoriForm } from "./kategori";
-import { consentFormSchema, edukasiFormSchema, ringkasanFormSchema, rm22FormSchema, triaseFormSchema } from "./skema";
+import {
+  consentFormSchema,
+  edukasiFormSchema,
+  ringkasanFormSchema,
+  rm22FormSchema,
+  rm33FormSchema,
+  triaseFormSchema,
+} from "./skema";
 
 /**
  * REGISTRI FORM RM — sumber kebenaran daftar formulir (di kode, bukan DB; pola
@@ -25,7 +33,7 @@ import { consentFormSchema, edukasiFormSchema, ringkasanFormSchema, rm22FormSche
 export { KATEGORI_FORM, type KategoriForm };
 
 /** "RM.MORSE" = kode sementara — diganti nomor RM resmi dari templat RS sebelum dipakai di produksi. */
-export const KODE_FORM = ["RM.04", "RM.21", "RM.01", "RM.03", "RM.22", "RM.MORSE"] as const;
+export const KODE_FORM = ["RM.04", "RM.21", "RM.01", "RM.03", "RM.22", "RM.33", "RM.MORSE"] as const;
 export type KodeForm = (typeof KODE_FORM)[number];
 
 /** EPISODE = satu isian per pendaftaran (NOPEN); KUNJUNGAN = per kunjungan ruang. */
@@ -47,9 +55,11 @@ export type SasaranPasien = {
   readonly jendelaJam: number;
 };
 
-/** "Pasien IGD & Rawat Inap" — ringkasan sasaran untuk katalog & pemilih pasien. */
-export const labelSasaran = (s: SasaranPasien): string =>
-  `Pasien ${s.jenis.map((j) => LABEL_JENIS_KUNJUNGAN[j]).join(" & ")}`;
+/** "Pasien IGD & Rawat Inap" / "Pasien Rawat Jalan, IGD & Rawat Inap" — ringkasan sasaran untuk katalog & pemilih pasien. */
+export const labelSasaran = (s: SasaranPasien): string => {
+  const label = s.jenis.map((j) => LABEL_JENIS_KUNJUNGAN[j]);
+  return `Pasien ${label.length > 1 ? `${label.slice(0, -1).join(", ")} & ${label[label.length - 1]}` : label.join("")}`;
+};
 
 export type Kertas = { ukuran: "A4" | "F4"; orientasi: "potret" | "lanskap" };
 
@@ -448,8 +458,83 @@ const persetujuanTindakan: DefinisiForm<z.output<typeof rm22FormSchema>> = {
   cekPerubahan: cekTtdPernyataan,
 };
 
+/*
+ * RM.33: satu isian per rujukan (berulang) — pasien bisa menunda lalu
+ * menyetujui rujukan, atau dirujuk lebih dari sekali. Rujukan keluar SIMGOS
+ * dibuat dari rawat jalan, IGD, dan rawat inap → ketiganya sasaran. Tidak wajib
+ * per episode. Isi otomatis: rujukan keluar SIMRS (tujuan + poli, tanggal,
+ * dokter perujuk, keterangan), DPJP, diagnosis, dan identitas pasien.
+ */
+const SIMRS_RM33: readonly BagianSimrs[] = [
+  {
+    id: "rujukan",
+    judul: "Rencana rujukan",
+    kolom: [
+      { path: "tujuanRujukan", label: "Tujuan rujukan", sumber: "rujukan" },
+      { path: "tanggalRujuk", label: "Tanggal rujuk", sumber: "rujukan" },
+      { path: "dokterPelaksana", label: "Dokter pelaksana (perujuk)", sumber: "rujukan" },
+      { path: "dokterNama", label: "Dokter (tanda tangan pernyataan)", sumber: "rujukan" },
+      { path: "informasi.tindakan.isi", label: "Tindakan kedokteran", sumber: "rujukan" },
+      { path: "informasi.tujuan.isi", label: "Tujuan (keterangan rujukan)", sumber: "rujukan" },
+    ],
+  },
+  {
+    id: "informasi",
+    judul: "Pemberian informasi",
+    kolom: [
+      { path: "pemberiInformasi", label: "Pemberi informasi / DPJP", sumber: "episode" },
+      { path: "informasi.diagnosis.isi", label: "Diagnosis (WD & DD)", sumber: "diagnosa" },
+    ],
+  },
+  {
+    id: "pasien",
+    judul: "Identitas pasien (pernyataan oleh keluarga)",
+    kolom: [
+      { path: "pasienNama", label: "Nama pasien", sumber: "identitas" },
+      { path: "pasienUmur", label: "Umur pasien", sumber: "identitas" },
+      { path: "pasienJk", label: "Jenis kelamin pasien", sumber: "identitas" },
+      { path: "pasienAlamat", label: "Alamat pasien", sumber: "sosial" },
+    ],
+  },
+];
+
+const persetujuanRujukan: DefinisiForm<z.output<typeof rm33FormSchema>> = {
+  kode: "RM.33",
+  versi: 1,
+  judul: "Informasi dan Persetujuan / Penundaan & Penolakan Rujukan",
+  kategori: "administrasi-persetujuan",
+  cakupan: "EPISODE",
+  berulang: true,
+  sasaran: { jenis: [1, 2, 3], jendelaJam: 72 },
+  wajibUntuk: [],
+  kertas: { ukuran: "F4", orientasi: "potret" },
+  simrs: SIMRS_RM33,
+  skema: rm33FormSchema,
+  kosong: () => rm33FormSchema.parse(emptyRm33Form()),
+  petaTtd: (d, f) => ({
+    ...d,
+    pemberiTtd: f(d.pemberiTtd, "pemberiTtd"),
+    penerimaTtd: f(d.penerimaTtd, "penerimaTtd"),
+    pernyataTtd: f(d.pernyataTtd, "pernyataTtd"),
+    dokterTtd: f(d.dokterTtd, "dokterTtd"),
+    saksi1Ttd: f(d.saksi1Ttd, "saksi1Ttd"),
+    saksi2Ttd: f(d.saksi2Ttd, "saksi2Ttd"),
+  }),
+  syaratFinal: (d) => Object.values(kekuranganRm33(d)).flat(),
+  ringkasIsian: (data) => ringkasRm33(data && typeof data === "object" ? (data as Partial<Rm33Data>) : null),
+  cekPerubahan: cekTtdRm33,
+};
+
 /** Urutan = urutan tampil di katalog. */
-export const DEFINISI_FORM: readonly DefinisiForm[] = [triase, edukasi, ringkasan, consent, persetujuanTindakan, morse];
+export const DEFINISI_FORM: readonly DefinisiForm[] = [
+  triase,
+  edukasi,
+  ringkasan,
+  consent,
+  persetujuanTindakan,
+  persetujuanRujukan,
+  morse,
+];
 
 const BY_KODE = new Map(DEFINISI_FORM.map((d) => [d.kode, d]));
 const BY_JENIS_LAMA = new Map(DEFINISI_FORM.flatMap((d) => (d.jenisLama ? [[d.jenisLama, d] as const] : [])));

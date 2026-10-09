@@ -212,9 +212,10 @@ function FormCard({
 }
 
 /**
- * Form berulang (mis. RM.22 per tindakan): semua isian aktif pasien, masing-masing
- * dengan pembedanya (tindakan + keputusan), dan tombol menambah isian baru.
- * Selebar dua kolom agar judul tindakan tak terpotong.
+ * Form berulang (mis. RM.22 per tindakan, RM.33 per rujukan): semua isian aktif
+ * pasien, masing-masing dengan pembedanya (`ringkasIsian`: tindakan/tujuan +
+ * keputusan), dan tombol menambah isian baru. Selebar dua kolom agar judul tak
+ * terpotong.
  */
 function FormBerulangCard({
   def,
@@ -232,6 +233,7 @@ function FormBerulangCard({
   const t = TAMPILAN_FORM[def.kode];
   const Icon = t.ikon;
   const final = daftar.filter((x) => x.status === "FINAL").length;
+  const satuan = t.berulang?.satuan ?? "kejadian";
 
   return (
     <div
@@ -248,7 +250,7 @@ function FormBerulangCard({
               <span className="font-mono text-xs text-fg-subtle">{def.kode}</span> · {t.label}
             </p>
             <p className="text-xs text-fg-muted">
-              Satu isian per tindakan · {wajib ? "Wajib untuk episode ini" : "Diisi bila ada tindakan"}
+              Satu isian per {satuan} · {wajib ? "Wajib untuk episode ini" : (t.berulang?.bila ?? "Tidak wajib")}
             </p>
           </div>
         </div>
@@ -285,7 +287,7 @@ function FormBerulangCard({
         <BukaIsianButton
           kode={def.kode}
           nopen={nopen}
-          label={daftar.length > 0 ? "Tambah isian (tindakan lain)" : "Isi Form"}
+          label={daftar.length > 0 ? `Tambah isian (${satuan} lain)` : "Isi Form"}
           varian={daftar.length > 0 ? "kedua" : "utama"}
           className="mt-3 self-start"
         />

@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { JENIS_INFORMASI, JK_RM22, LEMBAR_RM22, type IdInformasi } from "./rm22.constants";
+import { JENIS_INFORMASI, JK_PILIHAN, type IdInformasi } from "./persetujuan/informasi";
+import { LEMBAR_RM22 } from "./rm22.constants";
+import { KEPUTUSAN_RM33 } from "./rm33.constants";
 import {
   CARA_DATANG_OPTS,
   EMERGENCY_OPTS,
@@ -201,15 +203,16 @@ export const triaseFormSchema = z.strictObject({
   petugasTtd: ttdSchema,
 });
 
-/* ------------------------- RM.22 Informasi & Persetujuan/Penolakan Tindakan */
+/* --------------------- Informasi & Persetujuan (bagian bersama RM.22 & RM.33) */
 
 const barisInformasiSchema = z.strictObject({ isi: str(1000), tanda: z.boolean().default(false) });
 /** Umur dalam tahun (angka saja, mengikuti "umur ___ tahun" di formulir). */
 const umurTahunSchema = z.string().regex(/^(\d{1,3})?$/, "Umur diisi angka tahun").default("");
-const jkRm22Schema = z.enum(["", ...JK_RM22]).default("");
+const jkPilihanSchema = z.enum(["", ...JK_PILIHAN]).default("");
+const tanggalSchema = z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/, "Format tanggal YYYY-MM-DD").default("");
 
-export const rm22FormSchema = z.strictObject({
-  lembar: z.enum(["", ...LEMBAR_RM22]).default(""),
+/** PEMBERIAN INFORMASI: pihak, 11 baris informasi, TTD pemberi & penerima. */
+const pemberianInformasiShape = {
   dokterPelaksana: str(120),
   pemberiInformasi: str(120),
   penerimaInformasi: str(120),
@@ -221,23 +224,54 @@ export const rm22FormSchema = z.strictObject({
   ),
   pemberiTtd: ttdSchema,
   penerimaTtd: ttdSchema,
+};
+
+/** "Saya yang bertandatangan…" + "terhadap saya / ___ saya bernama …". */
+const yangMenyatakanShape = {
   pernyataNama: str(120),
   pernyataUmur: umurTahunSchema,
-  pernyataJk: jkRm22Schema,
+  pernyataJk: jkPilihanSchema,
   pernyataAlamat: str(300),
-  tindakan: str(300),
   terhadap: z.enum(["", "diri", "keluarga"]).default(""),
   hubungan: str(60),
   pasienNama: str(120),
   pasienUmur: umurTahunSchema,
-  pasienJk: jkRm22Schema,
+  pasienJk: jkPilihanSchema,
   pasienAlamat: str(300),
-  tanggal: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/, "Format tanggal YYYY-MM-DD").default(""),
-  pernyataTtd: ttdSchema,
+};
+
+const saksiShape = {
   saksi1Nama: str(120),
   saksi1Ttd: ttdSchema,
   saksi2Nama: str(120),
   saksi2Ttd: ttdSchema,
+};
+
+/* ------------------------- RM.22 Informasi & Persetujuan/Penolakan Tindakan */
+
+export const rm22FormSchema = z.strictObject({
+  lembar: z.enum(["", ...LEMBAR_RM22]).default(""),
+  ...pemberianInformasiShape,
+  ...yangMenyatakanShape,
+  tindakan: str(300),
+  tanggal: tanggalSchema,
+  pernyataTtd: ttdSchema,
+  ...saksiShape,
+});
+
+/* ------------------- RM.33 Informasi & Persetujuan/Penundaan-Penolakan Rujukan */
+
+export const rm33FormSchema = z.strictObject({
+  keputusan: z.enum(["", ...KEPUTUSAN_RM33]).default(""),
+  tujuanRujukan: str(200),
+  tanggalRujuk: tanggalSchema,
+  ...pemberianInformasiShape,
+  ...yangMenyatakanShape,
+  tanggal: tanggalSchema,
+  pernyataTtd: ttdSchema,
+  dokterNama: str(120),
+  dokterTtd: ttdSchema,
+  ...saksiShape,
 });
 
 /* --------------------------------------------------- penyesuaian data */

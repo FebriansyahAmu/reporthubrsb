@@ -1,9 +1,10 @@
 import { terisi, type SumberId } from "@/features/form-rm/asal";
+import { jkDariHeader, umurTahun } from "@/features/form-rm/persetujuan/informasi";
 import type { KodeForm } from "@/features/form-rm/registry";
-import { jkRm22, umurTahun } from "@/features/form-rm/rm22.constants";
+import { tindakanRujukan } from "@/features/form-rm/rm33.constants";
 import type { DiagnosaRow, TriaseSimgosRow } from "./form-rm.dal";
 import type { FormRmHeader, TriaseForm, TriaseSimrs } from "./form-rm.types";
-import type { EdukasiRow, EpisodeRow, KeluargaRow, MorseRow, PulangRow, SosialRow } from "./isian.sumber.dal";
+import type { EdukasiRow, EpisodeRow, KeluargaRow, MorseRow, PulangRow, RujukanRow, SosialRow } from "./isian.sumber.dal";
 
 /**
  * PEMETAAN ISI OTOMATIS (PRD §8.3) — fungsi MURNI: baris sumber SIMGOS → nilai
@@ -22,6 +23,7 @@ export type TipeSumber = {
   triase: TriaseSimgosRow;
   edukasi: EdukasiRow;
   morse: MorseRow;
+  rujukan: RujukanRow;
 };
 
 /** Hasil sumber yang ADA datanya (sumber kosong / gagal tidak dicantumkan). */
@@ -290,7 +292,7 @@ export function ringkasDiagnosa(rows: readonly DiagnosaRow[]) {
   };
 }
 
-/** Diagnosis RM.22: "Nama (KODE)" utama lebih dulu, lalu sekunder, dipisah "; ". */
+/** Diagnosis RM.22/RM.33: "Nama (KODE)" utama lebih dulu, lalu sekunder, dipisah "; ". */
 export function teksDiagnosis(rows: readonly DiagnosaRow[]): string {
   const urut = [...rows.filter((r) => Number(r.UTAMA) === 1), ...rows.filter((r) => Number(r.UTAMA) !== 1)];
   const teks = urut.map((r) => {
@@ -299,6 +301,58 @@ export function teksDiagnosis(rows: readonly DiagnosaRow[]): string {
     return nama && k ? `${nama} (${k})` : nama || k;
   });
   return [...new Set(teks.filter(Boolean))].join("; ");
+}
+
+/* ------------------------------------------------- informasi & persetujuan */
+
+/**
+ * Bagian bersama RM.22 & RM.33: pemberi informasi = DPJP, diagnosis (diagnosa
+ * episode menimpa diagnosa masuk), dan identitas pasien untuk pernyataan oleh
+ * keluarga (umur tahun & JK pilihan formulir).
+ */
+function petaPemberianInformasi(h: HasilSumber): NilaiSimrs {
+  const out: NilaiSimrs = {};
+  if (h.identitas) {
+    isi(out, "identitas", {
+      pasienNama: bukanStrip(h.identitas.nama),
+      pasienUmur: umurTahun(h.identitas.umur),
+      pasienJk: jkDariHeader(h.identitas.jenisKelamin),
+    });
+  }
+  if (h.sosial) isi(out, "sosial", { pasienAlamat: komposeAlamat(h.sosial) });
+  if (h.episode) {
+    // Diagnosa masuk = cadangan; diagnosa episode (bila sudah dikoding) menimpanya.
+    isi(out, "episode", { pemberiInformasi: bersih(h.episode.DPJP), "informasi.diagnosis.isi": bersih(h.episode.DIAGNOSA_MASUK) });
+  }
+  if (h.diagnosa) isi(out, "diagnosa", { "informasi.diagnosis.isi": teksDiagnosis(h.diagnosa) });
+  return out;
+}
+
+/** "YYYY-MM-DD" yang masuk akal (tanggal nol "0000-00-00" SIMGOS dibuang). */
+const tanggalSah = (s: string | null) => {
+  const t = bersih(s);
+  return /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(t) && t >= "2000-01-01" ? t : "";
+};
+
+/**
+ * Rujukan keluar SIMRS → RM.33. Tujuan = nama faskes (+ poli tujuan);
+ * tanggal rujuk = rencana kunjungan (cadangan: tanggal surat rujukan); dokter
+ * perujuk = dokter pelaksana & kolom "Dokter" pernyataan; keterangan rujukan
+ * (mis. "perawatan lebih lanjut") = informasi no. 6 Tujuan.
+ */
+export function petaRujukan(r: RujukanRow): Record<string, unknown> {
+  const faskes = bersih(r.TUJUAN);
+  const poli = bersih(r.POLI);
+  const tujuan = faskes && poli ? `${faskes} (${poli})` : faskes;
+  const dokter = bersih(r.DOKTER);
+  return {
+    tujuanRujukan: tujuan,
+    tanggalRujuk: tanggalSah(r.RENCANA) || tanggalSah(r.TANGGAL),
+    dokterPelaksana: dokter,
+    dokterNama: dokter,
+    "informasi.tindakan.isi": tindakanRujukan(tujuan),
+    "informasi.tujuan.isi": bersih(r.KETERANGAN),
+  };
 }
 
 /* ---------------------------------------------------------------- edukasi */
@@ -550,21 +604,16 @@ export const PETA_FORM: Readonly<Partial<Record<KodeForm, PetaForm>>> = {
   },
   "RM.22": {
     sumber: ["identitas", "sosial", "episode", "diagnosa"],
+    petakan: petaPemberianInformasi,
+    bawaan(d, hariIni) {
+      d.tanggal = hariIni;
+    },
+  },
+  "RM.33": {
+    sumber: ["identitas", "sosial", "episode", "diagnosa", "rujukan"],
     petakan(h) {
-      const out: NilaiSimrs = {};
-      if (h.identitas) {
-        isi(out, "identitas", {
-          pasienNama: bukanStrip(h.identitas.nama),
-          pasienUmur: umurTahun(h.identitas.umur),
-          pasienJk: jkRm22(h.identitas.jenisKelamin),
-        });
-      }
-      if (h.sosial) isi(out, "sosial", { pasienAlamat: komposeAlamat(h.sosial) });
-      if (h.episode) {
-        // Diagnosa masuk = cadangan; diagnosa episode (bila sudah dikoding) menimpanya.
-        isi(out, "episode", { pemberiInformasi: bersih(h.episode.DPJP), "informasi.diagnosis.isi": bersih(h.episode.DIAGNOSA_MASUK) });
-      }
-      if (h.diagnosa) isi(out, "diagnosa", { "informasi.diagnosis.isi": teksDiagnosis(h.diagnosa) });
+      const out = petaPemberianInformasi(h);
+      if (h.rujukan) isi(out, "rujukan", petaRujukan(h.rujukan));
       return out;
     },
     bawaan(d, hariIni) {

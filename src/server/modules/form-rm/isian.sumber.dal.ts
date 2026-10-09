@@ -158,6 +158,39 @@ export async function queryPulang(nopen: string): Promise<PulangRow | null> {
   return rows[0] ?? null;
 }
 
+/* ----------------------------------------------------------------- rujukan */
+
+/** Rujukan keluar terbaru episode (`pendaftaran.rujukan_keluar`; tujuan = `master.ppk`, poli = referensi JENIS 70). */
+export type RujukanRow = {
+  /** "YYYY-MM-DD" tanggal surat rujukan dibuat. */
+  TANGGAL: string | null;
+  /** "YYYY-MM-DD" rencana kunjungan di faskes tujuan. */
+  RENCANA: string | null;
+  TUJUAN: string | null;
+  POLI: string | null;
+  KETERANGAN: string | null;
+  /** Dokter perujuk; bila kosong, DPJP kunjungan (leg) tempat rujukan dibuat. */
+  DOKTER: string | null;
+};
+
+export async function queryRujukan(nopen: string): Promise<RujukanRow | null> {
+  const sql = `
+    SELECT ${CAP} DATE_FORMAT(rk.TANGGAL, '%Y-%m-%d') AS TANGGAL,
+      DATE_FORMAT(rk.RENCANA_KUNJUNGAN_TANGGAL, '%Y-%m-%d') AS RENCANA,
+      (SELECT p.NAMA FROM ${M}.ppk p WHERE p.ID = rk.TUJUAN LIMIT 1) AS TUJUAN,
+      (SELECT r.DESKRIPSI FROM ${M}.referensi r WHERE r.JENIS = 70 AND r.ID = rk.TUJUAN_RUANGAN LIMIT 1) AS POLI,
+      rk.KETERANGAN,
+      (SELECT ${PEGAWAI_NAMA} FROM ${M}.dokter dk JOIN ${M}.pegawai pg ON pg.NIP = dk.NIP
+         WHERE dk.ID = COALESCE(NULLIF(rk.DOKTER, 0), k.DPJP) LIMIT 1) AS DOKTER
+    FROM ${P}.rujukan_keluar rk
+    LEFT JOIN ${P}.kunjungan k ON k.NOMOR = rk.KUNJUNGAN
+    WHERE rk.NOPEN = ? AND rk.STATUS <> 0
+    ORDER BY rk.TANGGAL DESC, rk.NOMOR DESC
+    LIMIT 1`;
+  const rows = await getSimgos().$queryRawUnsafe<RujukanRow[]>(sql, nopen);
+  return rows[0] ?? null;
+}
+
 /* ----------------------------------------------------------------- edukasi */
 
 /** Asesmen edukasi pasien & keluarga terbaru episode (`medicalrecord.edukasi_pasien_keluarga`). Bendera 0/1. */
