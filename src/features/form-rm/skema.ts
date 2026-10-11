@@ -3,6 +3,7 @@ import { JENIS_INFORMASI, JK_PILIHAN, type IdInformasi } from "./persetujuan/inf
 import { LEMBAR_RM22 } from "./rm22.constants";
 import { KEPUTUSAN_RM33 } from "./rm33.constants";
 import { SELAKU_RM41 } from "./rm41.constants";
+import { FASE_TTV, GOLONGAN_DARAH, KEADAAN_KANTONG, MAKS_KANTONG, POLA_TTV, YA_TIDAK, type IdFase } from "./rm50.constants";
 import {
   CARA_DATANG_OPTS,
   EMERGENCY_OPTS,
@@ -293,6 +294,49 @@ export const rm41FormSchema = z.strictObject({
   saksiNama: str(120),
   saksiTtd: ttdSchema,
   pernyataTtd: ttdSchema,
+});
+
+/* --------------------------- RM.50 Monitoring Pemberian Transfusi Darah/Produk Darah */
+
+const waktuSchema = z.string().regex(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})?$/, "Format waktu YYYY-MM-DDTHH:mm").default("");
+const ttvRm50Schema = z.strictObject({
+  td: z.string().regex(POLA_TTV.td, "TD mis. 120/80").default(""),
+  n: z.string().regex(POLA_TTV.n, "Nadi angka").default(""),
+  r: z.string().regex(POLA_TTV.r, "Napas angka").default(""),
+  s: z.string().regex(POLA_TTV.s, "Suhu mis. 36,5").default(""),
+});
+const kantongRm50Schema = z.strictObject({
+  id: z.string().regex(/^[a-z0-9]{6,16}$/, "Pengenal baris tidak valid"),
+  waktu: waktuSchema,
+  jenis: str(30),
+  noSeri: str(40),
+  kadaluarsa: tanggalSchema,
+  isi: z.string().regex(/^\d{0,4}$/, "Isi (ml) diisi angka").default(""),
+  ttv: z.strictObject(
+    Object.fromEntries(FASE_TTV.map((f) => [f.id, ttvRm50Schema])) as Record<IdFase, typeof ttvRm50Schema>,
+  ),
+  reaksi: str(80),
+  parafNama: str(120),
+  paraf: ttdSchema,
+});
+
+export const rm50FormSchema = z.strictObject({
+  waktu: waktuSchema,
+  ruangRawat: str(120),
+  dokter: str(120),
+  alergi: z.enum(["", ...YA_TIDAK]).default(""),
+  alergiKet: str(200),
+  pernahTransfusi: z.enum(["", ...YA_TIDAK]).default(""),
+  transfusiTahun: z.string().regex(/^(\d{4})?$/, "Tahun 4 angka").default(""),
+  golonganDarah: z.enum(["", ...GOLONGAN_DARAH]).default(""),
+  kantongKeadaan: z.enum(["", ...KEADAAN_KANTONG]).default(""),
+  kantongKet: str(120),
+  diterimaWaktu: waktuSchema,
+  kantong: z
+    .array(kantongRm50Schema)
+    .max(MAKS_KANTONG, `Paling banyak ${MAKS_KANTONG} kantong (kapasitas formulir)`)
+    .default([])
+    .refine((k) => new Set(k.map((x) => x.id)).size === k.length, "Pengenal baris kantong ganda"),
 });
 
 /* --------------------------------------------------- penyesuaian data */

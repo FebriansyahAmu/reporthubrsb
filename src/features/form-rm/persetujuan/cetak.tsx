@@ -62,7 +62,7 @@ export function LembarPersetujuan({
 }
 
 /** Kop RS + identitas pasien (No. RM · Nama (L/P) · NIK) + kotak nomor formulir — sama di semua formulir F4 RS. */
-export function Kop({ header, kode }: { header: FormRmHeader; kode: string }) {
+export function Kop({ header, kode, alamat = KOP_RS.alamat }: { header: FormRmHeader; kode: string; alamat?: readonly string[] }) {
   const laki = header.jenisKelamin === "Laki-Laki";
   const perempuan = header.jenisKelamin === "Perempuan";
   return (
@@ -75,7 +75,7 @@ export function Kop({ header, kode }: { header: FormRmHeader; kode: string }) {
               <img className="ip-logo" src="/logo/logoboltim.png" alt="Logo Bolaang Mongondow Timur" />
               <div className="ip-kop-teks">
                 <div className="ip-rs">{KOP_RS.nama}</div>
-                {KOP_RS.alamat.map((a) => (
+                {alamat.map((a) => (
                   <div key={a} className="ip-alamat">
                     {a}
                   </div>

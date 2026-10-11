@@ -76,6 +76,11 @@ describe("registri form RM", () => {
     expect(slot("RM.22")).toEqual(["pemberiTtd", "penerimaTtd", "pernyataTtd", "saksi1Ttd", "saksi2Ttd"]);
     expect(slot("RM.33")).toEqual(["pemberiTtd", "penerimaTtd", "pernyataTtd", "dokterTtd", "saksi1Ttd", "saksi2Ttd"]);
     expect(slot("RM.41")).toEqual(["petugasTtd", "saksiTtd", "pernyataTtd"]);
+    expect(slot("RM.50")).toEqual([]);
+    const rm50 = definisiForm("RM.50")!;
+    const hasil: string[] = [];
+    rm50.petaTtd({ ...(rm50.kosong() as object), kantong: [{ paraf: "" }, { paraf: "" }] }, (v, s) => (hasil.push(s), v));
+    expect(hasil).toEqual(["kantong.0.paraf", "kantong.1.paraf"]);
   });
 
   it("form berulang punya pembeda isian (ringkasIsian); form tak berulang tidak memerlukannya", () => {
@@ -91,6 +96,9 @@ describe("registri form RM", () => {
     const rm41 = definisiForm("RM.41")!;
     expect([rm41.berulang, rm41.wajibUntuk, rm41.sasaran.jenis, rm41.kategori]).toEqual([false, [], [2, 3], "ringkasan-pemulangan"]);
     expect(rm41.cekPerubahan).toBeTypeOf("function");
+    // Transfusi: satu isian per pemberian transfusi, IGD & rawat inap, kertas F4 lanskap.
+    const rm50 = definisiForm("RM.50")!;
+    expect([rm50.berulang, rm50.wajibUntuk, rm50.sasaran.jenis, rm50.kategori, rm50.kertas.orientasi]).toEqual([true, [], [2, 3], "asesmen-keperawatan", "lanskap"]);
     // Form berulang menyebut satuan isiannya di profil pasien & pemilih ("Satu isian per rujukan").
     for (const d of DEFINISI_FORM) if (d.berulang) expect(TAMPILAN_FORM[d.kode].berulang?.satuan, d.kode).toBeTruthy();
   });
@@ -194,5 +202,17 @@ describe("registri form RM", () => {
     };
     expect(rm41.skema.safeParse(r41).success).toBe(true);
     expect(rm41.syaratFinal(r41)).toEqual([]);
+
+    const rm50 = definisiForm("RM.50")!;
+    const ttv = { td: "120/80", n: "88", r: "20", s: "36,5" };
+    const r50 = {
+      ...(rm50.kosong() as object),
+      waktu: "2026-10-12T09:00", ruangRawat: "Interna", dokter: "dr. A", alergi: "tidak", pernahTransfusi: "ya", transfusiTahun: "2024",
+      golonganDarah: "O+", kantongKeadaan: "utuh", diterimaWaktu: "2026-10-12T08:30",
+      kantong: [{ id: "abc123def", waktu: "2026-10-12T09:00", jenis: "PRC", noSeri: "S-1", kadaluarsa: "2026-11-01", isi: "250",
+        ttv: { sebelum: ttv, awal: ttv, saat: ttv, setelah: { ...ttv, td: "-" } }, reaksi: "Tidak ada", parafNama: "Ns. C", paraf: ttd }],
+    };
+    expect(rm50.skema.safeParse(r50).success).toBe(true);
+    expect(rm50.syaratFinal(r50)).toEqual([]);
   });
 });

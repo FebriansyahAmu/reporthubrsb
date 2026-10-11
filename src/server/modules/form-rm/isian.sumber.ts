@@ -4,6 +4,7 @@ import { queryDiagnosaByNopen, queryTriaseSimgos } from "./form-rm.dal";
 import type { FormRmHeader } from "./form-rm.types";
 import type { HasilSumber, TipeSumber } from "./isian.petakan";
 import {
+  queryAlergi,
   queryEdukasi,
   queryEpisode,
   queryIgdAsal,
@@ -44,6 +45,7 @@ const SUMBER: { readonly [S in SumberId]: DefSumber<S> } = {
   triase: { igdAsal: true, ambil: (k) => queryTriaseSimgos(k.nopen) },
   edukasi: { igdAsal: true, ambil: (k) => queryEdukasi(k.nopen) },
   morse: { igdAsal: true, ambil: (k) => queryMorse(k.nopen) },
+  alergi: { igdAsal: true, ambil: async (k) => takKosong(await queryAlergi(k.nopen)) },
   // Rujukan milik episode tempat dibuat (episode RI membuat rujukannya sendiri).
   rujukan: { igdAsal: false, ambil: (k) => queryRujukan(k.nopen) },
 };

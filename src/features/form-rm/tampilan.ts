@@ -1,4 +1,4 @@
-import { Ambulance, DoorOpen, FileHeart, FilePenLine, FileText, GraduationCap, ShieldAlert, Siren, type LucideIcon } from "lucide-react";
+import { Ambulance, DoorOpen, Droplet, FileHeart, FilePenLine, FileText, GraduationCap, ShieldAlert, Siren, type LucideIcon } from "lucide-react";
 import type { KodeForm } from "./registry";
 
 type TampilanForm = {
@@ -58,6 +58,13 @@ export const TAMPILAN_FORM: Record<KodeForm, TampilanForm> = {
     label: "Surat Pernyataan Pulang Atas Permintaan Sendiri",
     keterangan: "Pernyataan pasien / keluarga pulang atas permintaan sendiri beserta alasannya, disaksikan petugas RS.",
     ikon: DoorOpen,
+  },
+  "RM.50": {
+    singkat: "Transfusi Darah",
+    label: "Monitoring Pemberian Transfusi Darah / Produk Darah",
+    keterangan: "Per transfusi: kantong darah, tanda vital sebelum–selama–sesudah transfusi, dan reaksi.",
+    ikon: Droplet,
+    berulang: { satuan: "transfusi", bila: "Diisi bila pasien mendapat transfusi" },
   },
   "RM.MORSE": {
     singkat: "Risiko Jatuh",

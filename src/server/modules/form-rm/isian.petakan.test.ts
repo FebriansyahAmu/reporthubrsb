@@ -34,6 +34,7 @@ import {
   petaPendidikan,
   petaMorse,
   petaPerkawinan,
+  petaAlergi,
   petaRujukan,
   ringkasDiagnosa,
   teksDiagnosis,
@@ -41,7 +42,7 @@ import {
   type PetaForm,
   CARA_PULANG_APS,
 } from "./isian.petakan";
-import type { EdukasiRow, EpisodeRow, KeluargaRow, MorseRow, RujukanRow, SosialRow } from "./isian.sumber.dal";
+import type { AlergiRow, EdukasiRow, EpisodeRow, KeluargaRow, MorseRow, RujukanRow, SosialRow } from "./isian.sumber.dal";
 
 /* ------------------------------------------------------- baris sintetis */
 
@@ -168,7 +169,14 @@ const rujukanRow: RujukanRow = {
   DOKTER: "dr. Perujuk",
 };
 
+const alergiRows: AlergiRow[] = [
+  { JENIS: "4", DESKRIPSI: "Disangkal", DISPLAY: null },
+  { JENIS: "1", DESKRIPSI: "", DISPLAY: "Ranitidine" },
+  { JENIS: "2", DESKRIPSI: "Udang", DISPLAY: "Allergy to seafood" },
+];
+
 const lengkap: HasilSumber = {
+  alergi: alergiRows,
   rujukan: rujukanRow,
   morse: morseRow,
   identitas: header,
@@ -449,6 +457,30 @@ describe("peta isi otomatis per form", () => {
     expect(
       petaWajib("RM.41").petakan({ identitas: { ...header, nama: "—", jenisKelamin: "—", tanggalLahir: null, norm: "—" } }),
     ).toEqual({});
+  });
+
+  it("RM.50: ruang rawat, DPJP, golongan darah (Tidak Tahu dibuang), riwayat alergi", () => {
+    const n = petaWajib("RM.50").petakan({ ...lengkap, sosial: { ...sosial, GOL_DARAH: "o +" } });
+    expect(Object.fromEntries(Object.entries(n).map(([p, v]) => [p, [v.nilai, v.sumber]]))).toEqual({
+      ruangRawat: ["NON BEDAH", "identitas"],
+      dokter: ["dr. Uji, Sp.OG", "episode"],
+      golonganDarah: ["O+", "sosial"],
+      alergi: ["ya", "alergi"],
+      alergiKet: ["Ranitidine, Udang", "alergi"],
+    });
+    expect(petaWajib("RM.50").petakan({ sosial: { ...sosial, GOL_DARAH: "Tidak Tahu" } })).toEqual({});
+  });
+
+  it("riwayat alergi: penyangkalan → tidak; teks umum/tak diketahui → tidak diisi; positif menang", () => {
+    expect(petaAlergi([{ JENIS: "4", DESKRIPSI: "", DISPLAY: null }])).toEqual({ alergi: "tidak" });
+    expect(petaAlergi([{ JENIS: "", DESKRIPSI: "", DISPLAY: "No known allergies" }])).toEqual({ alergi: "tidak" });
+    expect(petaAlergi([{ JENIS: "", DESKRIPSI: "", DISPLAY: "Drug" }])).toEqual({});
+    expect(petaAlergi([{ JENIS: "1", DESKRIPSI: "Tidak diketahui", DISPLAY: null }])).toEqual({});
+    expect(petaAlergi([{ JENIS: "2,1", DESKRIPSI: " Udang  windu ", DISPLAY: null }, { JENIS: "4", DESKRIPSI: "disangkal", DISPLAY: null }])).toEqual({
+      alergi: "ya",
+      alergiKet: "Udang windu",
+    });
+    expect(petaAlergi([])).toEqual({});
   });
 
   it("teks diagnosis: utama dulu, tanpa duplikat, kode/nama boleh salah satu", () => {

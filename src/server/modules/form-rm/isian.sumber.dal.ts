@@ -245,6 +245,27 @@ export async function queryEdukasi(nopen: string): Promise<EdukasiRow | null> {
   return rows[0] ?? null;
 }
 
+/* ----------------------------------------------------------------- alergi */
+
+/**
+ * Riwayat alergi seluruh kunjungan episode (`medicalrecord.riwayat_alergi`):
+ * JENIS 1 obat, 2 makanan, 3 lainnya, 4 tidak ada (bisa "2,1"); teks dari
+ * DESKRIPSI atau `display` kode SNOMED.
+ */
+export type AlergiRow = { JENIS: string | null; DESKRIPSI: string | null; DISPLAY: string | null };
+
+export async function queryAlergi(nopen: string): Promise<AlergiRow[]> {
+  const sql = `
+    SELECT ${CAP} a.JENIS, LEFT(a.DESKRIPSI, 300) AS DESKRIPSI,
+      LEFT(JSON_UNQUOTE(JSON_EXTRACT(a.KODE_REFERENSI, '$.display')), 200) AS DISPLAY
+    FROM ${MR}.riwayat_alergi a
+    JOIN ${P}.kunjungan k ON k.NOMOR = a.KUNJUNGAN
+    WHERE k.NOPEN = ? AND a.STATUS <> 0
+    ORDER BY a.TANGGAL DESC, a.ID DESC
+    LIMIT 30`;
+  return getSimgos().$queryRawUnsafe<AlergiRow[]>(sql, nopen);
+}
+
 /* ------------------------------------------------------------------ morse */
 
 /** Pengkajian risiko jatuh Morse PERTAMA episode (kode referensi JENIS 186–191; 0 = tak diisi). */

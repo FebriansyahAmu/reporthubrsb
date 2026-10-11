@@ -2,9 +2,10 @@ import { terisi, type SumberId } from "@/features/form-rm/asal";
 import { jkDariHeader, umurTahun } from "@/features/form-rm/persetujuan/informasi";
 import type { KodeForm } from "@/features/form-rm/registry";
 import { tindakanRujukan } from "@/features/form-rm/rm33.constants";
+import { GOLONGAN_DARAH } from "@/features/form-rm/rm50.constants";
 import type { DiagnosaRow, TriaseSimgosRow } from "./form-rm.dal";
 import type { FormRmHeader, TriaseForm, TriaseSimrs } from "./form-rm.types";
-import type { EdukasiRow, EpisodeRow, KeluargaRow, MorseRow, PulangRow, RujukanRow, SosialRow } from "./isian.sumber.dal";
+import type { AlergiRow, EdukasiRow, EpisodeRow, KeluargaRow, MorseRow, PulangRow, RujukanRow, SosialRow } from "./isian.sumber.dal";
 
 /**
  * PEMETAAN ISI OTOMATIS (PRD §8.3) — fungsi MURNI: baris sumber SIMGOS → nilai
@@ -24,6 +25,7 @@ export type TipeSumber = {
   edukasi: EdukasiRow;
   morse: MorseRow;
   rujukan: RujukanRow;
+  alergi: AlergiRow[];
 };
 
 /** Hasil sumber yang ADA datanya (sumber kosong / gagal tidak dicantumkan). */
@@ -388,6 +390,33 @@ function petaPulangAps(h: HasilSumber): NilaiSimrs {
   return out;
 }
 
+/* ---------------------------------------------------------- transfusi darah */
+
+/** Teks yang menyatakan TIDAK ada alergi ("Disangkal", SNOMED "No known allergies", "Nothing"). */
+const ALERGI_NEGATIF = /^(-|tidak|tidak ada( alergi)?|disangkal|nothing( at all)?|no known allerg(y|ies)|nka)$/i;
+/** Teks terlalu umum untuk disebut ("Drug", "Food allergy diet") atau tak diketahui. */
+const ALERGI_UMUM = /^(drug|food|food allergy diet|tidak diketahui|unknown)$/i;
+
+/**
+ * Riwayat alergi SIMRS → "Riwayat Alergi : Tidak / Ya, Sebutkan …". Jenis 1–3
+ * (obat/makanan/lainnya) bertekst spesifik = ada alergi (teks digabung); jenis 4
+ * atau teks penyangkalan = tidak ada. Selain itu (mis. hanya "Drug") tidak diisi.
+ */
+export function petaAlergi(rows: readonly AlergiRow[]): Record<string, unknown> {
+  const sebut: string[] = [];
+  let negatif = false;
+  for (const r of rows) {
+    const jenis = bersih(r.JENIS).split(",").map((x) => x.trim().toLowerCase());
+    const teks = [bersih(r.DESKRIPSI), bersih(r.DISPLAY)].find((t) => t && !ALERGI_UMUM.test(t)) ?? "";
+    if (teks && ALERGI_NEGATIF.test(teks)) negatif = true;
+    else if (teks && jenis.some((x) => x === "1" || x === "2" || x === "3")) sebut.push(teks.replace(/\s+/g, " "));
+    else if (jenis.includes("4") || jenis.includes("tidak ada")) negatif = true;
+  }
+  const unik = [...new Set(sebut)];
+  if (unik.length) return { alergi: "ya", alergiKet: unik.join(", ").slice(0, 200) };
+  return negatif ? { alergi: "tidak" } : {};
+}
+
 /* ---------------------------------------------------------------- edukasi */
 
 const ya = (v: Id) => kode(v) === 1;
@@ -656,6 +685,20 @@ export const PETA_FORM: Readonly<Partial<Record<KodeForm, PetaForm>>> = {
   "RM.41": {
     sumber: ["identitas", "sosial", "pulang"],
     petakan: petaPulangAps,
+  },
+  "RM.50": {
+    sumber: ["identitas", "sosial", "episode", "alergi"],
+    petakan(h) {
+      const out: NilaiSimrs = {};
+      if (h.identitas) isi(out, "identitas", { ruangRawat: bukanStrip(h.identitas.ruang) });
+      if (h.sosial) {
+        const g = bersih(h.sosial.GOL_DARAH).toUpperCase().replace(/\s+/g, "");
+        isi(out, "sosial", { golonganDarah: (GOLONGAN_DARAH as readonly string[]).includes(g) ? g : "" });
+      }
+      if (h.episode) isi(out, "episode", { dokter: bersih(h.episode.DPJP) });
+      if (h.alergi) isi(out, "alergi", petaAlergi(h.alergi));
+      return out;
+    },
   },
   "RM.MORSE": {
     sumber: ["morse"],

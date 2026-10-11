@@ -8,6 +8,7 @@ import { emptyRingkasanForm, RINGKASAN_JENIS } from "./ringkasan.constants";
 import { cekTtdPernyataan, emptyRm22Form, kekuranganRm22, ringkasRm22, type Rm22Data } from "./rm22.constants";
 import { cekTtdRm33, emptyRm33Form, kekuranganRm33, ringkasRm33, type Rm33Data } from "./rm33.constants";
 import { cekTtdRm41, emptyRm41Form, kekuranganRm41 } from "./rm41.constants";
+import { cekParafRm50, emptyRm50Form, kekuranganRm50, ringkasRm50, type Rm50Data } from "./rm50.constants";
 import { emptyTriaseForm, hitungKategori, TRIASE_JENIS } from "./triase.constants";
 import { KATEGORI_FORM, type KategoriForm } from "./kategori";
 import {
@@ -17,6 +18,7 @@ import {
   rm22FormSchema,
   rm33FormSchema,
   rm41FormSchema,
+  rm50FormSchema,
   triaseFormSchema,
 } from "./skema";
 
@@ -35,7 +37,7 @@ import {
 export { KATEGORI_FORM, type KategoriForm };
 
 /** "RM.MORSE" = kode sementara — diganti nomor RM resmi dari templat RS sebelum dipakai di produksi. */
-export const KODE_FORM = ["RM.04", "RM.21", "RM.01", "RM.03", "RM.22", "RM.33", "RM.41", "RM.MORSE"] as const;
+export const KODE_FORM = ["RM.04", "RM.21", "RM.01", "RM.03", "RM.22", "RM.33", "RM.41", "RM.50", "RM.MORSE"] as const;
 export type KodeForm = (typeof KODE_FORM)[number];
 
 /** EPISODE = satu isian per pendaftaran (NOPEN); KUNJUNGAN = per kunjungan ruang. */
@@ -579,6 +581,52 @@ const pulangAps: DefinisiForm<z.output<typeof rm41FormSchema>> = {
   cekPerubahan: cekTtdRm41,
 };
 
+/*
+ * RM.50: satu isian per pemberian transfusi (berulang) — baris = kantong darah
+ * (maks. 23, kapasitas dua halaman kertas). Diisi perawat/bidan IGD & rawat
+ * inap; tidak wajib per episode. Monitoring transfusi belum pernah dicatat di
+ * SIMRS (tabel transfusi SIMGOS kosong) → isi otomatis hanya ruang rawat,
+ * dokter (DPJP), golongan darah, dan riwayat alergi.
+ */
+const SIMRS_RM50: readonly BagianSimrs[] = [
+  {
+    id: "transfusi",
+    judul: "Data transfusi",
+    kolom: [
+      { path: "ruangRawat", label: "Ruang rawat", sumber: "identitas" },
+      { path: "dokter", label: "Dokter yang merawat (DPJP)", sumber: "episode" },
+    ],
+  },
+  {
+    id: "riwayat",
+    judul: "Riwayat & golongan darah",
+    kolom: [
+      { path: "alergi", label: "Riwayat alergi", sumber: "alergi" },
+      { path: "alergiKet", label: "Alergi yang disebutkan", sumber: "alergi" },
+      { path: "golonganDarah", label: "Golongan darah", sumber: "sosial" },
+    ],
+  },
+];
+
+const monitoringTransfusi: DefinisiForm<z.output<typeof rm50FormSchema>> = {
+  kode: "RM.50",
+  versi: 1,
+  judul: "Monitoring Pemberian Transfusi Darah / Produk Darah",
+  kategori: "asesmen-keperawatan",
+  cakupan: "EPISODE",
+  berulang: true,
+  sasaran: { jenis: [2, 3], jendelaJam: 72 },
+  wajibUntuk: [],
+  kertas: { ukuran: "F4", orientasi: "lanskap" },
+  simrs: SIMRS_RM50,
+  skema: rm50FormSchema,
+  kosong: () => rm50FormSchema.parse(emptyRm50Form()),
+  petaTtd: (d, f) => ({ ...d, kantong: d.kantong.map((k, i) => ({ ...k, paraf: f(k.paraf, `kantong.${i}.paraf`) })) }),
+  syaratFinal: (d) => Object.values(kekuranganRm50(d)).flat(),
+  ringkasIsian: (data) => ringkasRm50(data && typeof data === "object" ? (data as Partial<Rm50Data>) : null),
+  cekPerubahan: cekParafRm50,
+};
+
 /** Urutan = urutan tampil di katalog. */
 export const DEFINISI_FORM: readonly DefinisiForm[] = [
   triase,
@@ -588,6 +636,7 @@ export const DEFINISI_FORM: readonly DefinisiForm[] = [
   persetujuanTindakan,
   persetujuanRujukan,
   pulangAps,
+  monitoringTransfusi,
   morse,
 ];
 
