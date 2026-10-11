@@ -814,7 +814,7 @@ Formulir resmi `RM. 50 (Monitoring Pemberian Transfusi Darah - Produk Darah).pdf
 - **Alur 4 langkah:** data transfusi (+ catatan 1–4 sebagai pengingat) → riwayat & golongan darah → penerimaan kantong → monitoring per kantong. Kartu per kantong: jam sasaran tiap pengukuran dari jam mulai, saringan masukan TTV, lencana **Kedaluwarsa** (kadaluarsa < tanggal transfusi), **Suhu naik ≥ 1 °C**, **Ada reaksi / Tanpa reaksi**; kartu lengkap dapat ditutup menjadi ringkasan TTV; tambah kantong menyalin jenis & nama petugas.
 - **Paraf** (`cekParafRm50`): referensi paraf tersimpan hanya sah bila ada baris tersimpan dengan paraf & nama petugas yang sama — pakai ulang paraf petugas yang sama antar-kantong boleh; memindah paraf ke petugas lain atau mengganti nama ditolak (409).
 - **Cetak 1:1** (`Rm50Document`): selalu 2 halaman seperti kertas, kop lanskap (alamat 2 baris), kotak pilihan dicentang, 23 baris (kosong tetap tercetak); lebar cetak = area cetak F4 lanskap (314 mm) agar dicetak 100%; isi penuh (23 kantong, teks panjang) tetap muat bingkai 198 mm.
-- **Uji:** unit 402 (baru `rm50.test.ts`, pemetaan alergi & RM.50, registri); E2E `rm50-e2e.mjs`, UI `rm50-ui.mjs` (hasil di bawah); regresi RM.22/RM.33/RM.41, F1, F2, F3, F6.
+- **Uji:** unit 402 (baru `rm50.test.ts`, pemetaan alergi & RM.50, registri); E2E `rm50-e2e.mjs` 58/58, UI `rm50-ui.mjs` 40/40 (build produksi); regresi E2E RM.41 60/60, RM.33 72/72, RM.22 66/66, F1 83/83, F2 56/56, F3 103/103, F6 113/113; regresi UI RM.41 31/31, RM.33 44/44, RM.22 41/41, F2 29/29, F6 29/29; `tsc` & ESLint bersih; /security-review tanpa temuan.
 
 ### F5 — PWA + penyelesaian non-form (7 Okt 2026)
 
