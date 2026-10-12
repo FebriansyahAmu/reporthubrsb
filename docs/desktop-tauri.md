@@ -18,6 +18,8 @@ Aplikasi Windows kecil yang **hanya membuka server ReportHub** dalam jendela sen
 | Satu instance | Membuka aplikasi lagi hanya memunculkan jendela yang sudah ada. |
 | Pembaruan | Diperiksa saat aplikasi dibuka, dari server ReportHub sendiri. Paket **wajib bertanda tangan** dan diverifikasi sebelum dipasang. |
 | Keluar otomatis saat idle | Sama dengan browser (K6, `SESI_IDLE_MENIT`). |
+| Halaman pertama | `/desktop`: server mengalihkan ke **Form RM** bila peran pengguna punya akses salah satu modul Form RM, selain itu ke dasbor. Setelah masuk tanpa tujuan tertentu, aplikasi juga ke `/desktop` (browser tetap ke dasbor). |
+| Simpan kata sandi | Pengelola kata sandi WebView2 menawarkan **Simpan / Not now** setelah masuk berhasil; akun tersimpan dipilih dari daftar saat kolom Username diklik. Bisa dimatikan per PC (lihat §2.1). Isian otomatis umum (alamat, riwayat isian) tetap mati agar data pasien tidak terisi ulang. |
 
 ### Server masih HTTP (K4)
 
@@ -46,10 +48,24 @@ Alamat bawaan ditanam saat build (`REPORTHUB_URL`). Untuk menggantinya tanpa bui
 { "server": "https://reporthub.rsudboltim.go.id" }
 ```
 
-- Isinya **wajib origin saja**: `http(s)://host[:port]`, tanpa path, query, atau nama pengguna. Kunci lain ditolak.
+- Isinya **wajib origin saja**: `http(s)://host[:port]`, tanpa path, query, atau nama pengguna. Kunci selain `server` dan `simpanKataSandi` ditolak.
 - Berkas ini mengalahkan alamat bawaan. Tutup lalu buka lagi aplikasinya.
 - Isi yang salah memunculkan pesan galat yang menjelaskan formatnya, dan aplikasi tidak membuka apa pun.
 - Berkas ini bertahan saat aplikasi diperbarui maupun dicopot (pencopot hanya menghapus berkas yang dipasangnya).
+
+### 2.1 Simpan kata sandi
+
+Bawaan **aktif**: setelah masuk berhasil, aplikasi menawarkan **Save your password? → Save / Not now**. Akun yang disimpan muncul di daftar *Saved passwords* saat kolom Username diklik, jadi beberapa petugas bisa memilih akunnya masing-masing tanpa mengetik ulang.
+
+- Kata sandi disimpan **WebView2 di profil Windows pengguna** (`%LOCALAPPDATA%\id.go.boltimkab.rsud.audittrail`, terenkripsi DPAPI). Aplikasi dan server tidak pernah menyimpannya.
+- Penyimpanan ini **terpisah dari Google Password Manager / Chrome / Edge**. Di browser, form masuk ramah pengelola kata sandi: Chrome menawarkan simpan ke Google Password Manager, dan akun tersimpan dipilih dari kolom Username. Ini juga berlaku lewat HTTP; tawaran eksplisit lewat Credential Management API hanya aktif di HTTPS.
+- **PC bersama** (satu akun Windows dipakai banyak petugas): siapa pun yang duduk di PC itu bisa masuk sebagai akun tersimpan, dan jejak audit jadi tidak lagi menunjuk orang yang benar. Matikan penyimpanan:
+
+  ```json
+  { "server": "https://reporthub.rsudboltim.go.id", "simpanKataSandi": false }
+  ```
+
+  Setelah dimatikan, tawaran simpan tidak muncul lagi. Kata sandi yang **sudah** tersimpan tetap bisa dipakai sampai profil dihapus: tutup aplikasi, lalu hapus folder `%LOCALAPPDATA%\id.go.boltimkab.rsud.audittrail\EBWebView`. Ini juga mengeluarkan sesi di PC itu.
 
 ## 3. Pembaruan otomatis
 
@@ -98,6 +114,8 @@ Start-Process "$env:LOCALAPPDATA\AuditTrail RS BOLTIM\audittrail-rsboltim.exe" -
 4. Server membuat URL unduhan dari `PUBLIC_APP_ORIGIN` (atau `SIGN_PUBLIC_ORIGIN`). Alamat itu harus bisa dijangkau PC klien.
 
 **Uji:** `npm test` di `desktop/` menjalankan uji unit Rust (konfigurasi, penguncian navigasi, izin). Uji endpoint server ada di suite E2E aplikasi.
+
+**Pengaturan WebView2 di luar API Tauri:** penyimpanan kata sandi (`ICoreWebView2Settings4::SetIsPasswordAutosaveEnabled`) diatur lewat `with_webview` (crate `webview2-com`, versi sama dengan milik wry). Jendela utama dibuka di `about:blank`, pengaturan diterapkan, lalu baru diarahkan ke server, sehingga navigasi pertama sudah memakai pengaturan itu.
 
 ## 5. Endpoint server (publik, tanpa login)
 

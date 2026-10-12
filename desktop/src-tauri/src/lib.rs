@@ -105,6 +105,28 @@ fn bangun_jendela(
     pembangun.build()
 }
 
+/// Pengelola kata sandi WebView2 (tak diekspos Tauri/wry): tawarkan "Simpan kata sandi"
+/// setelah masuk dan tampilkan akun tersimpan di kolom username. Isian otomatis umum tetap
+/// mati (`general_autofill_enabled(false)`) — data pasien tak pernah diisi ulang; yang
+/// disimpan hanya pasangan username/kata sandi, di profil WebView2 pengguna Windows.
+#[cfg(windows)]
+fn atur_simpan_kata_sandi(webview: &tauri::webview::PlatformWebview, aktif: bool) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings4;
+    use windows_core::Interface;
+    // SAFETY: panggilan COM WebView2 di thread UI (closure `with_webview` dijalankan event loop).
+    let hasil = unsafe {
+        webview
+            .controller()
+            .CoreWebView2()
+            .and_then(|w| w.Settings())
+            .and_then(|s| s.cast::<ICoreWebView2Settings4>())
+            .and_then(|s| s.SetIsPasswordAutosaveEnabled(aktif))
+    };
+    if let Err(e) = hasil {
+        eprintln!("[kata sandi] gagal mengatur penyimpanan kata sandi WebView2: {e}");
+    }
+}
+
 fn fokus_jendela_utama(app: &AppHandle) {
     if let Some(jendela) = app.get_webview_window(LABEL_UTAMA) {
         let _ = jendela.unminimize();
@@ -151,7 +173,16 @@ pub fn run() {
                 pembaruan::cek_lalu_keluar(handle, server);
                 return Ok(());
             }
-            bangun_jendela(&handle, LABEL_UTAMA, WebviewUrl::External(server.url_awal()), &server, None)?;
+            // Dibuka kosong dulu: pengaturan WebView2 diterapkan sebelum navigasi pertama.
+            let kosong = WebviewUrl::External("about:blank".parse().expect("about:blank sah"));
+            let jendela = bangun_jendela(&handle, LABEL_UTAMA, kosong, &server, None)?;
+            #[cfg(windows)]
+            {
+                let aktif = server.simpan_kata_sandi();
+                jendela.with_webview(move |w| atur_simpan_kata_sandi(&w, aktif))?;
+            }
+            // Perintah jendela diproses berurutan di event loop → navigasi setelah pengaturan.
+            jendela.navigate(server.url_awal())?;
             pembaruan::periksa_latar(handle, server);
             Ok(())
         })

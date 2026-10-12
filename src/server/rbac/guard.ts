@@ -22,7 +22,7 @@ export async function requireModule(
 }
 
 /** Punya izin `action` pada SALAH SATU modul `moduleKeys`? */
-async function canAny(role: string, moduleKeys: readonly string[], action: ModuleAction): Promise<boolean> {
+export async function canAny(role: string, moduleKeys: readonly string[], action: ModuleAction): Promise<boolean> {
   for (const key of moduleKeys) if (await can(role, key, action)) return true;
   return false;
 }

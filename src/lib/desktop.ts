@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { JALUR_AWAL_DESKTOP } from "./desktop-jalur";
 
 /**
  * Aplikasi desktop (Tauri, `desktop/`) menyuntikkan `window.__AUDITTRAIL_DESKTOP__`
@@ -7,6 +8,11 @@ import { useSyncExternalStore } from "react";
  */
 export function diAplikasiDesktop(): boolean {
   return typeof window !== "undefined" && "__AUDITTRAIL_DESKTOP__" in window;
+}
+
+/** Tujuan bawaan setelah masuk bila tidak ada `callbackUrl`. */
+export function tujuanBawaanMasuk(): string {
+  return diAplikasiDesktop() ? JALUR_AWAL_DESKTOP : "/dashboard";
 }
 
 const tanpaLangganan = () => () => {};

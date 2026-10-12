@@ -12,7 +12,8 @@ export default async function LoginPage({
   searchParams: Promise<{ callbackUrl?: string | string[]; alasan?: string | string[] }>;
 }) {
   const { callbackUrl, alasan } = await searchParams;
-  const target = (typeof callbackUrl === "string" && jalurInternal(callbackUrl)) || "/dashboard";
+  // Tanpa tujuan eksplisit: browser → dasbor, aplikasi desktop → Form RM (ditentukan di klien).
+  const target = (typeof callbackUrl === "string" && jalurInternal(callbackUrl)) || null;
   const idle = alasan === "idle";
 
   return (
@@ -88,7 +89,7 @@ export default async function LoginPage({
               Selamat datang kembali
             </h2>
             <p className="mt-1 text-sm text-fg-muted">
-              Masuk untuk melanjutkan ke dasbor.
+              Masuk untuk melanjutkan pekerjaan Anda.
             </p>
           </div>
 

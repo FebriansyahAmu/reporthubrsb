@@ -14,8 +14,9 @@ use url::{Origin, Url};
 pub const NAMA_BERKAS: &str = "reporthub.json";
 /// Batas ukuran berkas konfigurasi (cegah berkas aneh dibaca utuh).
 const MAKS_BYTES: u64 = 4 * 1024;
-/// Halaman pertama setelah aplikasi dibuka.
-const JALUR_AWAL: &str = "/dashboard";
+/// Halaman pertama setelah aplikasi dibuka: pintu desktop di server, yang memilih
+/// modulnya (Form RM bila berizin, selain itu dasbor) — `JALUR_AWAL_DESKTOP` di `src/lib/desktop.ts`.
+const JALUR_AWAL: &str = "/desktop";
 /// Argumen bawaan Tauri untuk WebView2 — ditulis ulang karena `additional_browser_args`
 /// menggantikannya (bukan menambah).
 const ARGUMEN_BAWAAN_TAURI: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
@@ -24,15 +25,31 @@ const ARGUMEN_BAWAAN_TAURI: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSma
 #[serde(deny_unknown_fields)]
 struct BerkasKonfigurasi {
     server: String,
+    /// `false` untuk PC bersama (satu akun Windows dipakai banyak petugas): WebView2
+    /// tidak lagi menawarkan menyimpan kata sandi. Bawaan `true`.
+    #[serde(rename = "simpanKataSandi", default = "bawaan_simpan_kata_sandi")]
+    simpan_kata_sandi: bool,
+}
+
+fn bawaan_simpan_kata_sandi() -> bool {
+    true
 }
 
 /// Server ReportHub tujuan aplikasi; hanya origin ini yang boleh dibuka di jendela.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Server {
     asal: Url,
+    simpan_kata_sandi: bool,
 }
 
 impl Server {
+    /// Pengelola kata sandi WebView2 menawarkan "Simpan kata sandi" setelah masuk dan
+    /// menampilkan akun tersimpan di kolom username. Kata sandi disimpan WebView2 di profil
+    /// Windows pengguna (terenkripsi DPAPI), bukan oleh aplikasi ini maupun server.
+    pub fn simpan_kata_sandi(&self) -> bool {
+        self.simpan_kata_sandi
+    }
+
     /// Origin `scheme://host[:port]`, mis. untuk pesan dan argumen browser.
     pub fn asal(&self) -> String {
         self.asal.origin().ascii_serialization()
@@ -87,14 +104,18 @@ pub fn urai_alamat(mentah: &str) -> Result<Server, String> {
     if url.path() != "/" || url.query().is_some() || url.fragment().is_some() {
         return Err("Alamat server harus origin saja, mis. http://10.0.0.5:3000 (tanpa path)".into());
     }
-    Ok(Server { asal: url })
+    Ok(Server { asal: url, simpan_kata_sandi: bawaan_simpan_kata_sandi() })
 }
 
 /// Isi `reporthub.json` → server.
 pub fn urai_berkas(isi: &str) -> Result<Server, String> {
-    let berkas: BerkasKonfigurasi = serde_json::from_str(isi)
-        .map_err(|e| format!("{NAMA_BERKAS} tidak sah ({e}). Format: {{\"server\": \"http://alamat:port\"}}"))?;
-    urai_alamat(&berkas.server)
+    let berkas: BerkasKonfigurasi = serde_json::from_str(isi).map_err(|e| {
+        format!(
+            "{NAMA_BERKAS} tidak sah ({e}). Format: {{\"server\": \"http://alamat:port\"}} \
+             (opsional \"simpanKataSandi\": false)"
+        )
+    })?;
+    Ok(Server { simpan_kata_sandi: berkas.simpan_kata_sandi, ..urai_alamat(&berkas.server)? })
 }
 
 fn baca_berkas(jalur: &Path) -> Result<Option<String>, String> {
@@ -140,7 +161,7 @@ mod uji {
     fn menerima_origin_http_dan_https() {
         let s = urai_alamat("http://10.202.100.127:3000").unwrap();
         assert_eq!(s.asal(), "http://10.202.100.127:3000");
-        assert_eq!(s.url_awal().as_str(), "http://10.202.100.127:3000/dashboard");
+        assert_eq!(s.url_awal().as_str(), "http://10.202.100.127:3000/desktop");
         assert!(!s.https());
         let h = urai_alamat(" https://reporthub.rsudboltim.go.id/ ").unwrap();
         assert_eq!(h.asal(), "https://reporthub.rsudboltim.go.id");
@@ -171,6 +192,17 @@ mod uji {
         assert!(urai_berkas(r#"{"server":"http://10.0.0.5:3000","lain":1}"#).is_err());
         assert!(urai_berkas(r#"{"alamat":"http://10.0.0.5:3000"}"#).is_err());
         assert!(urai_berkas("bukan json").is_err());
+    }
+
+    #[test]
+    fn simpan_kata_sandi_bawaan_aktif_dan_bisa_dimatikan_it() {
+        assert!(urai_alamat("http://10.0.0.5:3000").unwrap().simpan_kata_sandi());
+        assert!(urai_berkas(r#"{"server":"http://10.0.0.5:3000"}"#).unwrap().simpan_kata_sandi());
+        let mati = urai_berkas(r#"{"server":"http://10.0.0.5:3000","simpanKataSandi":false}"#).unwrap();
+        assert!(!mati.simpan_kata_sandi());
+        assert_eq!(mati.asal(), "http://10.0.0.5:3000");
+        assert!(urai_berkas(r#"{"server":"http://10.0.0.5:3000","simpanKataSandi":"tidak"}"#).is_err());
+        assert!(urai_berkas(r#"{"server":"bukan-url","simpanKataSandi":false}"#).is_err());
     }
 
     #[test]

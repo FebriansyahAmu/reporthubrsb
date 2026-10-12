@@ -2,20 +2,55 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Eye, EyeOff, Lock, LogIn, User } from "lucide-react";
+import { AlertCircle, Eye, EyeOff, KeyRound, Lock, LogIn, User } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
+import { diAplikasiDesktop, tujuanBawaanMasuk } from "@/lib/desktop";
 
-export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
+type KonstruktorKredensial = new (data: { id: string; password: string }) => Credential;
+
+/**
+ * Minta pengelola kata sandi browser (mis. Google Password Manager di Chrome)
+ * menawarkan "Simpan kata sandi" secara eksplisit lewat Credential Management
+ * API. Hanya ada di Chrome/Edge pada konteks aman (HTTPS/localhost); tanpa API
+ * ini browser tetap menawarkan simpan karena form hilang setelah masuk berhasil.
+ * Aplikasi desktop: WebView2 menawarkan sendiri (diaktifkan oleh aplikasi).
+ * Kata sandi tidak pernah disimpan oleh halaman ini sendiri.
+ */
+function tawarkanSimpanKredensial(id: string, password: string): void {
+  if (diAplikasiDesktop() || !window.isSecureContext) return;
+  const Kredensial = (window as Window & { PasswordCredential?: KonstruktorKredensial }).PasswordCredential;
+  if (!Kredensial || !navigator.credentials) return;
+  try {
+    void navigator.credentials.store(new Kredensial({ id, password })).catch(() => {});
+  } catch {
+    // Browser menolak (mis. kebijakan): cukup andalkan deteksi form bawaan.
+  }
+}
+
+/**
+ * Form masuk yang ramah pengelola kata sandi: `<form>` sungguhan, `name` +
+ * `autocomplete="username"/"current-password"`, nilai dibaca dari form saat
+ * kirim (isian otomatis browser tidak selalu memicu onChange), dan form
+ * ditinggalkan hanya setelah masuk BERHASIL — browser tidak menawarkan
+ * menyimpan kata sandi yang salah.
+ */
+export function LoginForm({ callbackUrl }: { callbackUrl: string | null }) {
   const router = useRouter();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // Baca sebelum kolom dinonaktifkan (FormData melewatkan kolom disabled).
+    const data = new FormData(e.currentTarget);
+    const username = String(data.get("username") ?? "").trim();
+    const password = String(data.get("password") ?? "");
+    if (!username || !password) {
+      setError("Isi username dan kata sandi.");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -30,8 +65,9 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
         setLoading(false);
         return;
       }
+      tawarkanSimpanKredensial(username, password);
       // Cookie sesi sudah di-set server; pindah ke tujuan.
-      router.replace(callbackUrl);
+      router.replace(callbackUrl ?? tujuanBawaanMasuk());
       router.refresh();
     } catch {
       setError("Tidak dapat terhubung ke server. Periksa koneksi.");
@@ -40,7 +76,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4" noValidate>
+    <form onSubmit={onSubmit} method="post" className="space-y-4" noValidate>
       {error && (
         <div
           role="alert"
@@ -56,8 +92,6 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
         label="Username"
         type="text"
         icon={<User className="size-4" />}
-        value={username}
-        onChange={setUsername}
         placeholder="username Anda"
         autoComplete="username"
         invalid={!!error}
@@ -78,8 +112,6 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
             id="password"
             name="password"
             type={showPassword ? "text" : "password"}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
             autoComplete="current-password"
             aria-invalid={!!error}
@@ -112,6 +144,14 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
         {loading ? "Memproses…" : "Masuk"}
       </Button>
 
+      <p className="flex items-start gap-2 rounded-[var(--radius-md)] bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-fg-muted">
+        <KeyRound className="mt-0.5 size-3.5 shrink-0 text-fg-subtle" aria-hidden />
+        <span>
+          Klik kolom Username untuk memilih akun yang tersimpan. Simpan kata sandi hanya di komputer
+          yang Anda percayai.
+        </span>
+      </p>
+
       <p className="text-center text-xs text-fg-subtle">
         Bisa memakai akun aplikasi atau akun SIMGOS Anda (jika sudah diberi akses oleh admin).
       </p>
@@ -124,8 +164,6 @@ function Field({
   label,
   type,
   icon,
-  value,
-  onChange,
   placeholder,
   autoComplete,
   invalid,
@@ -135,8 +173,6 @@ function Field({
   label: string;
   type: string;
   icon: React.ReactNode;
-  value: string;
-  onChange: (v: string) => void;
   placeholder?: string;
   autoComplete?: string;
   invalid?: boolean;
@@ -155,10 +191,11 @@ function Field({
           id={id}
           name={id}
           type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           autoComplete={autoComplete}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           aria-invalid={invalid}
           disabled={disabled}
           className={cn(
