@@ -1,7 +1,7 @@
 {
   "name": "audittrail-rsboltim-desktop",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Aplikasi desktop (Tauri/WebView2) yang membuka server ReportHub — lihat docs/desktop-tauri.md",
   "type": "module",
   "scripts": {

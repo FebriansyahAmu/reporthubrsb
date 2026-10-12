@@ -1,6 +1,6 @@
 [package]
 name = "audittrail-rsboltim"
-version = "1.0.0"
+version = "1.1.0"
 description = "Jendela desktop AuditTrail RS BOLTIM — membuka server ReportHub (WebView2)"
 authors = ["UPTD RSUD Bolaang Mongondow Timur"]
 edition = "2021"

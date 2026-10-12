@@ -8,7 +8,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: reporthubrsb-app:1.0.0
+    image: reporthubrsb-app:2.0.0
     container_name: reporthubrsb-app
     restart: unless-stopped
     # Semua kredensial/secret (DATABASE_URL_SIMGOS, SIMGOS_PASSWORD_KEY,
@@ -67,7 +67,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: reporthubrsb-app:1.0.0
+    image: reporthubrsb-app:2.0.0
     container_name: reporthubrsb-migrate
     restart: "no"
     env_file:
