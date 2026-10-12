@@ -47,6 +47,12 @@ export async function berkasTerbaru(): Promise<string | null> {
   return (await bacaManifest())?.platform["windows-x86_64"]?.berkas ?? null;
 }
 
+/** Versi installer Windows x64 terbaru untuk tombol unduh di halaman masuk, atau null. */
+export async function rilisWindowsTerbaru(): Promise<{ versi: string; terbit: string } | null> {
+  const m = await bacaManifest();
+  return m?.platform["windows-x86_64"] ? { versi: m.versi, terbit: m.terbit } : null;
+}
+
 /** Ada rilis yang bisa diunduh (menampilkan menu "Unduh aplikasi desktop"). */
 export async function adaRilisDesktop(): Promise<boolean> {
   return (await berkasTerbaru()) !== null;

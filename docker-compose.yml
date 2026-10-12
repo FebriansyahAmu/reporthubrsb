@@ -13,6 +13,9 @@ services:
     restart: unless-stopped
     # Semua kredensial/secret (DATABASE_URL_SIMGOS, SIMGOS_PASSWORD_KEY,
     # DATABASE_URL_APP, AUTH_*, dll.) dibaca dari .env saat runtime.
+    # SIGN_PUBLIC_ORIGIN / PUBLIC_APP_ORIGIN = alamat yang dijangkau PC klien;
+    # URL unduhan pembaruan aplikasi desktop dibuat dari situ → WAJIB sama dengan
+    # REPORTHUB_URL yang ditanam di installer.
     env_file:
       - .env
     environment:
@@ -30,6 +33,13 @@ services:
     #   docker run --rm -v reporthubrsb-storage:/dari -v "$PWD/storage":/ke alpine cp -a /dari/. /ke/
     volumes:
       - ./storage:/app/storage
+      # Rilis aplikasi desktop (installer Windows + rilis.json) — dibangun &
+      # ditandatangani di PC Windows (`npm run rilis` di desktop/), diterbitkan
+      # ke folder host ini dengan `sh scripts/desktop/terbitkan.sh <folder-rilis>`.
+      # READ-ONLY bagi app: server hanya menyajikannya (tombol unduh di halaman
+      # masuk & menu pengguna, pembaruan otomatis); app yang dibobol pun tak bisa
+      # mengganti installer yang diunduh petugas. Lihat docs/desktop-tauri.md §4.
+      - ./storage/desktop:/app/storage/desktop:ro
     ports:
       - "127.0.0.1:3003:3000"
     healthcheck:

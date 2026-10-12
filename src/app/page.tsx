@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import { BarChart3, FileText, ShieldCheck, TimerOff } from "lucide-react";
 import { LoginForm } from "@/features/auth/LoginForm";
+import { UnduhAplikasiDesktop } from "@/features/auth/UnduhAplikasiDesktop";
 import { jalurInternal } from "@/lib/jalur";
+import { rilisWindowsTerbaru } from "@/server/modules/desktop/rilis";
 
 export const metadata: Metadata = { title: "Masuk · AuditTrail RS BOLTIM" };
 
@@ -15,6 +17,8 @@ export default async function LoginPage({
   // Tanpa tujuan eksplisit: browser → dasbor, aplikasi desktop → Form RM (ditentukan di klien).
   const target = (typeof callbackUrl === "string" && jalurInternal(callbackUrl)) || null;
   const idle = alasan === "idle";
+  // Manifest rusak/tak terbaca tidak boleh menggagalkan halaman masuk.
+  const rilis = await rilisWindowsTerbaru().catch(() => null);
 
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
@@ -104,6 +108,8 @@ export default async function LoginPage({
           )}
 
           <LoginForm callbackUrl={target} />
+
+          <UnduhAplikasiDesktop versi={rilis?.versi ?? null} />
 
           <p className="mt-8 text-center text-xs text-fg-subtle">
             Hubungi administrator bila lupa kata sandi atau butuh akun.

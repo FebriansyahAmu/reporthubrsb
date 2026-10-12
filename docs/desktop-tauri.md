@@ -35,14 +35,14 @@ Selama server belum HTTPS, aplikasi memperlakukan **hanya origin ReportHub** seb
 **Syarat PC:** Windows 10/11 64-bit dan jaringan ke server ReportHub. WebView2 sudah ada di Windows 10/11 terbaru; bila belum ada, installer memasangnya otomatis (perlu internet). **Windows 7 tidak didukung** (Tauri 2.12).
 
 1. Unduh installer:
-   - dari menu pengguna **Unduh aplikasi desktop** di ReportHub (muncul di browser Windows bila rilis sudah diterbitkan di server), atau
+   - dari tombol **Unduh aplikasi desktop** di halaman masuk ReportHub (tanpa login), atau dari menu pengguna setelah masuk. Keduanya hanya muncul di browser Windows bila rilis sudah diterbitkan di server, dan tidak muncul di dalam aplikasi desktop itu sendiri; atau
    - langsung dari `http://<server>/api/desktop/unduh/terbaru`.
 2. Jalankan installer. Pemasangan dilakukan **per pengguna Windows**, tanpa hak admin, sehingga pembaruan otomatis juga tidak butuh admin. Folder pemasangan: `%LOCALAPPDATA%\AuditTrail RS BOLTIM`.
 3. Installer belum ditandatangani sertifikat code signing, jadi Windows SmartScreen bisa memperingatkan. Pilih **More info → Run anyway** (lihat §6).
 
 ### Alamat server
 
-Alamat bawaan ditanam saat build (`REPORTHUB_URL`). Untuk menggantinya tanpa build ulang (mis. pindah ke domain HTTPS), buat berkas `reporthub.json` di folder pemasangan:
+Alamat bawaan ditanam saat build (`REPORTHUB_URL` di `.env` proyek, lihat §4). Untuk menggantinya tanpa build ulang (mis. pindah ke domain HTTPS), buat berkas `reporthub.json` di folder pemasangan:
 
 ```json
 { "server": "https://reporthub.rsudboltim.go.id" }
@@ -103,15 +103,36 @@ Start-Process "$env:LOCALAPPDATA\AuditTrail RS BOLTIM\audittrail-rsboltim.exe" -
 **Merilis versi baru:**
 
 1. Naikkan `version` di `desktop/src-tauri/tauri.conf.json` (juga `Cargo.toml` dan `package.json` agar seragam).
-2. Di folder `desktop/`:
+2. Isi alamat bawaan installer di `.env` proyek:
+   ```
+   REPORTHUB_URL="http://<alamat-server-produksi>"
+   ```
+   - Wajib origin saja dan sama dengan `PUBLIC_APP_ORIGIN`/`SIGN_PUBLIC_ORIGIN` server produksi; skrip memberi peringatan bila berbeda.
+   - Hanya kunci ini yang dibaca dari `.env`; rahasia server lain tidak ikut ke proses build.
+   - `$env:REPORTHUB_URL = "…"` di sesi PowerShell menimpa nilai `.env` untuk sekali build.
+3. Di folder `desktop/`:
    ```powershell
-   $env:REPORTHUB_URL = "http://<alamat-server-produksi>"   # alamat bawaan installer
+   npm run rilis -- --cek                              # periksa kunci & alamat saja
    npm run rilis -- --catatan "Ringkasan perubahan"
    ```
    Hasilnya ada di `desktop/rilis/<versi>/`: `audittrail-rsboltim_<versi>_x64-setup.exe` dan `rilis.json`.
-3. Salin **installer dulu, lalu `rilis.json`** ke folder `storage/desktop/` di server ReportHub (bind mount Docker `./storage` → `/app/storage`; pemilik berkas UID 1001). Aplikasi yang terpasang akan menawarkan pembaruan saat dibuka berikutnya.
-   - Server dev/uji lokal: `npm run rilis -- --pasang-ke <STORAGE_DIR>` menyalin langsung.
-4. Server membuat URL unduhan dari `PUBLIC_APP_ORIGIN` (atau `SIGN_PUBLIC_ORIGIN`). Alamat itu harus bisa dijangkau PC klien.
+4. Terbitkan ke server (Docker). Installer **tidak** ada di image app; ia disajikan dari folder host `./storage/desktop`, yang di-mount **read-only** ke container. Dengan begitu tidak perlu build ulang image, dan app yang dibobol pun tidak bisa mengganti installer.
+   ```sh
+   # dari PC Windows: salin paket rilis ke server
+   scp -r desktop/rilis/<versi> user@server:/srv/reporthubrsb/rilis-<versi>
+   # di server, folder proyek (tempat docker-compose.yml):
+   sh scripts/desktop/terbitkan.sh rilis-<versi>
+   ```
+   - Skrip memeriksa paket sebelum menyalin:
+     - versi dan nama berkas sah, tanpa path;
+     - tanda tangan ada;
+     - installer benar program Windows (header `MZ`).
+   - Lalu menyalin **installer dulu, `rilis.json` terakhir**, masing-masing atomik (berkas sementara + rename).
+   - Tidak perlu restart container: tombol **Unduh aplikasi desktop** di halaman masuk dan pembaruan otomatis langsung memakai versi baru.
+   - Installer lama dibiarkan sebagai cadangan rollback. Server hanya menyajikan berkas yang tercantum di `rilis.json`.
+   - Rollback: terbitkan ulang folder rilis versi sebelumnya. Aplikasi yang sudah terpasang **tidak** turun versi otomatis (updater hanya naik versi).
+   - Server dev/uji lokal (tanpa Docker): `npm run rilis -- --pasang-ke <STORAGE_DIR>` menyalin langsung.
+5. Server membuat URL unduhan dari `PUBLIC_APP_ORIGIN` (atau `SIGN_PUBLIC_ORIGIN`). Alamat itu harus bisa dijangkau PC klien.
 
 **Uji:** `npm test` di `desktop/` menjalankan uji unit Rust (konfigurasi, penguncian navigasi, izin). Uji endpoint server ada di suite E2E aplikasi.
 

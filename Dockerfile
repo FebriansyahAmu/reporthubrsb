@@ -54,7 +54,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 # Folder penyimpanan berkas (Paket Klaim, foto barang) — titik mount folder host
 # ./storage (docker-compose.yml); folder host itu harus dimiliki UID 1001 (nextjs).
-RUN mkdir -p /app/storage && chown nextjs:nodejs /app/storage
+# Installer aplikasi desktop (Tauri) SENGAJA tidak ada di image (desktop/ di
+# .dockerignore): dibangun & ditandatangani di PC Windows, lalu diterbitkan ke
+# ./storage/desktop di host yang di-mount READ-ONLY ke /app/storage/desktop —
+# terbitkan versi baru tanpa build ulang image, kunci tanda tangan tak pernah di server.
+RUN mkdir -p /app/storage/desktop && chown nextjs:nodejs /app/storage
 USER nextjs
 EXPOSE 3000
 # Cek sehat: server merespons < 500 (halaman login "/" balas 200 tanpa auth).

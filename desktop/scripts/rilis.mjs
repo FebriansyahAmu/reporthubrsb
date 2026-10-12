@@ -1,11 +1,14 @@
 // Bangun installer bertanda tangan + siapkan paket rilis untuk server ReportHub.
 //
-//   npm run rilis -- [--catatan "Perbaikan ..."] [--pasang-ke <STORAGE_DIR>]
+//   npm run rilis -- [--catatan "Perbaikan ..."] [--pasang-ke <STORAGE_DIR>] [--cek]
+//   (--cek: periksa kunci tanda tangan & alamat server saja, tanpa membangun)
 //
 // Kunci tanda tangan dibaca dari env TAURI_SIGNING_PRIVATE_KEY (+ _PASSWORD), atau
 // dari %USERPROFILE%\.tauri\audittrail-rsboltim.key(.password). Kunci privat TIDAK
-// pernah ditulis ke repo maupun ke folder rilis. Alamat server bawaan installer
-// diambil dari env REPORTHUB_URL (opsional; tanpa itu wajib berkas reporthub.json).
+// pernah ditulis ke repo maupun ke folder rilis. Alamat server bawaan installer =
+// REPORTHUB_URL: env sesi (mis. `$env:REPORTHUB_URL = …`) bila diisi, selain itu dari
+// `.env` proyek. Hanya kunci itu yang diambil dari `.env` — rahasia server lain tidak
+// pernah masuk ke proses build. Kosong → installer wajib berkas reporthub.json.
 //
 // Hasil: desktop/rilis/<versi>/{rilis.json, <installer>.exe}. Salin isinya ke folder
 // `storage/desktop/` server ReportHub (atau pakai --pasang-ke untuk menyalin langsung).
@@ -36,8 +39,49 @@ if (!env.TAURI_SIGNING_PRIVATE_KEY) {
   const sandi = `${kunci}.password`;
   if (!env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD && existsSync(sandi)) env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD = readFileSync(sandi, "utf8").trim();
 }
-if (env.REPORTHUB_URL) console.log(`Alamat server bawaan: ${env.REPORTHUB_URL}`);
-else console.log("REPORTHUB_URL kosong → installer butuh berkas reporthub.json di folder aplikasi.");
+/** Nilai satu kunci dari `.env` proyek (tanpa memuat kunci lain). */
+function dariDotEnv(kunci) {
+  const berkas = path.join(DESKTOP, "..", ".env");
+  if (!existsSync(berkas)) return undefined;
+  for (const baris of readFileSync(berkas, "utf8").split(/\r?\n/)) {
+    const m = new RegExp(`^\\s*${kunci}\\s*=\\s*(.*?)\\s*$`).exec(baris);
+    if (m) return m[1].replace(/^(["'])(.*)\1$/, "$2");
+  }
+  return undefined;
+}
+const nilai = (kunci) => (process.env[kunci] ?? dariDotEnv(kunci) ?? "").trim();
+
+/** Aturan yang sama dengan `konfigurasi::urai_alamat` (Rust): origin http(s) murni. */
+function originMurni(teks) {
+  let u;
+  try {
+    u = new URL(teks);
+  } catch {
+    return null;
+  }
+  const sah = (u.protocol === "http:" || u.protocol === "https:") && u.hostname && !u.username && !u.password && u.pathname === "/" && !u.search && !u.hash && !teks.includes("?") && !teks.includes("#");
+  return sah ? u.origin : null;
+}
+
+const alamat = nilai("REPORTHUB_URL");
+if (alamat) {
+  const origin = originMurni(alamat);
+  if (!origin) throw new Error(`REPORTHUB_URL tidak sah: "${alamat}" — harus origin saja, mis. http://10.0.0.5:3000 (tanpa path).`);
+  env.REPORTHUB_URL = origin;
+  console.log(`Alamat server bawaan: ${origin}${process.env.REPORTHUB_URL ? " (env sesi)" : " (.env)"}`);
+  // Pembaruan otomatis mengunduh paket dari URL yang dibuat server dari origin publiknya.
+  const publik = originMurni(nilai("PUBLIC_APP_ORIGIN") || nilai("SIGN_PUBLIC_ORIGIN"));
+  if (publik && publik !== origin) {
+    console.warn(`PERINGATAN: REPORTHUB_URL (${origin}) ≠ origin publik server (${publik}). Samakan di .env server produksi,\n  kalau tidak aplikasi terpasang gagal mengunduh pembaruan.`);
+  }
+} else {
+  delete env.REPORTHUB_URL;
+  console.log("REPORTHUB_URL kosong → installer butuh berkas reporthub.json di folder aplikasi.");
+}
+if (process.argv.includes("--cek")) {
+  console.log("Pemeriksaan selesai (--cek): kunci tanda tangan & alamat server siap; tidak membangun.");
+  process.exit(0);
+}
 
 console.log(`Membangun AuditTrail RS BOLTIM ${versi} …`);
 // Perintah tetap tanpa argumen dari luar (npx di Windows = berkas .cmd → butuh shell).

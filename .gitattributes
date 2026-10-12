@@ -1,0 +1,4 @@
+# Skrip shell dijalankan di server Linux (mis. scripts/desktop/terbitkan.sh) —
+# selalu LF, walau di-checkout di Windows (core.autocrlf=true akan memberi CRLF
+# yang membuat `sh` gagal: "$'\r': command not found").
+*.sh text eol=lf
