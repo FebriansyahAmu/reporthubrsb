@@ -12,6 +12,7 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 use crate::konfigurasi::Server;
+use crate::sertifikat;
 
 const BATAS_WAKTU: Duration = Duration::from_secs(30);
 /// Jeda sebelum memeriksa: jendela utama tampil dulu, server tidak dibebani saat PC menyala.
@@ -29,15 +30,17 @@ fn target() -> &'static str {
     }
 }
 
-async fn periksa(app: &AppHandle, server: &Server) -> Result<Option<Update>, tauri_plugin_updater::Error> {
+async fn periksa(app: &AppHandle, server: &Server) -> Result<Option<Update>, String> {
     let versi = app.package_info().version.to_string();
     let endpoint = server.endpoint_pembaruan(target(), std::env::consts::ARCH, &versi);
-    app.updater_builder()
-        .endpoints(vec![endpoint])?
-        .timeout(BATAS_WAKTU)
-        .build()?
-        .check()
-        .await
+    let mut pembangun = app.updater_builder().endpoints(vec![endpoint]).map_err(|e| e.to_string())?.timeout(BATAS_WAKTU);
+    let pin = server.pin_sertifikat().to_vec();
+    if !pin.is_empty() {
+        // Server self-signed: hanya sertifikat ber-sidik pin (pemeriksaan & unduhan paket).
+        let tls = sertifikat::konfigurasi_tls(pin)?;
+        pembangun = pembangun.configure_client(move |klien| klien.tls_backend_preconfigured(tls.clone()));
+    }
+    pembangun.build().map_err(|e| e.to_string())?.check().await.map_err(|e| e.to_string())
 }
 
 /// Minta semua halaman menyimpan draf (event yang sama dengan sebelum keluar idle).

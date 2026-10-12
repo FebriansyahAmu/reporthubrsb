@@ -1,7 +1,10 @@
 // Bangun installer bertanda tangan + siapkan paket rilis untuk server ReportHub.
 //
 //   npm run rilis -- [--catatan "Perbaikan ..."] [--pasang-ke <STORAGE_DIR>] [--cek]
-//   (--cek: periksa kunci tanda tangan & alamat server saja, tanpa membangun)
+//   (--cek: periksa kunci tanda tangan, alamat server, & pin sertifikat saja, tanpa membangun)
+//
+// Server HTTPS ber-sertifikat self-signed: isi REPORTHUB_CERT_SHA256 (sidik SHA-256
+// sertifikat server, pisah koma bila >1) di .env — ditanam ke exe sebagai pin.
 //
 // Kunci tanda tangan dibaca dari env TAURI_SIGNING_PRIVATE_KEY (+ _PASSWORD), atau
 // dari %USERPROFILE%\.tauri\audittrail-rsboltim.key(.password). Kunci privat TIDAK
@@ -14,7 +17,9 @@
 // `storage/desktop/` server ReportHub (atau pakai --pasang-ke untuk menyalin langsung).
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import net from "node:net";
 import { homedir } from "node:os";
+import tls from "node:tls";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -78,8 +83,42 @@ if (alamat) {
   delete env.REPORTHUB_URL;
   console.log("REPORTHUB_URL kosong → installer butuh berkas reporthub.json di folder aplikasi.");
 }
-if (process.argv.includes("--cek")) {
-  console.log("Pemeriksaan selesai (--cek): kunci tanda tangan & alamat server siap; tidak membangun.");
+// --- Pin sertifikat HTTPS (server self-signed) — sidik SHA-256 sertifikat server.
+/** Sidik SHA-256 sertifikat yang sedang disajikan server (tanpa memercayainya — hanya dibaca). */
+function sidikServer(origin) {
+  const u = new URL(origin);
+  return new Promise((selesai) => {
+    const s = tls.connect({ host: u.hostname, port: Number(u.port) || 443, servername: net.isIP(u.hostname) ? undefined : u.hostname, rejectUnauthorized: false, timeout: 10_000 }, () => {
+      const c = s.getPeerCertificate();
+      selesai({ sidik: c?.fingerprint256?.replace(/:/g, "").toLowerCase() ?? null, dipercaya: s.authorized, subjek: c?.subject?.CN, berlaku: c?.valid_to });
+      s.end();
+    });
+    s.on("error", (e) => selesai({ galat: e.message }));
+    s.on("timeout", () => { s.destroy(); selesai({ galat: "batas waktu" }); });
+  });
+}
+const pinMentah = nilai("REPORTHUB_CERT_SHA256");
+const pin = pinMentah.split(",").map((p) => p.replace(/[:\s]/g, "").toLowerCase()).filter(Boolean);
+if (pin.some((p) => !/^[0-9a-f]{64}$/.test(p))) throw new Error("REPORTHUB_CERT_SHA256 tidak sah — daftar sidik SHA-256 (64 digit hex) dipisah koma.");
+if (pin.length) {
+  if (!env.REPORTHUB_URL?.startsWith("https://")) throw new Error("REPORTHUB_CERT_SHA256 hanya untuk REPORTHUB_URL https://");
+  env.REPORTHUB_CERT_SHA256 = pin.join(",");
+  console.log(`Pin sertifikat: ${pin.length} sidik SHA-256`);
+} else {
+  delete env.REPORTHUB_CERT_SHA256;
+}
+if (env.REPORTHUB_URL?.startsWith("https://") && (process.argv.includes("--cek") || process.argv.includes("--sidik"))) {
+  const s = await sidikServer(env.REPORTHUB_URL);
+  if (s.galat) console.warn(`PERINGATAN: sertifikat server tak terbaca (${s.galat}).`);
+  else {
+    console.log(`Sertifikat server: CN=${s.subjek}, berlaku s.d. ${s.berlaku}, dipercaya Windows/Node: ${s.dipercaya ? "ya" : "TIDAK"}\n  SHA-256: ${s.sidik}`);
+    if (!s.dipercaya && !pin.length) console.warn("PERINGATAN: sertifikat tak dipercaya & REPORTHUB_CERT_SHA256 kosong → aplikasi tidak bisa membuka server.\n  Verifikasi sidik di atas di server, lalu isi REPORTHUB_CERT_SHA256 di .env.");
+    if (pin.length && !pin.includes(s.sidik)) console.warn("PERINGATAN: sertifikat server SAAT INI tidak cocok dengan REPORTHUB_CERT_SHA256 → aplikasi akan menolaknya.");
+    if (pin.length && pin.includes(s.sidik)) console.log("Sertifikat server cocok dengan pin.");
+  }
+}
+if (process.argv.includes("--cek") || process.argv.includes("--sidik")) {
+  console.log("Pemeriksaan selesai: kunci tanda tangan & alamat server siap; tidak membangun.");
   process.exit(0);
 }
 

@@ -10,6 +10,7 @@
 mod konfigurasi;
 mod navigasi;
 mod pembaruan;
+mod sertifikat;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -102,7 +103,91 @@ fn bangun_jendela(
         // Windows: jendela baru wajib memakai lingkungan WebView2 pembukanya (cookie sesi sama).
         pembangun = pembangun.window_features(fitur);
     }
-    pembangun.build()
+    let jendela = pembangun.build()?;
+    #[cfg(windows)]
+    if !server.pin_sertifikat().is_empty() {
+        // Jendela utama: diproses event loop SEBELUM navigasi pertama (`run`).
+        let srv = server.clone();
+        let app_pin = app.clone();
+        jendela.with_webview(move |w| pasang_pin_sertifikat(&w, &srv, app_pin))?;
+    }
+    Ok(jendela)
+}
+
+/// Sertifikat server ditolak pin: jelaskan sekali per jalannya aplikasi (jendela kosong
+/// tanpa keterangan membingungkan petugas), dengan sidik untuk IT.
+#[cfg(windows)]
+fn beri_tahu_sertifikat_ditolak(app: &AppHandle, server: &Server, sidik: Option<sertifikat::Sidik>) {
+    static SUDAH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if SUDAH.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    let hex = sidik.map(|s| s.iter().map(|b| format!("{b:02x}")).collect::<String>()).unwrap_or_else(|| "-".into());
+    app.dialog()
+        .message(format!(
+            "Sertifikat keamanan server {} tidak dikenali aplikasi, jadi koneksi dihentikan.\n\n\
+             Bila sertifikat server baru saja diganti, minta IT memperbarui pin (\"sertifikatSha256\" di \
+             reporthub.json atau rilis aplikasi baru). Bila tidak, jaringan mungkin disusupi — hubungi IT.\n\n\
+             Sidik sertifikat yang ditolak (SHA-256):\n{hex}",
+            server.asal()
+        ))
+        .title(JUDUL)
+        .kind(MessageDialogKind::Error)
+        .show(|_| {});
+}
+
+/// Sertifikat HTTPS server self-signed: WebView2 menolaknya kecuali galatnya diizinkan.
+/// Diizinkan HANYA bila permintaan ke origin server DAN sidik SHA-256 sertifikatnya
+/// tercantum di pin; selain itu permintaan dibatalkan (CANCEL). Keputusan "izinkan"
+/// di-cache WebView2 per host + sertifikat untuk sesi ini (jendela baru ikut).
+#[cfg(windows)]
+fn pasang_pin_sertifikat(webview: &tauri::webview::PlatformWebview, server: &Server, app: AppHandle) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2_14, COREWEBVIEW2_SERVER_CERTIFICATE_ERROR_ACTION_ALWAYS_ALLOW,
+        COREWEBVIEW2_SERVER_CERTIFICATE_ERROR_ACTION_CANCEL,
+    };
+    use webview2_com::{take_pwstr, ServerCertificateErrorDetectedEventHandler};
+    use windows_core::{Interface, PWSTR};
+
+    let srv = server.clone();
+    let penangan = ServerCertificateErrorDetectedEventHandler::create(Box::new(move |_, args| {
+        let Some(args) = args else { return Ok(()) };
+        let mut uri = PWSTR::null();
+        let mut pem = PWSTR::null();
+        // SAFETY: argumen event COM yang sah selama penangan berjalan; PWSTR dibebaskan take_pwstr.
+        unsafe {
+            args.RequestUri(&mut uri)?;
+            args.ServerCertificate()?.ToPemEncoding(&mut pem)?;
+        }
+        let (uri, pem) = (take_pwstr(uri), take_pwstr(pem));
+        let dari_server = Url::parse(&uri).map(|u| srv.cocok(&u)).unwrap_or(false);
+        let sidik = sertifikat::sidik_pem(&pem);
+        let cocok = sidik.is_some_and(|s| sertifikat::cocok(&s, srv.pin_sertifikat()));
+        // Tolak SECARA EKSPLISIT: diuji pada runtime WebView2 PC ini, penangan yang tidak
+        // memanggil SetAction membuat permintaan DITERUSKAN (nilai awal Action = 0 = izinkan),
+        // bukan halaman galat — jadi jangan pernah mengandalkan nilai bawaan.
+        let aksi = if dari_server && cocok {
+            COREWEBVIEW2_SERVER_CERTIFICATE_ERROR_ACTION_ALWAYS_ALLOW
+        } else {
+            eprintln!("[sertifikat] ditolak (origin server: {dari_server}, sidik cocok: {cocok}): {uri}");
+            if dari_server {
+                beri_tahu_sertifikat_ditolak(&app, &srv, sidik);
+            }
+            COREWEBVIEW2_SERVER_CERTIFICATE_ERROR_ACTION_CANCEL
+        };
+        unsafe { args.SetAction(aksi)? };
+        Ok(())
+    }));
+    // SAFETY: panggilan COM WebView2 di thread UI (closure `with_webview`).
+    let hasil = unsafe {
+        webview.controller().CoreWebView2().and_then(|w| w.cast::<ICoreWebView2_14>()).and_then(|w| {
+            let mut token = 0i64;
+            w.add_ServerCertificateErrorDetected(&penangan, &mut token)
+        })
+    };
+    if let Err(e) = hasil {
+        eprintln!("[sertifikat] gagal memasang pin sertifikat WebView2: {e}");
+    }
 }
 
 /// Pengelola kata sandi WebView2 (tak diekspos Tauri/wry): tawarkan "Simpan kata sandi"

@@ -53,6 +53,27 @@ Alamat bawaan ditanam saat build (`REPORTHUB_URL` di `.env` proyek, lihat §4). 
 - Isi yang salah memunculkan pesan galat yang menjelaskan formatnya, dan aplikasi tidak membuka apa pun.
 - Berkas ini bertahan saat aplikasi diperbarui maupun dicopot (pencopot hanya menghapus berkas yang dipasangnya).
 
+### 2.0 Sertifikat HTTPS server (pin)
+
+Server produksi `https://10.202.1.103:8444` memakai sertifikat **self-signed** (`CN=antrian.loket`, berlaku s.d. 2036) yang tidak dipercaya Windows. Browser masih bisa "lanjutkan saja", tetapi aplikasi tidak. Karena itu aplikasi **mem-pin sidik SHA-256** sertifikat tersebut: `4db33370a75c8d9566315cecc04e098695b4c3966af42011c5ae963c2d75d3d7`.
+
+- **WebView2:** galat sertifikat diizinkan hanya bila permintaan ke origin server **dan** sidiknya cocok. Selain itu permintaan dibatalkan dan muncul dialog yang menjelaskan masalahnya, berikut sidik sertifikat yang ditolak untuk IT.
+- **Pembaruan otomatis:** klien TLS hanya menerima sertifikat ber-sidik pin, dan tanda tangan jabat-tangan TLS tetap diperiksa.
+- **Sumber pin:**
+  - `REPORTHUB_CERT_SHA256` di `.env` saat build (ditanam ke exe). Pin ini berlaku hanya untuk alamat bawaan.
+  - `reporthub.json` per PC, yang menimpanya:
+    ```json
+    { "server": "https://10.202.1.103:8444", "sertifikatSha256": ["<sidik-baru>", "<sidik-lama>"] }
+    ```
+  - Daftar boleh berisi lebih dari satu sidik (masa transisi). `[]` = tanpa pin, hanya sertifikat yang dipercaya Windows.
+- **Sertifikat server diganti:**
+  1. Terbitkan dulu rilis aplikasi baru yang memuat sidik **lama dan baru** (`REPORTHUB_CERT_SHA256="<lama>,<baru>"`), atau sebar `reporthub.json` dengan keduanya.
+  2. Baru ganti sertifikat di server.
+
+  Kalau urutannya terbalik, PC yang terpasang tidak bisa terhubung dan harus diberi `reporthub.json` manual.
+- **Melihat sidik:** `npm run rilis -- --cek` membaca sertifikat server dan menyatakan cocok atau tidak dengan pin. Cocokkan juga dari server sendiri: `openssl x509 -in <cert.pem> -noout -fingerprint -sha256`.
+- **Pindah ke sertifikat dari CA yang dipercaya** (domain + CA internal / Let's Encrypt): kosongkan `REPORTHUB_CERT_SHA256`. Pin tidak diperlukan lagi.
+
 ### 2.1 Simpan kata sandi
 
 Bawaan **aktif**: setelah masuk berhasil, aplikasi menawarkan **Save your password? → Save / Not now**. Akun yang disimpan muncul di daftar *Saved passwords* saat kolom Username diklik, jadi beberapa petugas bisa memilih akunnya masing-masing tanpa mengetik ulang.

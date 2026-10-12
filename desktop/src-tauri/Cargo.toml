@@ -18,13 +18,20 @@ tauri-build = { version = "2", features = [] }
 # Tanpa fitur "devtools": inspektor tidak ikut di build rilis.
 tauri = { version = "2.12", features = [] }
 tauri-plugin-single-instance = "2"
-tauri-plugin-updater = "2.13"
+# Dikunci ke minor 2.13: `configure_client` (pin sertifikat) memakai tipe reqwest/rustls
+# milik plugin — versi minor plugin bisa mengganti reqwest (anjuran dokumentasinya).
+tauri-plugin-updater = "~2.13"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["time"] }
 url = "2"
+# Pin sertifikat HTTPS server (self-signed): sidik SHA-256 + pemeriksa rustls untuk updater.
+# rustls = crate yang sama dengan milik reqwest di plugin updater (penyedia kripto ring).
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+sha2 = "0.10"
+base64 = "0.22"
 
 # Pengaturan WebView2 yang tak diekspos Tauri (penyimpanan kata sandi) — versi = milik wry.
 [target.'cfg(windows)'.dependencies]
