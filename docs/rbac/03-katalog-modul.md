@@ -77,6 +77,7 @@ Diturunkan dari `src/components/layout/nav.ts` + folder `src/app/api/**` saat in
 | `form-rm.kelola` | Form RM | — | — | view, update | Buka koreksi / batalkan isian FINAL (Instalasi RM) |
 | `laporan` | Laporan | `/laporan` | `/api/laporan` | view, print | Pusat Laporan (katalog) |
 | `laporan.pemetaan-rl` | Laporan | — (panel di `/laporan/rl32`) | `/api/laporan/rl32/pemetaan` | view, update | Pemetaan ruang rawat inap → jenis pelayanan RL 3.2 (pengganti `master.rl32_ruangan_revisi` SIMGOS yang salah isi); perubahan tercatat di `audit_log` |
+| `audit-rme.surat-kontrol` | Audit Trail RME | `/audit-rme/surat-kontrol` | `/api/audit-rme/surat-kontrol` | view, print | Audit Surat Kontrol & SPRI BPJS vs jadwal SIMRS (read-only); terpisah dari `audit-rme`; ekspor Excel tercatat di `audit_log` (docs/audit-surat-kontrol.md) |
 | **`master.pengguna`** | **Master** | `/master/pengguna` | `/api/master/pengguna` | view, create, update, delete | **Baru** — kelola akun |
 | **`master.peran`** | **Master** | `/master/peran` | `/api/master/peran` | view, create, update, delete | **Baru** — peran & hak akses |
 

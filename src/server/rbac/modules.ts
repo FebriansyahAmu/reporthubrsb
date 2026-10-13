@@ -12,6 +12,7 @@ import {
   Activity,
   BellRing,
   Boxes,
+  CalendarCheck,
   ClipboardCheck,
   ClipboardList,
   DoorOpen,
@@ -349,6 +350,19 @@ export const MODULES: readonly AppModule[] = [
     apiPrefixes: ["/api/audit-rme"],
     actions: ["view", "print"],
     order: 85,
+  },
+  // Audit Surat Kontrol (docs/audit-surat-kontrol.md): data BPJS & jadwal pasien →
+  // izin terpisah dari `audit-rme` (least privilege). print = ekspor Excel.
+  {
+    key: "audit-rme.surat-kontrol",
+    group: "Audit Trail RME",
+    label: "Audit Surat Kontrol",
+    description: "Verifikasi Surat Kontrol & SPRI BPJS terhadap jadwal SIMRS (read-only) — lihat & ekspor Excel",
+    icon: CalendarCheck,
+    navHref: "/audit-rme/surat-kontrol",
+    apiPrefixes: ["/api/audit-rme/surat-kontrol"],
+    actions: ["view", "print"],
+    order: 86,
   },
   {
     key: "master.pengguna",

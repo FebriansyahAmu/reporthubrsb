@@ -28,6 +28,14 @@ describe("katalog modul RBAC", () => {
     expect(isValidModuleAction("laporan.pemetaan-rl", "delete")).toBe(false);
   });
 
+  it("Audit Surat Kontrol terpisah dari Audit Trail RME (least privilege)", () => {
+    expect(moduleKeyForApiPath("/api/audit-rme/surat-kontrol")).toBe("audit-rme.surat-kontrol");
+    expect(moduleKeyForApiPath("/api/audit-rme/surat-kontrol/ekspor")).toBe("audit-rme.surat-kontrol");
+    expect(moduleKeyForApiPath("/api/audit-rme/log")).toBe("audit-rme");
+    expect(isValidModuleAction("audit-rme.surat-kontrol", "print")).toBe(true);
+    expect(isValidModuleAction("audit-rme.surat-kontrol", "update")).toBe(false);
+  });
+
   it("API Form RM tetap dipetakan ke modul form-rm (kontrak)", () => {
     expect(moduleKeyForApiPath("/api/form-rm/f/RM.04/pasien")).toBe("form-rm");
     expect(moduleKeyForApiPath("/api/form-rm/isian/abc")).toBe("form-rm");

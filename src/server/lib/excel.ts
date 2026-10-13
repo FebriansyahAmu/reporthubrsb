@@ -60,11 +60,25 @@ export type BuildReportOptions<T> = {
 
 /** Susun workbook Excel rapi dari definisi kolom + baris. */
 export async function buildReportWorkbook<T>(opts: BuildReportOptions<T>): Promise<Buffer> {
-  const { columns, rows } = opts;
-  const lastCol = columns.length; // 1-indexed
+  return buildMultiSheetWorkbook(opts.generatedAt, [reportSheet(opts)]);
+}
+
+/** Bungkus opsi lembar bertipe agar beberapa lembar (tipe baris berbeda) bisa digabung. */
+export const reportSheet = <T>(opts: BuildReportOptions<T>) => opts as unknown as BuildReportOptions<unknown>;
+
+/** Workbook berisi beberapa lembar bergaya sama (urutan = urutan lembar di Excel). */
+export async function buildMultiSheetWorkbook(generatedAt: Date, sheets: BuildReportOptions<unknown>[]): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "AuditTrail RS BOLTIM";
-  wb.created = opts.generatedAt;
+  wb.created = generatedAt;
+  for (const s of sheets) addReportSheet(wb, s);
+  const buf = await wb.xlsx.writeBuffer();
+  return Buffer.from(buf);
+}
+
+function addReportSheet<T>(wb: ExcelJS.Workbook, opts: BuildReportOptions<T>): void {
+  const { columns, rows } = opts;
+  const lastCol = columns.length; // 1-indexed
 
   // Tata letak baris atas.
   let r = 1;
@@ -186,7 +200,4 @@ export async function buildReportWorkbook<T>(opts: BuildReportOptions<T>): Promi
     empty.font = { italic: true, color: { argb: "FF94A3B8" } };
     empty.alignment = { horizontal: "center" };
   }
-
-  const buf = await wb.xlsx.writeBuffer();
-  return Buffer.from(buf);
 }
