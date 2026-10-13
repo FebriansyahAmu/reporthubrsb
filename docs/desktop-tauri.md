@@ -139,11 +139,12 @@ Start-Process "$env:LOCALAPPDATA\AuditTrail RS BOLTIM\audittrail-rsboltim.exe" -
    Hasilnya ada di `desktop/rilis/<versi>/`: `audittrail-rsboltim_<versi>_x64-setup.exe` dan `rilis.json`.
 4. Terbitkan ke server (Docker). Installer **tidak** ada di image app; ia disajikan dari folder host `./storage/desktop`, yang di-mount **read-only** ke container. Dengan begitu tidak perlu build ulang image, dan app yang dibobol pun tidak bisa mengganti installer.
    ```sh
-   # dari PC Windows: salin paket rilis ke server
-   scp -r desktop/rilis/<versi> user@server:/srv/reporthubrsb/rilis-<versi>
+   # dari PC Windows: salin paket rilis ke folder home di server
+   scp -r desktop/rilis/<versi> user@server:~/rilis-<versi>
    # di server, folder proyek (tempat docker-compose.yml):
-   sh scripts/desktop/terbitkan.sh rilis-<versi>
+   sudo sh scripts/desktop/terbitkan.sh ~/rilis-<versi>
    ```
+   - Jangan `scp` langsung ke `storage/desktop` (hasilnya "Permission denied"). Folder `storage` dimiliki uid 1001 (user container), jadi skrip dijalankan dengan `sudo`. Jangan melonggarkan izin folder itu.
    - Skrip memeriksa paket sebelum menyalin:
      - versi dan nama berkas sah, tanpa path;
      - tanda tangan ada;
@@ -167,6 +168,12 @@ Start-Process "$env:LOCALAPPDATA\AuditTrail RS BOLTIM\audittrail-rsboltim.exe" -
 | `GET /api/desktop/unduh/{berkas}` | Hanya installer yang tercantum di `rilis.json`; `terbaru` = installer Windows x64. Batas 10/menit/IP. |
 
 Keduanya tidak memuat data pasien. Manifest divalidasi ketat (nama berkas tanpa path, versi `a.b.c`, tanda tangan base64), dan manifest yang rusak dianggap tidak ada.
+
+**Tautan unduhan sengaja tanpa atribut `download` (13 Okt 2026).** Server produksi memakai sertifikat self-signed. Di sana Chrome menggagalkan `<a href=… download>` dengan "Failed - Network error", dan nama berkasnya tampil "terbaru". Penyebabnya: permintaan unduhan itu tidak memakai pengecualian sertifikat yang sudah disetujui petugas di halaman peringatan.
+- Tautan biasa (navigasi) memakai pengecualian itu. Server sudah mengirim `Content-Disposition: attachment`, jadi halaman tidak berpindah.
+- Hal yang sama berlaku untuk tautan unduhan lain ke server, misalnya foto barang Inventaris. Unduhan lewat `fetch` → blob (ekspor Excel/PDF) tidak terdampak.
+- Jawaban 429 kini berteks, karena saat tautan diklik berulang jawaban itu tampil sebagai halaman.
+- Akar masalahnya tetap sertifikat yang belum dipercaya PC klien. Setelah sertifikat dipercaya, misalnya lewat CA internal, kedua cara sama-sama berfungsi.
 
 ## 6. Belum dikerjakan
 

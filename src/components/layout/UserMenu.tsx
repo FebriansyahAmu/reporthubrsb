@@ -133,10 +133,11 @@ export function UserMenu({ user, unduhDesktop = false }: { user: MenuUser | null
                 </button>
               )}
               {tawarkanDesktop && (
+                // Tanpa atribut download: gagal di HTTPS self-signed (lihat UnduhAplikasiDesktop).
+                // eslint-disable-next-line @next/next/no-html-link-for-pages -- berkas dari route API, bukan halaman
                 <a
                   role="menuitem"
                   href="/api/desktop/unduh/terbaru"
-                  download
                   onClick={() => setOpen(false)}
                   className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-fg transition-colors hover:bg-surface-2"
                 >

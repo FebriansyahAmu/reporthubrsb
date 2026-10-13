@@ -23,7 +23,11 @@ function tidakAda(): NextResponse {
 export async function GET(req: NextRequest, { params }: { params: Promise<{ berkas: string }> }) {
   const izin = laju(kunciIpKlien(req.headers));
   if (!izin.izin) {
-    return new NextResponse(null, { status: 429, headers: { ...HEADER, "Retry-After": String(izin.ulangDetik) } });
+    // Tautan unduhan = navigasi biasa → jawaban ini tampil sebagai halaman, jadi beri teks.
+    return new NextResponse("Terlalu banyak permintaan unduhan. Coba lagi sebentar lagi.", {
+      status: 429,
+      headers: { ...HEADER, "Content-Type": "text/plain; charset=utf-8", "Retry-After": String(izin.ulangDetik) },
+    });
   }
   const { berkas: diminta } = await params;
   const berkas = diminta === "terbaru" ? await berkasTerbaru() : diminta;

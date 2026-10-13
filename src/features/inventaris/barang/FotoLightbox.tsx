@@ -92,10 +92,10 @@ export function FotoLightbox({
             <AksiGelap label={zoom ? "Perkecil" : "Perbesar"} onClick={() => setZoom((z) => !z)}>
               {zoom ? <ZoomOut className="size-4.5" /> : <ZoomIn className="size-4.5" />}
             </AksiGelap>
+            {/* Tanpa atribut download (server mengirim attachment): gagal di HTTPS self-signed — lihat UnduhAplikasiDesktop. */}
             {unduhUrl && (
               <a
                 href={unduhUrl}
-                download
                 aria-label="Unduh foto asli"
                 title="Unduh foto"
                 className="inline-flex size-9 items-center justify-center rounded-full text-white/85 transition-colors hover:bg-white/12 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
