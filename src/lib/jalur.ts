@@ -10,6 +10,13 @@
  * ulang. Murni (aman di klien, server, maupun proxy).
  */
 
+/**
+ * Tujuan bawaan setelah masuk / bila tak ada tujuan eksplisit. Server yang
+ * memilih modulnya sesuai hak akses peran (lihat `app/beranda/page.tsx`) —
+ * jangan mengarahkan langsung ke modul tertentu (peran tanpa izin → /403).
+ */
+export const JALUR_BERANDA = "/beranda";
+
 const BASIS = "http://jalur.invalid";
 const KARAKTER_TERLARANG = /[\\\u0000-\u001f\u007f]/;
 

@@ -14,7 +14,7 @@ export default async function LoginPage({
   searchParams: Promise<{ callbackUrl?: string | string[]; alasan?: string | string[] }>;
 }) {
   const { callbackUrl, alasan } = await searchParams;
-  // Tanpa tujuan eksplisit: browser → dasbor, aplikasi desktop → Form RM (ditentukan di klien).
+  // Tanpa tujuan eksplisit: browser → /beranda (modul pertama yang diizinkan), aplikasi desktop → Form RM (ditentukan di klien).
   const target = (typeof callbackUrl === "string" && jalurInternal(callbackUrl)) || null;
   const idle = alasan === "idle";
   // Manifest rusak/tak terbaca tidak boleh menggagalkan halaman masuk.

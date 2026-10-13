@@ -828,7 +828,7 @@ Formulir resmi `RM. 50 (Monitoring Pemberian Transfusi Darah - Produk Darah).pdf
 
 **PWA (K3 → PWA):**
 
-- `app/manifest.ts` (nama, ikon any + maskable dari lambang daerah, warna tema, `start_url` `/dashboard`) dan ikon Apple; manifest & `sw.js` dikecualikan dari proxy auth karena browser mengambilnya tanpa cookie.
+- `app/manifest.ts` (nama, ikon any + maskable dari lambang daerah, warna tema, `start_url` `/beranda` — sejak 13 Okt 2026 modul pertama yang diizinkan peran, dulu `/dashboard`) dan ikon Apple; manifest & `sw.js` dikecualikan dari proxy auth karena browser mengambilnya tanpa cookie.
 - `public/sw.js` **tanpa Cache Storage sama sekali**: hanya navigasi yang disentuh; bila server tak terjangkau, tampil halaman "Tidak terhubung" (503, CSP ketat, tanpa data). API, aset, dan RSC tidak disentuh.
 - SW didaftarkan hanya di build produksi dan konteks aman. Di HTTP LAN browser menolaknya, jadi pemasangan penuh menunggu HTTPS (K4). Menu pengguna menampilkan **Pasang aplikasi** bila browser (Chromium) menawarkannya.
 

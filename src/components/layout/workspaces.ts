@@ -344,6 +344,17 @@ export function visibleWorkspaces(allowed: ReadonlySet<string>): Workspace[] {
   );
 }
 
+/**
+ * Halaman pertama yang boleh dibuka: item pertama dari workspace kerja pertama
+ * (urutan menu), lalu area admin (Master) bila hanya itu yang diizinkan.
+ * null = peran belum diberi akses modul apa pun.
+ */
+export function halamanAwal(allowed: ReadonlySet<string>): string | null {
+  const ws = visibleWorkspaces(allowed);
+  const kerja = ws.find((w) => !w.admin) ?? ws[0];
+  return kerja?.items[0]?.href ?? null;
+}
+
 /** Cari kunci workspace pemilik sebuah rute (prefix item terpanjang menang). */
 export function workspaceKeyForPath(pathname: string): string | null {
   let best: { key: string; len: number } | null = null;

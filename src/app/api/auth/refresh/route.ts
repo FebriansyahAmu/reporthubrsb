@@ -8,7 +8,7 @@ import {
 } from "@/server/auth/cookies";
 import { fail } from "@/server/lib/http";
 import { AppError, UnauthorizedError } from "@/server/lib/errors";
-import { jalurInternal } from "@/lib/jalur";
+import { JALUR_BERANDA, jalurInternal } from "@/lib/jalur";
 
 export const runtime = "nodejs";
 
@@ -37,7 +37,7 @@ async function rotasiLaluAlihkan(req: NextRequest, tujuan: string): Promise<Next
     // Lapis kedua: tujuan yang sudah di-resolve wajib tetap di origin ini.
     const asal = new URL(req.url);
     const ke = new URL(tujuan, asal);
-    const res = NextResponse.redirect(ke.origin === asal.origin ? ke : new URL("/dashboard", asal), 307);
+    const res = NextResponse.redirect(ke.origin === asal.origin ? ke : new URL(JALUR_BERANDA, asal), 307);
     setAuthCookies(res, { access: issued.access, refresh: issued.refresh }, isSecureRequest(req));
     return res;
   } catch (err) {
@@ -59,7 +59,7 @@ async function rotasiLaluAlihkan(req: NextRequest, tujuan: string): Promise<Next
 
 /** GET: navigasi halaman / fetch GET yang dialihkan proxy. */
 export async function GET(req: NextRequest) {
-  return rotasiLaluAlihkan(req, callbackDari(req) ?? "/dashboard");
+  return rotasiLaluAlihkan(req, callbackDari(req) ?? JALUR_BERANDA);
 }
 
 /**

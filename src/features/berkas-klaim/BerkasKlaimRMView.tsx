@@ -1,16 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
 import {
   ArrowRight,
   Clock,
   DoorOpen,
+  Filter,
   FolderCheck,
+  History,
   Hospital,
   RefreshCw,
+  RotateCcw,
   Search,
+  X,
 } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -33,11 +37,23 @@ import type {
   KategoriKunjungan,
 } from "@/server/modules/berkas-klaim/berkas-klaim.types";
 import type { RuanganOption } from "@/server/modules/kunjungan/kunjungan.types";
+import {
+  CARI_MAKS,
+  COOKIE_FILTER_RM,
+  filterAktif,
+  filterBawaan,
+  keQueryRm,
+  PATH_FILTER_RM,
+  UMUR_FILTER_RM_DETIK,
+  type FilterAktif,
+  type FilterRm,
+  type KategoriFilter,
+} from "./filter-rm";
 
 const KATEGORI: KategoriKunjungan[] = ["Rawat Inap", "Rawat Jalan Klinik", "IGD"];
 const PAGE_SIZE = 12;
-
-type KategoriFilter = "Semua" | KategoriKunjungan;
+/** Sorotan kolom filter yang berbeda dari bawaan. */
+const SOROT = "rounded-[var(--radius-md)] ring-2 ring-brand/40 ring-offset-2 ring-offset-surface";
 
 const KATEGORI_TONE: Record<KategoriKunjungan, "brand" | "accent" | "warning"> = {
   "Rawat Inap": "brand",
@@ -70,21 +86,51 @@ async function fetchBerkas(args: {
 
 export function BerkasKlaimRMView({
   ruanganOptions,
-  nowIso,
+  hariIni,
+  awal,
+  dipulihkan,
 }: {
   ruanganOptions: RuanganOption[];
-  nowIso: string;
+  /** Hari ini WITA `YYYY-MM-DD` (dari server). */
+  hariIni: string;
+  /** Filter awal: dari URL, atau dipulihkan dari cookie sesi (lihat filter-rm.ts). */
+  awal: FilterRm;
+  /** True bila `awal` dipulihkan dari filter terakhir (URL tanpa parameter). */
+  dipulihkan: boolean;
 }) {
-  const today = useMemo(() => toLocalDateInput(new Date(nowIso)), [nowIso]);
-  const weekAgo = useMemo(() => toLocalDateInput(addDays(new Date(nowIso), -6)), [nowIso]);
+  const today = hariIni;
 
-  const [from, setFrom] = useState(weekAgo);
-  const [to, setTo] = useState(today);
-  const [ruanganId, setRuanganId] = useState("");
-  const [kategori, setKategori] = useState<KategoriFilter>("Semua");
-  const [searchInput, setSearchInput] = useState("");
-  const [page, setPage] = useState(1);
+  const [from, setFrom] = useState(awal.from);
+  const [to, setTo] = useState(awal.to);
+  const [ruanganId, setRuanganId] = useState(awal.ruangan);
+  const [kategori, setKategori] = useState<KategoriFilter>(awal.kategori);
+  const [searchInput, setSearchInput] = useState(awal.q);
+  const [page, setPage] = useState(awal.page);
   const search = useDebounce(searchInput, 350);
+
+  // Simpan filter ke URL (Back browser memulihkannya) + cookie sesi (tautan
+  // "Kembali ke daftar" / menu samping memulihkannya lewat server).
+  const filterSaatIni = useMemo<FilterRm>(
+    () => ({ from, to, ruangan: ruanganId, kategori, q: search, page }),
+    [from, to, ruanganId, kategori, search, page],
+  );
+  useEffect(() => {
+    const qs = keQueryRm(filterSaatIni);
+    if (window.location.search !== `?${qs}`) window.history.replaceState(null, "", `?${qs}`);
+    const aman = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${COOKIE_FILTER_RM}=${encodeURIComponent(qs)}; Path=${PATH_FILTER_RM}; Max-Age=${UMUR_FILTER_RM_DETIK}; SameSite=Strict${aman}`;
+  }, [filterSaatIni]);
+
+  const aktif = filterAktif({ ...filterSaatIni, q: searchInput }, hariIni);
+  const sorot = (k: FilterAktif) => aktif.includes(k);
+  function aturUlang() {
+    const b = filterBawaan(hariIni);
+    setFrom(b.from);
+    setTo(b.to);
+    setRuanganId("");
+    setKategori("Semua");
+    setSearchInput("");
+  }
 
   const toExclusive = useMemo(
     () => toLocalDateInput(addDays(new Date(`${to}T00:00:00`), 1)),
@@ -166,36 +212,45 @@ export function BerkasKlaimRMView({
         <StatCard label="IGD" value={counts?.IGD ?? 0} icon={Clock} tone="neutral" loading={loading} />
       </div>
 
-      {/* Filter */}
-      <Card className="p-4">
+      {/* Filter — kolom yang berbeda dari bawaan disorot */}
+      <Card className={cn("p-4 transition-colors", aktif.length > 0 && "border-brand/40")}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
-            <Label htmlFor="from">Dari tanggal</Label>
-            <DatePicker id="from" value={from} max={to} onChange={setFrom} clearable={false} />
+            <LabelFilter htmlFor="from" aktif={sorot("tanggal")}>Dari tanggal</LabelFilter>
+            <div className={cn(sorot("tanggal") && SOROT)}>
+              <DatePicker id="from" value={from} max={to} onChange={setFrom} clearable={false} />
+            </div>
           </div>
           <div>
-            <Label htmlFor="to">Sampai tanggal</Label>
-            <DatePicker id="to" value={to} min={from} max={today} onChange={setTo} clearable={false} />
+            <LabelFilter htmlFor="to" aktif={sorot("tanggal")}>Sampai tanggal</LabelFilter>
+            <div className={cn(sorot("tanggal") && SOROT)}>
+              <DatePicker id="to" value={to} min={from} max={today} onChange={setTo} clearable={false} />
+            </div>
           </div>
           <div>
-            <Label htmlFor="cari">Cari</Label>
-            <InputWithIcon
-              id="cari"
-              icon={<Search className="size-4" />}
-              placeholder="Nama / No. RM / ruang"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-            />
+            <LabelFilter htmlFor="cari" aktif={sorot("q")}>Cari</LabelFilter>
+            <div className={cn(sorot("q") && SOROT)}>
+              <InputWithIcon
+                id="cari"
+                icon={<Search className="size-4" />}
+                placeholder="Nama / No. RM / ruang"
+                value={searchInput}
+                maxLength={CARI_MAKS}
+                onChange={(e) => setSearchInput(e.target.value)}
+              />
+            </div>
           </div>
           <div className="lg:col-span-3">
-            <Label htmlFor="ruangan">Ruangan</Label>
-            <Select
-              id="ruangan"
-              value={ruanganId}
-              onChange={setRuanganId}
-              options={ruanganGroups}
-              placeholder="Semua ruangan"
-            />
+            <LabelFilter htmlFor="ruangan" aktif={sorot("ruangan")}>Ruangan</LabelFilter>
+            <div className={cn(sorot("ruangan") && SOROT)}>
+              <Select
+                id="ruangan"
+                value={ruanganId}
+                onChange={setRuanganId}
+                options={ruanganGroups}
+                placeholder="Semua ruangan"
+              />
+            </div>
           </div>
         </div>
 
@@ -233,6 +288,39 @@ export function BerkasKlaimRMView({
             );
           })}
         </div>
+
+        {/* Ringkasan filter aktif (tetap tersimpan saat bolak-balik ke detail pasien) */}
+        {aktif.length > 0 && (
+          <div
+            role="region"
+            aria-label="Filter aktif"
+            className="mt-3 flex flex-wrap items-center gap-2 rounded-[var(--radius-md)] border border-brand/25 bg-brand-soft/60 px-3 py-2"
+          >
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-soft-fg">
+              <Filter className="size-3.5" aria-hidden /> Filter aktif
+            </span>
+            {sorot("tanggal") && (
+              <ChipFilter label={`${formatDate(from)} – ${formatDate(to)}`} onHapus={() => { const b = filterBawaan(hariIni); setFrom(b.from); setTo(b.to); }} hapusLabel="Kembalikan rentang 7 hari terakhir" />
+            )}
+            {sorot("kategori") && <ChipFilter label={kategori} onHapus={() => setKategori("Semua")} hapusLabel="Hapus filter jenis" />}
+            {sorot("ruangan") && (
+              <ChipFilter label={ruanganOptions.find((r) => r.id === ruanganId)?.nama ?? `Ruangan ${ruanganId}`} onHapus={() => setRuanganId("")} hapusLabel="Hapus filter ruangan" />
+            )}
+            {sorot("q") && <ChipFilter label={`“${searchInput.trim()}”`} onHapus={() => setSearchInput("")} hapusLabel="Hapus pencarian" />}
+            {dipulihkan && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-fg-muted">
+                <History className="size-3.5" aria-hidden /> dipulihkan dari pencarian terakhir
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={aturUlang}
+              className="ml-auto inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-2 py-1 text-xs font-medium text-brand hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+            >
+              <RotateCcw className="size-3.5" aria-hidden /> Atur ulang filter
+            </button>
+          </div>
+        )}
       </Card>
 
       {/* Daftar kartu */}
@@ -325,6 +413,40 @@ function BerkasCard({ item }: { item: BerkasKlaimItem }) {
         <ArrowRight className="size-4" />
       </Link>
     </motion.div>
+  );
+}
+
+/** Label kolom filter; titik brand menandai filter yang sedang dipakai. */
+function LabelFilter({ htmlFor, aktif, children }: { htmlFor: string; aktif: boolean; children: React.ReactNode }) {
+  return (
+    <Label htmlFor={htmlFor} className={cn(aktif && "text-brand-soft-fg")}>
+      <span className="inline-flex items-center gap-1.5">
+        {children}
+        {aktif && (
+          <>
+            <span className="size-1.5 rounded-full bg-brand" aria-hidden />
+            <span className="sr-only">(filter aktif)</span>
+          </>
+        )}
+      </span>
+    </Label>
+  );
+}
+
+function ChipFilter({ label, onHapus, hapusLabel }: { label: string; onHapus: () => void; hapusLabel: string }) {
+  return (
+    <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-brand/40 bg-surface py-0.5 pr-1 pl-2.5 text-xs font-medium text-fg">
+      <span className="truncate">{label}</span>
+      <button
+        type="button"
+        onClick={onHapus}
+        aria-label={hapusLabel}
+        title={hapusLabel}
+        className="rounded-full p-0.5 text-fg-subtle hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+      >
+        <X className="size-3" />
+      </button>
+    </span>
   );
 }
 

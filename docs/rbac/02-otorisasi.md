@@ -206,11 +206,25 @@ export const POST = withPermission("master.pengguna", "create", async (req, _ctx
 
 ## 6. Peran `proxy.ts` (tak berubah banyak)
 
-`proxy.ts` **tetap** hanya authn. Tidak menambah cek DB di edge. Satu-satunya
-penyesuaian opsional: setelah login, arahkan ke **home yang boleh diakses user**
-alih-alih `DEFAULT_HOME` tetap. Karena proxy tak tahu izin, penentuan "home efektif"
-lebih tepat dilakukan di **Server Component** halaman landing (mis. `/` pasca-login
-redirect → halaman pertama yang diizinkan). Ini penyempurnaan UX, bukan keamanan.
+`proxy.ts` **tetap** hanya authn. Tidak menambah cek DB di edge.
+
+**Halaman pertama setelah login (diterapkan 13 Okt 2026).** Semua tujuan bawaan menunjuk ke `JALUR_BERANDA` = **`/beranda`** (`src/lib/jalur.ts`):
+- `DEFAULT_HOME` proxy;
+- fallback `/api/auth/refresh`;
+- form login tanpa `callbackUrl`;
+- `start_url` PWA;
+- `/desktop` bagi peran tanpa Form RM.
+
+Server Component `src/app/beranda/page.tsx` me-resolve izin peran, lalu mengalihkan ke `halamanAwal(allowed)` (`src/components/layout/workspaces.ts`):
+- item pertama workspace kerja pertama sesuai urutan menu (`anyOf` ikut dihitung);
+- Master hanya bila itu satu-satunya akses;
+- tanpa modul → `/403`.
+
+Akibatnya peran tanpa izin Dasbor tidak lagi mendarat di "Akses ditolak".
+
+Halaman `/403` kini menautkan ke modul yang diizinkan. Tautan lama ke `/` memutar `/` → dasbor → `/403`. Bila peran tak punya modul apa pun, halaman menjelaskan bahwa akses belum diatur.
+
+Ini penyempurnaan UX, bukan keamanan; penegakan tetap di guard halaman/API.
 
 ---
 

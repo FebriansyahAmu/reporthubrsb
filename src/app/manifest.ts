@@ -14,7 +14,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Pelaporan, formulir rekam medis, dan cetak RSUD Bolaang Mongondow Timur.",
     lang: "id",
     dir: "ltr",
-    start_url: "/dashboard",
+    // Beranda memilih modul pertama yang diizinkan peran (bukan dasbor untuk semua).
+    start_url: "/beranda",
     scope: "/",
     display: "standalone",
     orientation: "any",

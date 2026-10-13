@@ -4,9 +4,11 @@ import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/server/auth/cookie-names";
 import { buatPembatasLaju, kunciIpKlien } from "@/server/lib/rate-limit";
 import { HEADER_PUBLIK, buatNonce, cspPublik } from "@/server/lib/security-headers";
 import { RUTE_PUBLIK_RUANG } from "@/server/modules/inventaris/publik.schema";
+import { JALUR_BERANDA } from "@/lib/jalur";
 
 const LOGIN_PATH = "/";
-const DEFAULT_HOME = "/dashboard";
+/** Beranda memilih modul pertama yang diizinkan peran (proxy tak mengakses DB). */
+const DEFAULT_HOME = JALUR_BERANDA;
 
 /**
  * Rute publik (tanpa login): halaman TTD jarak jauh yang dibuka pasien/keluarga
