@@ -183,7 +183,7 @@ flowchart LR
 
 ### 6.2. Alur pasien lebih dulu (dipertahankan)
 
-Daftar pasien → profil episode → semua form yang relevan untuk episode itu, dikelompokkan per kategori beserta statusnya. Kedua alur membuka halaman isian yang sama.
+Daftar pasien → profil episode → semua form yang relevan untuk episode itu, dikelompokkan per kategori beserta statusnya. Kartu form berwarna menurut status: kuning = draf belum final, hijau = final, putih = belum diisi (lihat §16 "Profil pasien"). Kedua alur membuka halaman isian yang sama.
 
 ### 6.3. Siklus hidup isian
 
@@ -968,6 +968,48 @@ Formulir resmi `RM. 50 (Monitoring Pemberian Transfusi Darah - Produk Darah).pdf
 - Tinjauan keamanan atas diff F6: tanpa temuan; satu catatan integritas data (isian versi lama terlewati saat menautkan) diperbaiki.
 
 **Catatan penerapan:** jalankan `migrate-form-rm.mjs` di produksi sebelum memakai versi ini; server dev yang sedang berjalan perlu di-restart setelah `db:app:generate` (klien Prisma lama tersimpan di proses).
+
+### Profil pasien — tata letak & warna status (14 Okt 2026)
+
+**Permintaan:** halaman `/form-rm/pasien/[nopen]` dirapikan (rapi, solid, responsif). Kartu form kuning selama isian belum difinalkan, hijau setelah final.
+
+**Tata letak:**
+- **Sampul episode:** identitas pasien (No. RM, NOPEN, jenis kelamin & umur, ruang, waktu masuk) dan **pita kelengkapan form wajib** dalam satu kartu.
+  - Pita berisi satu segmen per form wajib, berwarna menurut status, dengan kode form di bawahnya.
+  - Segmen menaut ke kartunya (`#form-<kode>`); kartu tujuan diberi cincin `:target`.
+  - Legenda mencantumkan jumlah Final / Draf / Belum diisi.
+- **Kategori:** judul dengan ikon kategori, garis, dan jumlah form.
+- **Grid seragam:** 1 / 2 / 3 kolom menurut lebar **konten** (container query `@xl` / `@5xl`), bukan lebar layar, sehingga sidebar tidak memengaruhi jumlah kolom.
+  - Kartu form berulang ikut satu kolom (dulu selebar dua kolom).
+  - Kartu tidak diregangkan setinggi tetangganya.
+  - Di tampilan multi-kolom judul disediakan dua baris, sehingga kartu form tunggal sama tinggi dan tombolnya sejajar.
+- **Ponsel:** judul boleh dua baris (tidak lagi terpotong) dan chip tidak pecah baris.
+
+**Status kartu:**
+- Kartu memakai `KOSONG` / `DRAF` / `FINAL` (`statusPasien`); form berulang memakai `statusBerulang`: ada draf → DRAF, ada isian dan semuanya final → FINAL, BATAL diabaikan.
+- Warna tidak pernah berdiri sendiri: selalu ada chip ikon + teks ("Belum diisi" / "Draf, belum final" / "Final"; untuk form berulang "N draf, belum final" / "Semua final"), waktu "Diperbarui", dan teks status untuk pembaca layar di pita.
+
+**Tombol mengikuti kebutuhan tindakan:**
+- Tombol utama (biru) hanya untuk yang perlu dikerjakan: "Lanjutkan isian" (draf) dan "Isi form" (form **wajib** yang belum diisi).
+- Tombol bergaris untuk sisanya: "Lihat isian" (final), "Isi form" untuk form tidak wajib, dan "Tambah isian (… lain)".
+- Pengguna tanpa izin buat melihat "Anda hanya dapat melihat form ini." di kartu kosong.
+
+**Kode:**
+- `src/features/form-rm/KartuFormPasien.tsx` (kartu + `NADA_STATUS`), `PitaKelengkapan.tsx`, `profil.ts` (murni, teruji).
+- `BukaIsianButton` mendapat prop `ikon`; bawaannya tidak berubah untuk pemakai lain.
+- `loading.tsx` mengikuti tata letak baru.
+- Tidak ada perubahan query, API, atau skema; SIMGOS tidak tersentuh.
+
+**Hasil uji:**
+- Unit 442/442 (baru: `profil.test.ts`); tsc & eslint bersih.
+- UI Chrome 15/15 di dev dan build produksi (`scratchpad/profil-ui.mjs`):
+  - warna dan chip semua kartu, aturan tombol per status/wajib (termasuk form wajib kosong), baris form berulang;
+  - pita (warna segmen, hitungan, sr-only), lompat ke kartu `:target`, tinggi kartu sejajar;
+  - desktop / tablet / ponsel tanpa luapan dan judul tidak terpotong;
+  - peran lihat-saja;
+  - alur nyata "Isi form" → kembali → kartu kuning;
+  - tanpa galat JS;
+  - data uji (isian, audit, peran) dibersihkan terarah sampai nol.
 
 ## 17. Sumber
 

@@ -20,6 +20,7 @@ export function BukaIsianButton({
   className = "mt-4",
   label = "Isi Form",
   varian = "utama",
+  ikon = varian === "utama" ? "isi" : "tambah",
 }: {
   kode: KodeForm;
   nopen: string;
@@ -27,6 +28,8 @@ export function BukaIsianButton({
   label?: string;
   /** "kedua" = tombol bergaris (mis. tambah isian baru di samping tautan isian yang ada). */
   varian?: "utama" | "kedua";
+  /** Ikon depan: "isi" (mulai mengisi) atau "tambah" (isian baru form berulang). */
+  ikon?: "isi" | "tambah";
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -58,7 +61,7 @@ export function BukaIsianButton({
     >
       {sibuk ? (
         <Loader2 className="size-4 animate-spin" />
-      ) : varian === "utama" ? (
+      ) : ikon === "isi" ? (
         <FileSignature className="size-4" />
       ) : (
         <Plus className="size-4" />

@@ -1,31 +1,29 @@
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, CheckCircle2, DoorOpen, FileWarning } from "lucide-react";
-import { PageHeader } from "@/components/layout/PageHeader";
+import { ArrowLeft, FileWarning } from "lucide-react";
 import { FadeIn } from "@/components/motion/Motion";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { cn } from "@/lib/cn";
 import { formatDateTime } from "@/lib/format";
+import { KartuForm, KartuFormBerulang } from "@/features/form-rm/KartuFormPasien";
+import { PitaKelengkapan } from "@/features/form-rm/PitaKelengkapan";
 import { DAFTAR_KATEGORI, KATEGORI_FORM, MODUL_AKSES_FORM_RM } from "@/features/form-rm/kategori";
 import { kelengkapanDari } from "@/features/form-rm/kelengkapan";
-import { LABEL_JENIS_KUNJUNGAN, type DefinisiForm } from "@/features/form-rm/registry";
-import { TAMPILAN_FORM } from "@/features/form-rm/tampilan";
-import { BukaIsianButton } from "@/features/form-rm/isian/BukaIsianButton";
-import { StatusIsianBadge } from "@/features/form-rm/isian/StatusIsianBadge";
+import { LABEL_JENIS_KUNJUNGAN } from "@/features/form-rm/registry";
 import { requireAnyModule } from "@/server/rbac/guard";
 import { formBoleh, hakFormRm } from "@/server/modules/form-rm/form-rm.akses";
 import { jenisEpisode } from "@/server/modules/form-rm/form-rm.pasien";
 import { getFormRmHeader } from "@/server/modules/form-rm/form-rm.service";
 import { nopenSchema } from "@/server/modules/form-rm/isian.schema";
 import { isianAktifPerNopen, isianBerulangPerNopen } from "@/server/modules/form-rm/isian.cari";
-import type { IsianBerulang, RingkasIsian } from "@/server/modules/form-rm/isian.types";
 
 export const metadata = { title: "Formulir Pasien · Form RM · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
 
 /**
  * Alur pasien lebih dulu (PRD §6.2): semua form yang boleh dilihat untuk satu
- * episode, dikelompokkan per kategori, beserta status dan tanda wajib.
+ * episode, dikelompokkan per kategori, beserta status dan tanda wajib. Kartu
+ * berwarna menurut status (kuning = draf belum final, hijau = final); grid
+ * mengikuti lebar konten (container query), bukan lebar layar.
  */
 export default async function ProfilPasienFormRm({ params }: { params: Promise<{ nopen: string }> }) {
   const user = await requireAnyModule(MODUL_AKSES_FORM_RM);
@@ -63,241 +61,86 @@ export default async function ProfilPasienFormRm({ params }: { params: Promise<{
   );
 
   return (
-    <FadeIn className="space-y-6">
+    <FadeIn className="@container space-y-6">
       <BackLink />
 
-      <PageHeader title={header.nama} description={`No. RM ${header.norm} · NOPEN ${header.nopen}`} />
-
-      <Card className="p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4 text-sm">
-          <div className="space-y-1.5">
+      {/* Sampul "map rekam medis": identitas episode + pita kelengkapan form wajib. */}
+      <Card className="p-5 sm:p-6">
+        <div className="flex flex-col gap-5 @4xl:flex-row @4xl:items-start @4xl:justify-between">
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               {[...jenis].sort((x, y) => x - y).map((j) => (
                 <Badge key={j} tone={j === 2 ? "warning" : j === 3 ? "brand" : "neutral"}>
                   {LABEL_JENIS_KUNJUNGAN[j]}
                 </Badge>
               ))}
-              <span className="text-fg-muted">
-                {header.jenisKelamin}
-                {header.umur ? ` · ${header.umur}` : ""}
-              </span>
             </div>
-            <div className="flex items-center gap-2 text-fg">
-              <DoorOpen className="size-4 text-fg-subtle" />
-              {header.ruang}
-            </div>
-            {/* header.masuk = jam dinding SIMGOS di field UTC → buang "Z" agar tak digeser zona waktu. */}
-            <div className="text-fg">Masuk {formatDateTime(header.masuk.slice(0, 19))}</div>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-balance text-fg">{header.nama}</h1>
+            <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm @xl:flex @xl:flex-wrap">
+              <DataPasien label="No. RM" nilai={header.norm} />
+              <DataPasien label="NOPEN" nilai={header.nopen} />
+              <DataPasien label="Pasien" nilai={header.umur ? `${header.jenisKelamin}, ${header.umur}` : header.jenisKelamin} />
+              <DataPasien label="Ruang" nilai={header.ruang} />
+              {/* header.masuk = jam dinding SIMGOS di field UTC → buang "Z" agar tak digeser zona waktu. */}
+              <DataPasien label="Masuk" nilai={formatDateTime(header.masuk.slice(0, 19))} />
+            </dl>
           </div>
-          <RingkasKelengkapan lengkap={k.lengkap} final={k.final} total={k.total} />
+          <PitaKelengkapan formulir={k.formulir.filter((f) => f.wajib)} />
         </div>
       </Card>
 
-      {kategori.map(({ kat, forms: daftar }) => (
-        <section key={kat} aria-labelledby={`kat-${kat}`}>
-          <h2 id={`kat-${kat}`} className="mb-3 text-sm font-semibold text-fg">
-            {KATEGORI_FORM[kat].label}
-          </h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-            {daftar.map((def) =>
-              def.berulang ? (
-                <FormBerulangCard
-                  key={def.kode}
-                  def={def}
-                  nopen={nopen}
-                  daftar={berulang[def.kode] ?? []}
-                  wajib={wajib.has(def.kode)}
-                  bolehBuat={hak.boleh(def.kategori, "create")}
-                />
-              ) : (
-                <FormCard
-                  key={def.kode}
-                  def={def}
-                  nopen={nopen}
-                  isian={isian[def.kode]}
-                  wajib={wajib.has(def.kode)}
-                  bolehBuat={hak.boleh(def.kategori, "create")}
-                />
-              ),
-            )}
-          </div>
-        </section>
-      ))}
+      {kategori.map(({ kat, forms: daftar }) => {
+        const KatIkon = KATEGORI_FORM[kat].ikon;
+        return (
+          <section key={kat} aria-labelledby={`kat-${kat}`} className="pt-2">
+            <div className="mb-3 flex items-center gap-2.5">
+              <KatIkon className="size-4 shrink-0 text-fg-subtle" aria-hidden />
+              <h2 id={`kat-${kat}`} className="text-sm font-semibold text-fg">
+                {KATEGORI_FORM[kat].label}
+              </h2>
+              <span className="h-px flex-1 bg-border" aria-hidden />
+              <span className="text-xs tabular-nums text-fg-subtle">{daftar.length} form</span>
+            </div>
+            <div className="grid grid-cols-1 items-start gap-3 @xl:grid-cols-2 @5xl:grid-cols-3">
+              {daftar.map((def) =>
+                def.berulang ? (
+                  <KartuFormBerulang
+                    key={def.kode}
+                    def={def}
+                    nopen={nopen}
+                    daftar={berulang[def.kode] ?? []}
+                    wajib={wajib.has(def.kode)}
+                    bolehBuat={hak.boleh(def.kategori, "create")}
+                  />
+                ) : (
+                  <KartuForm
+                    key={def.kode}
+                    def={def}
+                    nopen={nopen}
+                    isian={isian[def.kode]}
+                    wajib={wajib.has(def.kode)}
+                    bolehBuat={hak.boleh(def.kategori, "create")}
+                  />
+                ),
+              )}
+            </div>
+          </section>
+        );
+      })}
 
       <p className="text-xs text-fg-subtle">
-        Form diisi petugas dan disimpan ke AuditTrail RS BOLTIM (SIMRS tetap read-only). Isian FINAL terkunci; koreksi hanya
+        Form diisi petugas dan disimpan ke AuditTrail RS BOLTIM (SIMRS tetap read-only). Isian final terkunci; koreksi hanya
         oleh pengelola rekam medis. Form wajib ditentukan dari jenis kunjungan episode.
       </p>
     </FadeIn>
   );
 }
 
-function RingkasKelengkapan({ lengkap, final, total }: { lengkap: boolean; final: number; total: number }) {
-  if (total === 0) return <Badge tone="neutral">Tidak ada form wajib</Badge>;
-  if (lengkap) {
-    return (
-      <Badge tone="success">
-        <CheckCircle2 className="size-3.5" /> Lengkap — {total} form wajib final
-      </Badge>
-    );
-  }
+function DataPasien({ label, nilai }: { label: string; nilai: string }) {
   return (
-    <Badge tone="warning">
-      {final}/{total} form wajib final
-    </Badge>
-  );
-}
-
-function FormCard({
-  def,
-  nopen,
-  isian,
-  wajib,
-  bolehBuat,
-}: {
-  def: DefinisiForm;
-  nopen: string;
-  isian: RingkasIsian | undefined;
-  wajib: boolean;
-  bolehBuat: boolean;
-}) {
-  const t = TAMPILAN_FORM[def.kode];
-  const Icon = t.ikon;
-  const final = isian?.status === "FINAL";
-
-  return (
-    <div
-      className={cn(
-        "flex flex-col rounded-[var(--radius-lg)] border p-4 shadow-xs",
-        final ? "border-success/40 bg-success-soft" : "border-border bg-surface",
-      )}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <div
-            className={cn(
-              "flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-md)]",
-              final ? "bg-success/15 text-success" : "bg-brand-soft text-brand-soft-fg",
-            )}
-          >
-            <Icon className="size-4.5" />
-          </div>
-          <div className="min-w-0">
-            <p className="truncate font-semibold text-fg">
-              <span className="font-mono text-xs text-fg-subtle">{def.kode}</span> · {t.label}
-            </p>
-            <p className="truncate text-xs text-fg-muted">{wajib ? "Wajib untuk episode ini" : "Tidak wajib untuk episode ini"}</p>
-          </div>
-        </div>
-        {isian ? <StatusIsianBadge status={isian.status} /> : <Badge tone="neutral">Belum ada</Badge>}
-      </div>
-
-      {isian ? (
-        <Link
-          href={`/form-rm/isian/${isian.id}`}
-          className="mt-4 inline-flex min-h-10 items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-brand bg-brand px-3 py-2 text-sm font-medium text-brand-fg transition-colors hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-        >
-          {final ? "Lihat Isian" : "Lanjutkan Isian"}
-          <ArrowRight className="size-4" />
-        </Link>
-      ) : bolehBuat ? (
-        <BukaIsianButton kode={def.kode} nopen={nopen} />
-      ) : (
-        <p className="mt-4 rounded-[var(--radius-md)] border border-dashed border-border px-3 py-2 text-center text-xs text-fg-subtle">
-          Belum diisi
-        </p>
-      )}
-    </div>
-  );
-}
-
-/**
- * Form berulang (mis. RM.22 per tindakan, RM.33 per rujukan): semua isian aktif
- * pasien, masing-masing dengan pembedanya (`ringkasIsian`: tindakan/tujuan +
- * keputusan), dan tombol menambah isian baru. Selebar dua kolom agar judul tak
- * terpotong.
- */
-function FormBerulangCard({
-  def,
-  nopen,
-  daftar,
-  wajib,
-  bolehBuat,
-}: {
-  def: DefinisiForm;
-  nopen: string;
-  daftar: IsianBerulang[];
-  wajib: boolean;
-  bolehBuat: boolean;
-}) {
-  const t = TAMPILAN_FORM[def.kode];
-  const Icon = t.ikon;
-  const final = daftar.filter((x) => x.status === "FINAL").length;
-  const satuan = t.berulang?.satuan ?? "kejadian";
-
-  return (
-    <div
-      id={`form-${def.kode}`}
-      className="flex scroll-mt-24 flex-col rounded-[var(--radius-lg)] border border-border bg-surface p-4 shadow-xs sm:col-span-2"
-    >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-brand-soft text-brand-soft-fg">
-            <Icon className="size-4.5" />
-          </div>
-          <div className="min-w-0">
-            <p className="font-semibold text-fg">
-              <span className="font-mono text-xs text-fg-subtle">{def.kode}</span> · {t.label}
-            </p>
-            <p className="text-xs text-fg-muted">
-              Satu isian per {satuan} · {wajib ? "Wajib untuk episode ini" : (t.berulang?.bila ?? "Tidak wajib")}
-            </p>
-          </div>
-        </div>
-        {daftar.length > 0 ? (
-          <Badge tone={final === daftar.length ? "success" : "warning"}>
-            {final}/{daftar.length} final
-          </Badge>
-        ) : (
-          <Badge tone="neutral">Belum ada</Badge>
-        )}
-      </div>
-
-      {daftar.length > 0 && (
-        <ul className="mt-3 divide-y divide-border rounded-[var(--radius-md)] border border-border">
-          {daftar.map((x) => (
-            <li key={x.id}>
-              <Link
-                href={`/form-rm/isian/${x.id}`}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5 transition-colors hover:bg-surface-2/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-ring"
-              >
-                <span className="font-mono text-xs text-fg-subtle">#{x.urutan}</span>
-                <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">{x.judul}</span>
-                {x.lencana && <Badge tone={x.lencana.nada}>{x.lencana.label}</Badge>}
-                <StatusIsianBadge status={x.status} />
-                <span className="text-xs text-fg-subtle">{formatDateTime(x.updatedAt)}</span>
-                <ArrowRight className="size-4 text-fg-subtle" aria-hidden />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {bolehBuat ? (
-        <BukaIsianButton
-          kode={def.kode}
-          nopen={nopen}
-          label={daftar.length > 0 ? `Tambah isian (${satuan} lain)` : "Isi Form"}
-          varian={daftar.length > 0 ? "kedua" : "utama"}
-          className="mt-3 self-start"
-        />
-      ) : (
-        daftar.length === 0 && (
-          <p className="mt-4 rounded-[var(--radius-md)] border border-dashed border-border px-3 py-2 text-center text-xs text-fg-subtle">
-            Belum diisi
-          </p>
-        )
-      )}
+    <div className="min-w-0">
+      <dt className="text-xs text-fg-subtle">{label}</dt>
+      <dd className="mt-0.5 font-medium tabular-nums wrap-break-word text-fg">{nilai || "-"}</dd>
     </div>
   );
 }
