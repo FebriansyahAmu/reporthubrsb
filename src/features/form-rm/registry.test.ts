@@ -131,6 +131,19 @@ describe("registri form RM", () => {
     for (const k of d.simrs.flatMap((b) => b.kolom)) expect(SUMBER_SIMRS).toContain(k.sumber);
   });
 
+  it("kolom tertaut SIMRS terdaftar di `simrs` (punya sumber), unik, ada di isian kosong; RM.01 = Keadaan Keluar", () => {
+    for (const d of DEFINISI_FORM) {
+      const tertaut = d.tertaut ?? [];
+      const simrs = new Set(d.simrs.flatMap((b) => b.kolom.map((k) => k.path)));
+      expect(new Set(tertaut).size, d.kode).toBe(tertaut.length);
+      for (const p of tertaut) {
+        expect(simrs.has(p), `${d.kode} ${p}`).toBe(true);
+        expect(ambilPath(d.kosong(), p), `${d.kode} ${p}`).not.toBeUndefined();
+      }
+    }
+    expect(definisiForm("RM.01")!.tertaut).toEqual(["keadaanKeluar"]);
+  });
+
   it("kolom tanda tangan tak pernah diisi dari SIMRS", () => {
     for (const d of DEFINISI_FORM) {
       const slot: string[] = [];

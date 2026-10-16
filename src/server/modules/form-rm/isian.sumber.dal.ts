@@ -144,13 +144,22 @@ export async function queryEpisode(nopen: string): Promise<EpisodeRow | null> {
 
 /* ------------------------------------------------------------------ pulang */
 
-/** Cara (referensi 45) & keadaan (referensi 46) keluar episode (`layanan.pasien_pulang`). */
+/**
+ * Cara (referensi 45) & keadaan (referensi 46) keluar episode (`layanan.pasien_pulang`,
+ * satu baris aktif per NOPEN; STATUS 0 = dibatalkan). Deskripsi memakai join baku
+ * prosedur SIMGOS (`CetakMR2`, `LaporanPasienKeluar`): `master.referensi` JENIS 45/46.
+ */
 export type PulangRow = {
-  /** Cara keluar (referensi JENIS 45; 2 = pulang paksa / atas permintaan sendiri). */
+  /** Cara keluar (referensi JENIS 45): 1 diijinkan pulang, 2 pulang paksa, 3 dirujuk, 4 lari, 5 pindah RS, 6 meninggal, 7 DOA, 8 lanjut rawat inap. */
   CARA: Id;
+  /** Keadaan keluar (referensi JENIS 46): 1 sembuh, 2 membaik, 3 belum sembuh, 4 meninggal ≤ 48 jam, 5 meninggal > 48 jam, 6 DOA, 7 lanjut rawat inap. */
   KEADAAN: Id;
+  CARA_DESK: string | null;
+  KEADAAN_DESK: string | null;
   /** "YYYY-MM-DDTHH:mm" jam dinding pasien dipulangkan. */
   WAKTU: string | null;
+  /** Menit sejak pendaftaran episode sampai dipulangkan (acuan 48 jam, seperti `SensusHarianPasienKeluarMati`). */
+  MENIT_DAFTAR: number | bigint | string | null;
   /** Petugas yang mencatat kepulangan (pegawai + gelar; cadangan nama pengguna). */
   PETUGAS: string | null;
 };
@@ -158,6 +167,9 @@ export type PulangRow = {
 export async function queryPulang(nopen: string): Promise<PulangRow | null> {
   const sql = `
     SELECT ${CAP} p.CARA, p.KEADAAN, DATE_FORMAT(p.TANGGAL, '%Y-%m-%dT%H:%i') AS WAKTU,
+      (SELECT r.DESKRIPSI FROM ${M}.referensi r WHERE r.JENIS = 45 AND r.ID = p.CARA LIMIT 1) AS CARA_DESK,
+      (SELECT r.DESKRIPSI FROM ${M}.referensi r WHERE r.JENIS = 46 AND r.ID = p.KEADAAN LIMIT 1) AS KEADAAN_DESK,
+      (SELECT TIMESTAMPDIFF(MINUTE, d.TANGGAL, p.TANGGAL) FROM ${P}.pendaftaran d WHERE d.NOMOR = p.NOPEN LIMIT 1) AS MENIT_DAFTAR,
       (SELECT COALESCE(NULLIF(${PEGAWAI_NAMA}, ''), u.NAMA) FROM ${SIMGOS_DB.APLIKASI}.pengguna u
          LEFT JOIN ${M}.pegawai pg ON pg.NIP = u.NIP WHERE u.ID = p.OLEH LIMIT 1) AS PETUGAS
     FROM ${SIMGOS_DB.LAYANAN}.pasien_pulang p

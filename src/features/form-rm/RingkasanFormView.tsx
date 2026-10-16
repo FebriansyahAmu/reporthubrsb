@@ -4,6 +4,7 @@ import { Check, HeartPulse } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Input, Label } from "@/components/ui/Field";
 import { DatePicker, DateTimePicker } from "@/components/ui/DatePicker";
+import { KeadaanKeluarTertaut } from "@/features/form-rm/KeadaanKeluarTertaut";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
 import { BidangIsian } from "@/features/form-rm/isian/kunci";
@@ -16,7 +17,6 @@ import {
   IMUNISASI_OPTS,
   IZIN_KELUAR_OPTS,
   JENIS_PELAYANAN_OPTS,
-  KEADAAN_KELUAR_OPTS,
   PEKERJAAN_OPTS,
   PENDIDIKAN_OPTS,
   PERKAWINAN_OPTS,
@@ -25,7 +25,7 @@ import {
   emptyRingkasanForm,
 } from "@/features/form-rm/ringkasan.constants";
 import { cn } from "@/lib/cn";
-import type { FormRmHeader, RingkasanForm } from "@/server/modules/form-rm/form-rm.types";
+import type { BacaKeluarSimrs, FormRmHeader, RingkasanForm } from "@/server/modules/form-rm/form-rm.types";
 import type { IsianForm, IzinIsian } from "@/server/modules/form-rm/isian.types";
 
 const YT = ["Ya", "Tidak"];
@@ -42,13 +42,24 @@ export function RingkasanFormView({
   isian,
   header,
   izin,
+  keluar,
 }: {
   isian: IsianForm;
   header: FormRmHeader;
   izin: IzinIsian;
+  /** Keluar menurut SIMRS (dibaca saat halaman dibuka); null bila isian belum tertaut. */
+  keluar: BacaKeluarSimrs | null;
 }) {
   const k = useIsian(isian, izin, siapkan);
   const { form, setForm } = k;
+  // Keadaan Keluar tertaut SIMRS: DRAF = SIMRS terkini (tak terpengaruh "Muat ulang" yang mengganti state
+  // dengan data tersimpan); FINAL/BATAL = nilai yang dibekukan server.
+  const keadaanKeluar =
+    k.isian.status !== "DRAF"
+      ? String((k.isian.data as Partial<RingkasanForm> | null)?.keadaanKeluar ?? "")
+      : keluar && keluar.status !== "gagal"
+        ? (keluar.keluar?.nilaiForm ?? "")
+        : form.keadaanKeluar;
 
   const set = <K extends keyof RingkasanForm>(key: K, value: RingkasanForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -233,14 +244,7 @@ export function RingkasanFormView({
               />
             </div>
             <div>
-              <LabelAsal path="keadaanKeluar">Keadaan Keluar</LabelAsal>
-              <div className="flex flex-wrap gap-2">
-                {KEADAAN_KELUAR_OPTS.map((o) => (
-                  <Chip key={o} active={form.keadaanKeluar === o} onClick={() => set("keadaanKeluar", form.keadaanKeluar === o ? "" : o)}>
-                    {o}
-                  </Chip>
-                ))}
-              </div>
+              <KeadaanKeluarTertaut nilai={keadaanKeluar} status={k.isian.status} tertaut={k.isian.tertaut} baca={keluar} />
               <p className="mt-2 text-xs text-fg-subtle">
                 Jika pasien meninggal, aktifkan <b>Sebab Kematian</b> di bawah untuk mengisi &amp; mencetak halaman 2.
               </p>

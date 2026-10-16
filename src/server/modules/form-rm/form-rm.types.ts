@@ -319,3 +319,33 @@ export type KebutuhanEdukasiSimrs = {
   perKategori: Record<string, string[]>;
   episodeIgd: string | null;
 };
+
+/** Kode + deskripsi `master.referensi` apa adanya di SIMRS. */
+export type ReferensiSimrs = { kode: number; label: string };
+
+/**
+ * Keluar pasien menurut SIMRS (`layanan.pasien_pulang`) — dasar kolom Keadaan
+ * Keluar RM.01 yang TERTAUT (hanya baca) dan panel rujukannya.
+ */
+export type KeluarSimrs = {
+  /** Cara keluar (referensi 45). */
+  cara: ReferensiSimrs | null;
+  /** Keadaan keluar (referensi 46). */
+  keadaan: ReferensiSimrs | null;
+  /** ISO lokal "YYYY-MM-DDTHH:mm" pasien dipulangkan. */
+  waktu: string;
+  /** Pilihan Keadaan Keluar RM.01 yang sesuai ("" bila keadaan SIMRS tak punya pilihan di formulir). */
+  nilaiForm: string;
+  /** Keadaan SIMRS tanpa pilihan di RM.01 (DOA, lanjut rawat inap). */
+  tanpaPilihan: boolean;
+  /** Pasien meninggal / DOA menurut SIMRS (Sebab Kematian halaman 2 relevan). */
+  meninggal: boolean;
+  /**
+   * Label ≤ / > 48 jam SIMRS tak sesuai selisih waktu daftar → keluar (acuan
+   * `SensusHarianPasienKeluarMati`); null bila sesuai atau tak relevan.
+   */
+  selisih48: { jam: number; sesuaiWaktu: string } | null;
+};
+
+/** Hasil baca keluar SIMRS: "kosong" = belum dipulangkan di SIMRS, "gagal" = SIMRS tak terbaca. */
+export type BacaKeluarSimrs = { status: "ada" | "kosong" | "gagal"; keluar: KeluarSimrs | null };

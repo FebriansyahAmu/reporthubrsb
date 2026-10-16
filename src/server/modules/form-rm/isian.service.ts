@@ -10,7 +10,7 @@ import {
   ServiceUnavailableError,
   ValidationError,
 } from "@/server/lib/errors";
-import { ambilPath, normalkanAsal, pasangPath, samaNilai } from "@/features/form-rm/asal";
+import { ambilPath, normalkanAsal, pasangPath, samaNilai, type AsalIsian } from "@/features/form-rm/asal";
 import type { AksiForm, HakForm } from "@/features/form-rm/hak";
 import { definisiForm, type DefinisiForm } from "@/features/form-rm/registry";
 import { pangkasTeksPanjang } from "@/features/form-rm/skema";
@@ -26,7 +26,7 @@ import { getFormRmHeader } from "./form-rm.service";
 import type { FormRmHeader } from "./form-rm.types";
 import { auditIsian } from "./isian.audit";
 import { pindahkanBarisLama } from "./isian.lama";
-import { isiOtomatis } from "./isian.prefill";
+import { isiOtomatis, isiTertaut, type HasilTertaut } from "./isian.prefill";
 import { kanonik, periksaRantai, segel, type IsiSegel } from "./isian.segel";
 import type { AksiIsianInput, BuatIsianInput, SimpanIsianInput, TerapkanSimrsInput } from "./isian.schema";
 import { pisahkanTtd, rujukanTtd, sidikTtd, sisipkanTtd } from "./isian.ttd";
@@ -341,6 +341,8 @@ export async function simpanIsian(id: string, input: SimpanIsianInput, aktor: Ak
   if (row.rev !== input.rev) throw new ConflictError();
   const def = definisiDari(row);
   const sah = def.skema.parse(input.data);
+  // Kolom tertaut SIMRS hanya baca: nilai kiriman klien diabaikan, nilai tersimpan dipertahankan.
+  for (const p of def.tertaut ?? []) pasangPath(sah, p, ambilPath(row.data, p) ?? ambilPath(def.kosong(), p));
   const tolak = def.cekPerubahan?.(row.data, sah);
   if (tolak) throw new BusinessRuleError(tolak);
 
@@ -363,6 +365,34 @@ export async function simpanIsian(id: string, input: SimpanIsianInput, aktor: Ak
 
 /* ----------------------------------------------------- muat ulang SIMRS */
 
+/** Path kolom yang boleh dimuat ulang manual dari SIMRS (kolom tertaut selalu mengikuti SIMRS sendiri). */
+const bisaDimuatUlang = (def: DefinisiForm, path: string) => !def.tertaut?.includes(path);
+
+/** Tempel nilai kolom tertaut ke salinan data + asal (kolom tanpa nilai SIMRS dibuang asalnya). */
+function tempelTertaut(def: DefinisiForm, data: unknown, asalLama: AsalIsian, segar: HasilTertaut) {
+  const salinan = structuredClone(data) as Record<string, unknown>;
+  const asal: AsalIsian = { ...asalLama };
+  for (const p of def.tertaut ?? []) {
+    pasangPath(salinan, p, segar.nilai[p]);
+    if (Object.hasOwn(segar.asal, p)) asal[p] = segar.asal[p];
+    else delete asal[p];
+  }
+  return { data: salinan, asal };
+}
+
+/**
+ * Isian dengan kolom TERTAUT berisi nilai SIMRS terkini — hanya selama DRAF
+ * (FINAL/BATAL memakai nilai yang dibekukan saat difinalkan). Untuk halaman
+ * isian & cetak. SIMRS gagal dibaca → isian apa adanya (nilai tersimpan).
+ */
+export async function tertautTerkini(isian: IsianForm, header: FormRmHeader): Promise<IsianForm> {
+  const def = definisiForm(isian.kode);
+  if (!def?.tertaut?.length || isian.status !== "DRAF" || !isian.tertaut) return isian;
+  const segar = await isiTertaut(def, isian.nopen, header).catch(() => null);
+  if (!segar) return isian;
+  return { ...isian, ...tempelTertaut(def, isian.data, isian.asal, segar) };
+}
+
 /** Nilai SIMRS terkini untuk isian (identitas dibaca ulang dari SIMGOS). */
 async function isiSimrsTerkini(def: DefinisiForm, nopen: string) {
   const header = await getFormRmHeader(nopen);
@@ -383,23 +413,26 @@ export async function bandingkanSimrs(id: string, aktor: AktorForm): Promise<Ban
   await auditIsian(aktor, "banding-simrs", row);
   return {
     rev: row.rev,
-    bagian: def.simrs.map((b) => ({
-      id: b.id,
-      judul: b.judul,
-      kolom: b.kolom.map((k) => {
-        const s = Object.hasOwn(segar.asal, k.path) ? segar.asal[k.path] : undefined;
-        const sekarang = ambilPath(row.data, k.path) ?? null;
-        return {
-          path: k.path,
-          label: k.label,
-          sekarang,
-          simrs: s ? s.nilai : null,
-          sama: s ? samaNilai(sekarang, s.nilai) : false,
-          status: s ? "ada" : segar.status[k.sumber] === "gagal" ? "gagal" : "kosong",
-          episodeIgd: s?.nopen ?? null,
-        };
-      }),
-    })),
+    bagian: def.simrs
+      .map((b) => ({ ...b, kolom: b.kolom.filter((k) => bisaDimuatUlang(def, k.path)) }))
+      .filter((b) => b.kolom.length > 0)
+      .map((b) => ({
+        id: b.id,
+        judul: b.judul,
+        kolom: b.kolom.map((k) => {
+          const s = Object.hasOwn(segar.asal, k.path) ? segar.asal[k.path] : undefined;
+          const sekarang = ambilPath(row.data, k.path) ?? null;
+          return {
+            path: k.path,
+            label: k.label,
+            sekarang,
+            simrs: s ? s.nilai : null,
+            sama: s ? samaNilai(sekarang, s.nilai) : false,
+            status: s ? "ada" : segar.status[k.sumber] === "gagal" ? "gagal" : "kosong",
+            episodeIgd: s?.nopen ?? null,
+          };
+        }),
+      })),
   };
 }
 
@@ -418,7 +451,7 @@ export async function terapkanSimrs(
   jagaTertaut(row);
   if (row.rev !== input.rev) throw new ConflictError();
   const def = definisiDari(row);
-  const dikenal = new Set(def.simrs.flatMap((b) => b.kolom.map((k) => k.path)));
+  const dikenal = new Set(def.simrs.flatMap((b) => b.kolom.map((k) => k.path)).filter((p) => bisaDimuatUlang(def, p)));
   const asing = input.kolom.filter((p) => !dikenal.has(p));
   if (asing.length > 0) throw new ValidationError({ kolom: `Kolom tidak dapat diisi dari SIMRS: ${asing.slice(0, 5).join(", ")}` });
 
@@ -452,6 +485,23 @@ export async function terapkanSimrs(
 
 /* --------------------------------------------------------------- transisi */
 
+/**
+ * Nilai kolom tertaut SIMRS saat FINALKAN. SIMRS tak terbaca → 503 (fail-closed:
+ * dokumen final tak boleh membekukan nilai yang tak terverifikasi). Pendaftaran
+ * tak lagi aktif di SIMRS → null (nilai tersimpan dipertahankan).
+ */
+async function bekukanTertaut(def: DefinisiForm, row: BarisIsian) {
+  const gagal = new ServiceUnavailableError("Data SIMRS untuk kolom tertaut (mis. keadaan keluar) tidak dapat dibaca. Coba finalkan lagi sebentar lagi.");
+  const header = await getFormRmHeader(row.nopen).catch(() => {
+    throw gagal;
+  });
+  if (!header) return null;
+  const segar = await isiTertaut(def, row.nopen, header).catch(() => null);
+  if (!segar) throw gagal;
+  const hasil = tempelTertaut(def, row.data, normalkanAsal(row.asal), segar);
+  return { data: hasil.data as Prisma.JsonObject, asal: hasil.asal };
+}
+
 const LABEL_AUDIT: Record<AksiIsian, string> = {
   FINALKAN: "finalkan",
   BUKA_KOREKSI: "buka-koreksi",
@@ -476,9 +526,14 @@ export async function aksiIsian(id: string, input: AksiIsianInput, aktor: AktorF
   const def = definisiDari(row);
   // Yang disegel = data PERSIS seperti tersimpan (bukan hasil parse ulang), agar
   // pemeriksaan "isian sama dengan revisi terakhir" tak pernah alarm palsu.
-  const data = row.data as Prisma.JsonObject;
+  let data = row.data as Prisma.JsonObject;
+  let asalBeku: AsalIsian | null = null;
   if (input.aksi === "FINALKAN") {
     // Dokumen RM final wajib beridentitas pasien → isian sementara ditautkan dulu.
+    if (tertaut(row) && def.tertaut?.length) {
+      const beku = await bekukanTertaut(def, row);
+      if (beku) ({ data, asal: asalBeku } = beku);
+    }
     const kurang = [...(tertaut(row) ? [] : [SYARAT_TERTAUT]), ...def.syaratFinal(def.skema.parse(data))];
     if (kurang.length > 0) throw new BusinessRuleError("Isian belum lengkap untuk difinalkan", { kurang });
   }
@@ -495,6 +550,8 @@ export async function aksiIsian(id: string, input: AksiIsianInput, aktor: AktorF
         rev: input.rev + 1,
         diubahOlehId: aktor.id,
         ...(ke === "FINAL" ? { difinalkanOlehId: aktor.id, difinalkanAt: waktu } : {}),
+        // Kolom tertaut dibekukan dengan nilai SIMRS saat difinalkan (data yang sama ikut disegel di bawah).
+        ...(asalBeku ? { data: data as Prisma.InputJsonValue, asal: asalBeku as Prisma.InputJsonValue } : {}),
       },
     });
     if (n.count === 0) throw new ConflictError();

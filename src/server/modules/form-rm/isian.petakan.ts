@@ -4,7 +4,7 @@ import type { KodeForm } from "@/features/form-rm/registry";
 import { tindakanRujukan } from "@/features/form-rm/rm33.constants";
 import { GOLONGAN_DARAH } from "@/features/form-rm/rm50.constants";
 import type { DiagnosaRow, TriaseSimgosRow } from "./form-rm.dal";
-import type { FormRmHeader, TriaseForm, TriaseSimrs } from "./form-rm.types";
+import type { FormRmHeader, KeluarSimrs, TriaseForm, TriaseSimrs } from "./form-rm.types";
 import type { AlergiRow, EdukasiRow, EpisodeRow, KeluargaRow, MorseRow, PulangRow, RujukanRow, SosialRow } from "./isian.sumber.dal";
 
 /**
@@ -271,14 +271,53 @@ export const IZIN_KELUAR: Readonly<Record<number, string>> = {
   4: "Melarikan Diri", // Lari
   5: "Pindah Rumah Sakit Lain",
 };
-/** Keadaan keluar (referensi JENIS 46) → RM.01. DOA / lanjut rawat inap tak punya opsi. */
+/**
+ * Keadaan keluar (referensi JENIS 46) → RM.01, per ID (diverifikasi ke
+ * `master.referensi` 16 Okt 2026). 6 DOA & 7 lanjut rawat inap tak punya opsi.
+ */
 export const KEADAAN_KELUAR: Readonly<Record<number, string>> = {
   1: "Sembuh",
   2: "Membaik",
   3: "Belum Sembuh",
-  4: "Mati ≤ 48 Jam",
-  5: "Mati ≥ 48 Jam",
+  4: "Mati ≤ 48 Jam", // "Meninggal <= 48 Jam"
+  5: "Mati ≥ 48 Jam", // "Meninggal > 48 Jam"
 };
+
+const KEADAAN_MATI_MAKS_48 = 4;
+const KEADAAN_MATI_LEBIH_48 = 5;
+/** Cara keluar 6 meninggal / 7 DOA; keadaan 4–5 meninggal / 6 DOA. */
+const CARA_MATI = new Set([6, 7]);
+const KEADAAN_MATI = new Set([4, 5, 6]);
+
+/**
+ * Baris `pasien_pulang` → keluar menurut SIMRS (rujukan baca-saja RM.01).
+ * Nilai form mengikuti keadaan YANG DICATAT SIMRS — sama dengan cetak resume
+ * SIMGOS (`CetakMR2`: ID 4/5). Label ≤ / > 48 jam yang tak sesuai selisih waktu
+ * daftar → keluar (acuan `SensusHarianPasienKeluarMati`) hanya ditandai.
+ */
+export function ringkasKeluarSimrs(p: PulangRow): KeluarSimrs {
+  const cara = kode(p.CARA);
+  const keadaan = kode(p.KEADAAN);
+  const ref = (k: number | null, desk: string | null) => (k ? { kode: k, label: bersih(desk) || `Kode ${k}` } : null);
+  const nilaiForm = KEADAAN_KELUAR[keadaan ?? -1] ?? "";
+
+  let selisih48: KeluarSimrs["selisih48"] = null;
+  const menit = p.MENIT_DAFTAR == null || p.MENIT_DAFTAR === "" ? Number.NaN : Number(p.MENIT_DAFTAR);
+  if ((keadaan === KEADAAN_MATI_MAKS_48 || keadaan === KEADAAN_MATI_LEBIH_48) && Number.isFinite(menit) && menit >= 0) {
+    const sesuai = menit <= 48 * 60 ? KEADAAN_MATI_MAKS_48 : KEADAAN_MATI_LEBIH_48;
+    if (sesuai !== keadaan) selisih48 = { jam: Math.floor(menit / 60), sesuaiWaktu: KEADAAN_KELUAR[sesuai] };
+  }
+
+  return {
+    cara: ref(cara, p.CARA_DESK),
+    keadaan: ref(keadaan, p.KEADAAN_DESK),
+    waktu: waktu(p.WAKTU),
+    nilaiForm,
+    tanpaPilihan: !!keadaan && nilaiForm === "",
+    meninggal: (cara != null && CARA_MATI.has(cara)) || (keadaan != null && KEADAAN_MATI.has(keadaan)),
+    selisih48,
+  };
+}
 
 /* --------------------------------------------------------------- diagnosa */
 

@@ -100,6 +100,14 @@ export type DefinisiForm<T extends object = object> = {
    * (`server/modules/form-rm/isian.petakan.ts`).
    */
   readonly simrs: readonly BagianSimrs[];
+  /**
+   * Kolom TERTAUT SIMRS (hanya baca): selama DRAF nilainya selalu nilai SIMRS
+   * terkini (dibaca ulang tiap halaman isian / cetak dibuka) dan dibekukan saat
+   * FINALKAN. Petugas tak bisa mengubahnya — server mengabaikan nilai kiriman
+   * klien, dan kolom ini tak ikut "Muat ulang dari SIMRS". Setiap path wajib
+   * terdaftar di `simrs` (sumbernya).
+   */
+  readonly tertaut?: readonly string[];
   readonly skema: z.ZodType<T>;
   /** Isian baru tanpa data SIMRS (sudah lolos skema). */
   kosong(): T;
@@ -361,6 +369,8 @@ const ringkasan: DefinisiForm<z.output<typeof ringkasanFormSchema>> = {
   wajibUntuk: [2],
   kertas: { ukuran: "A4", orientasi: "potret" },
   simrs: SIMRS_RINGKASAN,
+  // Keadaan keluar = `layanan.pasien_pulang.KEADAAN` (referensi 46), bukan pilihan petugas.
+  tertaut: ["keadaanKeluar"],
   skema: ringkasanFormSchema,
   kosong: () => ringkasanFormSchema.parse(emptyRingkasanForm()),
   petaTtd: (d, f) => ({

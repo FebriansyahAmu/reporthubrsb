@@ -2,9 +2,10 @@ import "server-only";
 import { isSimgosConfigured } from "@/server/lib/env";
 import { hitungUmur } from "@/lib/format";
 import { queryFormRmHeader } from "./form-rm.dal";
-import { kebutuhanEdukasi, ringkasTriase } from "./isian.petakan";
+import { kebutuhanEdukasi, ringkasKeluarSimrs, ringkasTriase } from "./isian.petakan";
 import { bacaEdukasiRujukan, bacaTriaseRujukan } from "./isian.sumber";
-import type { FormRmHeader, KebutuhanEdukasiSimrs, TriaseSimrs } from "./form-rm.types";
+import { queryPulang } from "./isian.sumber.dal";
+import type { BacaKeluarSimrs, FormRmHeader, KebutuhanEdukasiSimrs, TriaseSimrs } from "./form-rm.types";
 
 function toIso(v: Date | string | null): string | null {
   if (v == null) return null;
@@ -64,4 +65,20 @@ export async function bacaKebutuhanEdukasi(nopen: string): Promise<KebutuhanEduk
   if (!isSimgosConfigured()) return null;
   const r = await bacaEdukasiRujukan(nopen).catch(() => null);
   return r ? { perKategori: kebutuhanEdukasi(r.nilai), episodeIgd: r.nopenIgd } : null;
+}
+
+/**
+ * Keluar pasien menurut SIMRS (`layanan.pasien_pulang` episode ini; rujukan
+ * baca-saja RM.01 — dasar kolom Keadaan Keluar yang tertaut). "kosong" = belum
+ * dipulangkan di SIMRS; "gagal" = SIMRS tak terbaca (tanpa NOPEN di log).
+ */
+export async function bacaKeluarSimrs(nopen: string): Promise<BacaKeluarSimrs> {
+  if (!isSimgosConfigured()) return { status: "gagal", keluar: null };
+  try {
+    const row = await queryPulang(nopen);
+    return row ? { status: "ada", keluar: ringkasKeluarSimrs(row) } : { status: "kosong", keluar: null };
+  } catch (e) {
+    console.warn(`[form-rm] baca keluar SIMRS gagal (${(e as { code?: string })?.code ?? (e as Error)?.name ?? "galat"})`);
+    return { status: "gagal", keluar: null };
+  }
 }

@@ -213,6 +213,11 @@ stateDiagram-v2
 4. **Episode IGD asal.** Bila sumber kosong di episode ini dan pasien rawat inap berasal dari IGD, pustaka mengambil dari episode IGD asal (tautan SPRI) dan menandai asalnya.
 5. **Kegagalan sumber tidak menggagalkan form.** Kolomnya dibiarkan kosong dan bagian itu diberi catatan "data SIMRS tidak tersedia".
 6. **Identitas dari server.** Kepala form (No.RM, nama, tanggal lahir, jenis kelamin, ruang) selalu diambil server dari SIMGOS saat isian dibuat, lalu disimpan sebagai snapshot. Klien tidak pernah mengirim identitas.
+7. **Kolom tertaut SIMRS (pengecualian butir 1–3).** Kolom yang terdaftar di registri `tertaut` (saat ini **RM.01 Keadaan Keluar**) tidak bisa diubah petugas.
+   - Selama DRAF, nilainya selalu nilai SIMRS terkini, dibaca ulang setiap halaman isian atau cetak dibuka.
+   - Saat FINALKAN, nilainya dibekukan dan ikut tersegel.
+   - Nilai kiriman klien diabaikan server, dan kolom ini tidak ikut "Muat ulang dari SIMRS".
+   - Lihat §16 "RM.01 Keadaan Keluar tertaut SIMRS".
 
 ### 6.5. Isian sebelum pasien terdaftar (Triase IGD)
 
@@ -1010,6 +1015,84 @@ Formulir resmi `RM. 50 (Monitoring Pemberian Transfusi Darah - Produk Darah).pdf
   - alur nyata "Isi form" → kembali → kartu kuning;
   - tanpa galat JS;
   - data uji (isian, audit, peran) dibersihkan terarah sampai nol.
+
+### RM.01 Keadaan Keluar tertaut SIMRS (16 Okt 2026)
+
+**Permintaan:** Keadaan Keluar di RM.01 ditautkan ke SIMGOS (`layanan.pasien_pulang`: CARA & KEADAAN) dan hanya baca. Telusuri join-nya dulu agar datanya tepat.
+
+**Temuan SIMGOS (hanya SELECT/SHOW):**
+- `layanan.pasien_pulang`:
+  - kolom `KUNJUNGAN` (→ `pendaftaran.kunjungan.NOMOR`), `NOPEN`, `TANGGAL`, `CARA`, `KEADAAN`, `DIAGNOSA`, `DOKTER`, `OLEH`, `STATUS`;
+  - indeks NOPEN / KUNJUNGAN / TANGGAL;
+  - `STATUS` 1 = aktif, 0 = dibatalkan (13 baris);
+  - **satu baris aktif per NOPEN** (4.159 dari 4.159 episode dalam setahun), selalu cocok dengan `kunjungan` lewat `KUNJUNGAN`.
+- Referensi (`master.referensi`):
+
+  | JENIS | Nama | Isi |
+  | --- | --- | --- |
+  | 45 | Cara Keluar | 1 Diijinkan Pulang, 2 Pulang Paksa + Alasan, 3 Dirujuk ke RS Lain, 4 Lari, 5 Pindah RS Lain, 6 Meninggal, 7 DOA, 8 Lanjut Rawat Inap |
+  | 46 | Keadaan Keluar | 1 Sembuh, 2 Membaik, 3 Belum Sembuh, 4 Meninggal ≤ 48 Jam, 5 Meninggal > 48 Jam, 6 DOA, 7 Lanjut Rawat Inap |
+
+- **Join baku SIMGOS** (dipakai `CetakMR2`, `LaporanPasienKeluar`, `LaporanPasienMeninggal`, RL 4A/4B, dll.): `LEFT JOIN master.referensi cr ON lpp.CARA = cr.ID AND cr.JENIS = 45` dan `LEFT JOIN master.referensi kd ON lpp.KEADAAN = kd.ID AND kd.JENIS = 46`.
+- **Sebaran setahun (CARA × KEADAAN):**
+  - pulang: 1×2 1.550, 1×1 236;
+  - lanjut rawat inap: 8×7 1.740, 8×3 144;
+  - pulang paksa: 2×3 183;
+  - dirujuk: 3×3 147, 3×7 60;
+  - meninggal: 6×4 34, 6×5 8; DOA: 7×6 5, 7×4 4.
+  - Episode IGD sebagian besar berakhir "lanjut rawat inap", yang tidak punya pilihan di RM.01.
+- **Label 48 jam tidak selalu cocok dengan waktu.** Ada dua acuan di SIMGOS:
+  - `CetakMR2` (cetak resume) memakai label yang dicatat (KEADAAN 4/5);
+  - `SensusHarianPasienKeluarMati` menghitung jam pendaftaran → pulang.
+  - Pada 42 kematian setahun, **6 label tidak cocok** dengan selisih waktunya (misalnya dicatat ≤ 48 jam padahal 65–69 jam).
+
+**Keputusan implementasi:**
+- **Nilai form** = KEADAAN yang **dicatat** SIMGOS (per ID: 1→Sembuh, 2→Membaik, 3→Belum Sembuh, 4→Mati ≤ 48 Jam, 5→Mati ≥ 48 Jam), sama dengan cetak resume SIMGOS.
+- **Label 48 jam yang tidak cocok dengan waktu** hanya **ditandai** (peringatan berisi jumlah jam dan label yang sesuai waktu). Tidak dikoreksi diam-diam; perbaikan dilakukan di SIMGOS.
+- **DOA (6) dan Lanjut Rawat Inap (7)** tidak punya pilihan di formulir RM.01 (formulir resmi tidak diubah), jadi tidak ada kotak yang dicentang, dengan catatan yang menyebut keadaan SIMGOS-nya.
+- **Izin Keluar (CARA)** tetap terisi otomatis dan masih bisa disunting seperti sebelumnya; yang tertaut hanya Keadaan Keluar.
+
+**Mekanisme kolom tertaut** (registri `tertaut`, §6.4 butir 7):
+- **Simpan:** server mengabaikan nilai kiriman klien dan mempertahankan nilai tersimpan.
+- **Halaman isian & cetak saat DRAF:** nilai SIMRS terkini (`tertautTerkini`).
+- **FINALKAN:** nilai dibaca ulang dari SIMGOS lalu disimpan bersama `asal` dan disegel dalam transaksi yang sama.
+  - SIMGOS tidak terbaca → **503**: dokumen final tidak membekukan nilai yang belum terverifikasi.
+  - Pendaftaran sudah tidak aktif → nilai tersimpan dipakai.
+- **FINAL/BATAL:** nilai beku. Bila SIMGOS berubah sesudahnya, ada pemberitahuan "SIMRS kini mencatat …"; pembaruan lewat buka koreksi lalu finalkan ulang.
+- **Banding / muat ulang SIMRS:** kolom tertaut tidak ditampilkan; permintaan muat ulang untuk kolom ini → 422.
+
+**Tampilan:**
+- Pilihan Keadaan Keluar bergaya hanya baca (tanpa kontrol) dengan badge "Tertaut SIMRS".
+- Panel rujukan berisi cara keluar, keadaan keluar, dan waktu dipulangkan persis seperti di SIMGOS.
+- Catatan kontekstual:
+  - belum dipulangkan;
+  - SIMRS gagal dibaca (nilai tersimpan ditampilkan);
+  - keadaan tanpa pilihan;
+  - label 48 jam janggal;
+  - pasien meninggal → lengkapi Sebab Kematian.
+
+**Kode:**
+- `isian.sumber.dal.ts` `queryPulang`: + `CARA_DESK`/`KEADAAN_DESK` (join baku) dan `MENIT_DAFTAR`; tetap SELECT berparameter dengan `MAX_EXECUTION_TIME`.
+- `isian.petakan.ts` `ringkasKeluarSimrs`: murni, teruji.
+- `isian.prefill.ts` `isiTertaut`.
+- `isian.service.ts`: `tertautTerkini`, `bekukanTertaut`, penegakan saat simpan, banding, dan muat ulang.
+- `form-rm.service.ts` `bacaKeluarSimrs`.
+- `KeadaanKeluarTertaut.tsx`.
+- Versi form RM.01 tetap 1: struktur data tidak berubah.
+
+**Hasil uji:**
+- Unit 448/448; baru: `ringkasKeluarSimrs` (pulang, lanjut rawat inap, DOA, label 48 jam sesuai/janggal, batas tepat 48 jam, BIGINT) dan registri `tertaut`. tsc & eslint bersih.
+- Regresi RM.41 (pemakai lain `queryPulang`) 60/60 di build produksi.
+- E2E `scratchpad/keluar-e2e.mjs` 20/20 di dev dan build produksi, pembanding SQL independen memakai join baku SIMGOS dan data nyata:
+  - prefill; simpan dengan nilai palsu diabaikan; banding / muat ulang menolak kolom tertaut;
+  - DRAF menampilkan dan mencetak nilai SIMRS terkini walau nilai tersimpan usang;
+  - FINALKAN membekukan nilai, segel utuh;
+  - FINAL tidak ikut berubah (dengan pemberitahuan), dan perubahan langsung di DB terdeteksi pemeriksaan integritas;
+  - buka koreksi → mengikuti SIMRS lagi;
+  - kasus belum dipulangkan, lanjut rawat inap, dan meninggal berlabel 48 jam janggal (65 jam);
+  - ponsel tanpa luapan; tanpa galat JS;
+  - data uji dibersihkan sampai nol;
+  - pasien uji hanya NOPEN tanpa isian RM.01 / baris `form_rm` lama.
 
 ## 17. Sumber
 

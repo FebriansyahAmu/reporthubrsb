@@ -21,7 +21,7 @@ import { qrSvgDataUriMap } from "@/server/lib/qr";
 import { requireAnyModule } from "@/server/rbac/guard";
 import { aktorHalaman } from "@/server/modules/form-rm/isian.jaga";
 import { ID_RE } from "@/server/modules/form-rm/isian.schema";
-import { bacaIsianCetak, identitasIsian } from "@/server/modules/form-rm/isian.service";
+import { bacaIsianCetak, identitasIsian, tertautTerkini } from "@/server/modules/form-rm/isian.service";
 import type {
   ConsentForm,
   EdukasiForm,
@@ -65,10 +65,12 @@ export default async function CetakIsianPage({ params }: { params: Promise<{ id:
   });
   if (!hasil) notFound();
   if (hasil === "terlarang") redirect("/403");
-  const { isian, segel } = hasil;
-  const def = definisiForm(isian.kode);
+  const { segel } = hasil;
+  const def = definisiForm(hasil.isian.kode);
   if (!def) notFound();
-  const header = await identitasIsian(isian);
+  const header = await identitasIsian(hasil.isian);
+  // Cetak DRAF = nilai SIMRS terkini pada kolom tertaut (sama dengan layar); FINAL = nilai yang dibekukan.
+  const isian = await tertautTerkini(hasil.isian, header);
 
   const kaki = teksCss(
     `Isian ${isian.id} · ${isian.status} rev ${isian.rev} · segel ${segel ? segel.slice(0, 8) : "—"} · dicetak ${waktuCetak()}`,

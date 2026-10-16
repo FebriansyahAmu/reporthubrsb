@@ -56,3 +56,38 @@ export async function isiOtomatis(def: DefinisiForm, nopen: string, header: Form
   }
   return { data: sah, asal, status: sumber.status, igdAsal: sumber.igdAsal };
 }
+
+export type HasilTertaut = {
+  /** path → nilai SIMRS terkini; SIMRS tanpa data → nilai isian kosong (bukan nilai lama). */
+  nilai: Record<string, unknown>;
+  /** Asal kolom yang berisi nilai SIMRS (kolom tanpa nilai tidak dicantumkan). */
+  asal: AsalIsian;
+};
+
+/**
+ * Nilai kolom TERTAUT (`def.tertaut`) terkini — hanya sumbernya yang dibaca.
+ * null bila salah satu sumber gagal dibaca: pemanggil memakai nilai tersimpan,
+ * tak pernah menebak.
+ */
+export async function isiTertaut(def: DefinisiForm, nopen: string, header: FormRmHeader): Promise<HasilTertaut | null> {
+  const paths = def.tertaut ?? [];
+  if (paths.length === 0) return { nilai: {}, asal: {} };
+  const peta: PetaForm = PETA_FORM[def.kode] ?? TANPA_PETA;
+  const kolom = def.simrs.flatMap((b) => b.kolom).filter((k) => paths.includes(k.path));
+  const ids = [...new Set(kolom.map((k) => k.sumber))];
+  const sumber = await ambilSumber(ids, nopen, header);
+  if (ids.some((s) => sumber.status[s] === "gagal")) return null;
+
+  const petaan = peta.petakan(sumber.hasil);
+  const kosong = def.kosong();
+  const out: HasilTertaut = { nilai: {}, asal: {} };
+  for (const p of paths) {
+    const n = Object.hasOwn(petaan, p) ? petaan[p] : undefined;
+    out.nilai[p] = n ? n.nilai : ambilPath(kosong, p);
+    if (n) {
+      const nopenIgd = sumber.dariIgd[n.sumber];
+      out.asal[p] = { sumber: n.sumber, nilai: n.nilai, ...(nopenIgd ? { nopen: nopenIgd } : {}) };
+    }
+  }
+  return out;
+}

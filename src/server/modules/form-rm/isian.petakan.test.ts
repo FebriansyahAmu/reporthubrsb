@@ -37,6 +37,7 @@ import {
   petaAlergi,
   petaRujukan,
   ringkasDiagnosa,
+  ringkasKeluarSimrs,
   teksDiagnosis,
   type HasilSumber,
   type PetaForm,
@@ -188,7 +189,15 @@ const lengkap: HasilSumber = {
     { UTAMA: 2, KODE: "D64.9", DIAGNOSA: "anemia" },
     { UTAMA: 2, KODE: "E86", DIAGNOSA: "dehidrasi" },
   ],
-  pulang: { CARA: 1, KEADAAN: 2, WAKTU: "2026-10-09T14:05", PETUGAS: "Ns. Pulang" },
+  pulang: {
+    CARA: 1,
+    KEADAAN: 2,
+    CARA_DESK: "Diijinkan Pulang",
+    KEADAAN_DESK: "Membaik",
+    WAKTU: "2026-10-09T14:05",
+    MENIT_DAFTAR: 3000,
+    PETUGAS: "Ns. Pulang",
+  },
   triase,
   edukasi: { ...nolEdukasi(), HAMBATAN: 1, HAMBATAN_PENDENGARAN: 1, HAMBATAN_KOGNITIF: 1, HAMBATAN_BAHASA: 1, PENERJEMAH: 1 },
 };
@@ -452,7 +461,7 @@ describe("peta isi otomatis per form", () => {
     expect(def.skema.safeParse(data).success).toBe(true);
     expect(def.simrs.flatMap((b) => b.kolom.map((k) => k.path)).filter((p) => !(p in aps))).toEqual([]);
     // Waktu rusak / petugas kosong tidak diisi; identitas tak dikenal tidak diisi.
-    const rusak = petaWajib("RM.41").petakan({ pulang: { CARA: 2, KEADAAN: 2, WAKTU: "0000-00-00T00:00x", PETUGAS: " " } });
+    const rusak = petaWajib("RM.41").petakan({ pulang: { ...lengkap.pulang!, CARA: 2, WAKTU: "0000-00-00T00:00x", PETUGAS: " " } });
     expect(rusak).toEqual({});
     expect(
       petaWajib("RM.41").petakan({ identitas: { ...header, nama: "—", jenisKelamin: "—", tanggalLahir: null, norm: "—" } }),
@@ -508,5 +517,57 @@ describe("peta isi otomatis per form", () => {
     expect(petaWajib("RM.03").petakan({ identitas: { ...header, nama: "—", ruang: "—", nik: "" } })).toEqual({
       waktuPendaftaran: { nilai: "2026-10-07T08:04", sumber: "identitas" },
     });
+  });
+});
+
+/* ------------------------------------------------- keluar SIMRS (RM.01) */
+
+describe("ringkasKeluarSimrs — keadaan keluar tertaut RM.01", () => {
+  const p = lengkap.pulang!;
+  const keluar = (o: Partial<typeof p>) => ringkasKeluarSimrs({ ...p, ...o });
+
+  it("pulang biasa: deskripsi SIMRS apa adanya, nilai form per ID referensi 46", () => {
+    expect(keluar({})).toEqual({
+      cara: { kode: 1, label: "Diijinkan Pulang" },
+      keadaan: { kode: 2, label: "Membaik" },
+      waktu: "2026-10-09T14:05",
+      nilaiForm: "Membaik",
+      tanpaPilihan: false,
+      meninggal: false,
+      selisih48: null,
+    });
+    expect(keluar({ KEADAAN: 1, KEADAAN_DESK: "Sembuh" }).nilaiForm).toBe("Sembuh");
+    expect(keluar({ KEADAAN: 3, KEADAAN_DESK: "Belum Sembuh" }).nilaiForm).toBe("Belum Sembuh");
+  });
+
+  it("lanjut rawat inap (7) & DOA (6) tak punya pilihan RM.01 → kosong + tanpaPilihan; DOA = meninggal", () => {
+    const lanjut = keluar({ CARA: 8, CARA_DESK: "LANJUT RAWAT INAP", KEADAAN: 7, KEADAAN_DESK: "LANJUT RAWAT INAP" });
+    expect([lanjut.nilaiForm, lanjut.tanpaPilihan, lanjut.meninggal]).toEqual(["", true, false]);
+    const doa = keluar({ CARA: 7, CARA_DESK: "DOA", KEADAAN: 6, KEADAAN_DESK: "DOA" });
+    expect([doa.nilaiForm, doa.tanpaPilihan, doa.meninggal, doa.selisih48]).toEqual(["", true, true, null]);
+  });
+
+  it("meninggal: label SIMRS diikuti; ≤ / > 48 jam yang tak sesuai selisih daftar → keluar hanya ditandai", () => {
+    const sesuai = keluar({ CARA: 6, KEADAAN: 4, KEADAAN_DESK: "Meninggal <= 48 Jam", MENIT_DAFTAR: 600 });
+    expect([sesuai.nilaiForm, sesuai.meninggal, sesuai.selisih48]).toEqual(["Mati ≤ 48 Jam", true, null]);
+    // Data nyata: dicatat ≤ 48 jam padahal 69 jam setelah pendaftaran.
+    const janggal = keluar({ CARA: 6, KEADAAN: 4, KEADAAN_DESK: "Meninggal <= 48 Jam", MENIT_DAFTAR: 69 * 60 + 10 });
+    expect([janggal.nilaiForm, janggal.selisih48]).toEqual(["Mati ≤ 48 Jam", { jam: 69, sesuaiWaktu: "Mati ≥ 48 Jam" }]);
+    const janggal2 = keluar({ CARA: 6, KEADAAN: 5, KEADAAN_DESK: "Meninggal > 48 Jam", MENIT_DAFTAR: 47 * 60 });
+    expect(janggal2.selisih48).toEqual({ jam: 47, sesuaiWaktu: "Mati ≤ 48 Jam" });
+  });
+
+  it("batas tepat 48 jam = ≤ 48 jam; BIGINT adapter & waktu tak terbaca aman", () => {
+    expect(keluar({ CARA: 6, KEADAAN: 4, MENIT_DAFTAR: 2880 }).selisih48).toBeNull();
+    expect(keluar({ CARA: 6, KEADAAN: 5, MENIT_DAFTAR: 2881 }).selisih48).toBeNull();
+    expect(keluar({ CARA: 6, KEADAAN: 4, MENIT_DAFTAR: BigInt(3000) }).selisih48).toEqual({ jam: 50, sesuaiWaktu: "Mati ≥ 48 Jam" });
+    expect(keluar({ CARA: 6, KEADAAN: 4, MENIT_DAFTAR: null }).selisih48).toBeNull();
+    expect(keluar({ CARA: 6, KEADAAN: 4, MENIT_DAFTAR: -5 }).selisih48).toBeNull();
+  });
+
+  it("kode tanpa deskripsi / referensi baru tak dikenal: label cadangan, tanpa pilihan form", () => {
+    const baru = keluar({ KEADAAN: 9, KEADAAN_DESK: null });
+    expect([baru.keadaan, baru.nilaiForm, baru.tanpaPilihan]).toEqual([{ kode: 9, label: "Kode 9" }, "", true]);
+    expect(keluar({ CARA: 0, KEADAAN: 0 })).toMatchObject({ cara: null, keadaan: null, nilaiForm: "", tanpaPilihan: false });
   });
 });

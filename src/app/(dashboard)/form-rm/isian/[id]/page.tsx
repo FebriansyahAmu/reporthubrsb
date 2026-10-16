@@ -15,11 +15,11 @@ import { TriaseFormView } from "@/features/form-rm/TriaseFormView";
 import { KATEGORI_FORM, MODUL_AKSES_FORM_RM } from "@/features/form-rm/kategori";
 import { NotFoundError } from "@/server/lib/errors";
 import { requireAnyModule } from "@/server/rbac/guard";
-import { bacaKebutuhanEdukasi, bacaTriaseSimrs } from "@/server/modules/form-rm/form-rm.service";
+import { bacaKebutuhanEdukasi, bacaKeluarSimrs, bacaTriaseSimrs } from "@/server/modules/form-rm/form-rm.service";
 import { aktorHalaman } from "@/server/modules/form-rm/isian.jaga";
 import { ID_RE } from "@/server/modules/form-rm/isian.schema";
-import { bacaIsian, identitasIsian } from "@/server/modules/form-rm/isian.service";
-import type { FormRmHeader, KebutuhanEdukasiSimrs, TriaseSimrs } from "@/server/modules/form-rm/form-rm.types";
+import { bacaIsian, identitasIsian, tertautTerkini } from "@/server/modules/form-rm/isian.service";
+import type { BacaKeluarSimrs, FormRmHeader, KebutuhanEdukasiSimrs, TriaseSimrs } from "@/server/modules/form-rm/form-rm.types";
 import type { IsianForm, IzinIsian } from "@/server/modules/form-rm/isian.types";
 
 export const metadata = { title: "Isian Form RM · AuditTrail RS BOLTIM" };
@@ -35,24 +35,29 @@ export default async function IsianPage({ params }: { params: Promise<{ id: stri
   if (!ID_RE.test(id)) notFound();
 
   const aktor = await aktorHalaman(user);
-  const isian = await bacaIsian(id, aktor).catch((e: unknown) => {
+  const tersimpan = await bacaIsian(id, aktor).catch((e: unknown) => {
     if (e instanceof NotFoundError) return null;
     throw e;
   });
-  if (!isian) notFound();
+  if (!tersimpan) notFound();
 
   // Rujukan SIMRS baca-saja (bukan isi isian): dibaca langsung tiap halaman dibuka.
   // Isian belum tertaut belum punya pendaftaran → tanpa rujukan.
+  const tanpaRujukan: RujukanSimrs = { triase: null, edukasi: null, keluar: null };
   const [header, rujukan] = await Promise.all([
-    identitasIsian(isian),
-    !isian.tertaut
-      ? { triase: null, edukasi: null }
-      : isian.kode === "RM.04"
-        ? bacaTriaseSimrs(isian.nopen).then((triase) => ({ triase, edukasi: null }))
-        : isian.kode === "RM.21"
-          ? bacaKebutuhanEdukasi(isian.nopen).then((edukasi) => ({ triase: null, edukasi }))
-          : { triase: null, edukasi: null },
+    identitasIsian(tersimpan),
+    !tersimpan.tertaut
+      ? tanpaRujukan
+      : tersimpan.kode === "RM.04"
+        ? bacaTriaseSimrs(tersimpan.nopen).then((triase) => ({ ...tanpaRujukan, triase }))
+        : tersimpan.kode === "RM.21"
+          ? bacaKebutuhanEdukasi(tersimpan.nopen).then((edukasi) => ({ ...tanpaRujukan, edukasi }))
+          : tersimpan.kode === "RM.01"
+            ? bacaKeluarSimrs(tersimpan.nopen).then((keluar) => ({ ...tanpaRujukan, keluar }))
+            : tanpaRujukan,
   ]);
+  // Kolom tertaut SIMRS (mis. Keadaan Keluar RM.01) berisi nilai SIMRS terkini selama DRAF.
+  const isian = await tertautTerkini(tersimpan, header);
   const { hak } = aktor;
   const izin: IzinIsian = {
     ubah: hak.boleh(isian.kategori, "update"),
@@ -92,7 +97,11 @@ export default async function IsianPage({ params }: { params: Promise<{ id: stri
   );
 }
 
-type RujukanSimrs = { triase: TriaseSimrs | null; edukasi: KebutuhanEdukasiSimrs | null };
+type RujukanSimrs = {
+  triase: TriaseSimrs | null;
+  edukasi: KebutuhanEdukasiSimrs | null;
+  keluar: BacaKeluarSimrs | null;
+};
 
 /**
  * Tampilan per kode form. Dipilih di server → hanya komponen form yang dipakai
@@ -117,7 +126,7 @@ function TampilanForm({
     case "RM.21":
       return <EdukasiFormView key={key} isian={isian} header={header} izin={izin} kebutuhan={rujukan.edukasi} />;
     case "RM.01":
-      return <RingkasanFormView key={key} isian={isian} header={header} izin={izin} />;
+      return <RingkasanFormView key={key} isian={isian} header={header} izin={izin} keluar={rujukan.keluar} />;
     case "RM.03":
       return <ConsentFormView key={key} isian={isian} header={header} izin={izin} />;
     case "RM.22":
