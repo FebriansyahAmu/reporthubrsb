@@ -616,7 +616,7 @@ _Diputuskan 8 Okt 2026:_ pemilik meminta jendela desktop Tauri sekarang (F5b, §
 | K3  | Kebutuhan perangkat untuk Tauri (cetak langsung, pad TTD, e-KTP, kiosk)                                                                                                                                                                   | ✅ **PWA** dibangun di F5 (7 Okt 2026); atas permintaan pemilik, **jendela desktop Tauri** dibangun di F5b (8 Okt 2026). Perintah native (cetak langsung, pad TTD, e-KTP, kiosk) tetap menunggu kebutuhan nyata |
 | K4  | Apakah server produksi sudah HTTPS                                                                                                                                                                                                        | ⏸ **Ditunda** (6 Okt 2026): dimitigasi kemudian. Rekomendasi: sertifikat Let's Encrypt via DNS-01 untuk nama host LAN di reverse proxy. PWA (F5) sudah siap, tetapi pemasangan penuh & halaman "Tidak terhubung" baru aktif di HTTPS; kamera juga butuh HTTPS |
 | K5  | Status awal 10 isian lama setelah migrasi                                                                                                                                                                                                 | ✅ Mengikuti rekomendasi: DRAF (diterapkan di Langkah 2)                                                                                                                                 |
-| K6  | Keluar otomatis saat idle di PC bersama                                                                                                                                                                                                   | ✅ Mengikuti rekomendasi: **15 menit**, untuk seluruh aplikasi; dapat diubah lewat env `SESI_IDLE_MENIT` (5–480; `0` = nonaktif, mis. layar monitor di dinding)                             |
+| K6  | Keluar otomatis saat idle di PC bersama                                                                                                                                                                                                   | ✅ Semula **15 menit** (7 Okt 2026). **Diubah 20 Okt 2026 atas permintaan pemilik:** pengguna **tetap masuk walau idle** (penyegaran sesi di latar, refresh token 60 menit, batas mutlak 12 jam sejak masuk). Keluar-idle kini opsional lewat env `SESI_IDLE_MENIT` (bawaan `0` = nonaktif; 5–480). Lihat §16 "Sesi tetap masuk" |
 | K7  | Menambah Vitest sebagai runner unit test                                                                                                                                                                                                  | ✅ Mengikuti rekomendasi: Vitest 3 (v5 butuh `@types/node` ≥ 22; proyek masih ^20)                                                                                                       |
 | K8  | Pasien IGD yang lanjut rawat inap mendapat **NOPEN baru** di SIMGOS (552 dari 566 episode RI dalam 90 hari; tak satu pun berbagi NOPEN dengan leg IGD). RM.21/RM.01/RM.03 diisi di episode mana — IGD (praktik sekarang) atau rawat inap? | Sementara: tetap di episode IGD (sasaran & wajib = IGD, sama dengan sebelum F1). Pindah ke episode RI = ubah `sasaran`/`wajibUntuk` di registri; sejak F2 sumber asesmen episode RI otomatis diambil dari episode IGD asal (SPRI / pendaftaran IGD ≤ 24 jam) |
 | K9  | Apakah Risiko Jatuh Morse **wajib** (dihitung di kelengkapan) — untuk episode IGD, rawat inap, atau keduanya? | Sementara tidak wajib (`wajibUntuk: []`) agar hitungan kelengkapan tidak berubah; cukup ubah satu baris di berkas definisi |
@@ -1093,6 +1093,68 @@ Formulir resmi `RM. 50 (Monitoring Pemberian Transfusi Darah - Produk Darah).pdf
   - ponsel tanpa luapan; tanpa galat JS;
   - data uji dibersihkan sampai nol;
   - pasien uji hanya NOPEN tanpa isian RM.01 / baris `form_rm` lama.
+
+### Sesi tetap masuk — refresh token menggantikan keluar-idle (20 Okt 2026)
+
+**Permintaan pemilik:** pengguna tidak lagi dikeluarkan setiap beberapa menit saat idle; sesi dipertahankan dengan refresh token (±1 jam), tetap mengikuti praktik keamanan yang baik. Mengubah keputusan K6.
+
+**Perilaku baru:**
+
+- **Penyegaran di latar.** Selama ada tab aplikasi terbuka (dasbor atau cetak), klien merotasi refresh token setiap 13 menit, yaitu 2 menit sebelum access token 15 menit habis, walau pengguna tidak menyentuh apa pun. Akibatnya access token selalu segar, dan permintaan pertama setelah lama idle tidak perlu memutar lewat proxy refresh.
+  - Jadwal dibagi antar-tab lewat localStorage, ditambah Web Lock, sehingga banyak tab tetap berarti satu rotasi.
+  - Login baru mencatat sesi sebagai segar, jadi tidak ada rotasi seketika setelah masuk.
+- **Refresh token 60 menit, bergeser** (`AUTH_REFRESH_TTL_MIN`, minimal 2× masa access, maksimal 7 hari; dulu 7 hari). Batas ini hanya terasa bila tidak ada tab terbuka, misalnya browser atau PC ditutup atau tidur lebih dari 1 jam. Setelah itu pengguna wajib masuk ulang.
+- **Batas mutlak 12 jam sejak kata sandi dimasukkan** (`SESI_MAKS_JAM`; `0` = tanpa batas; 1–72). Ini kendali pengganti batas idle untuk PC bersama, misalnya saat pergantian dinas.
+  - Klaim `auth_time` ditandatangani di refresh token dan dibawa utuh dari rotasi ke rotasi, sehingga penyegaran tidak memperpanjangnya.
+  - `exp` access dan refresh, `Max-Age` cookie, dan `expires_at` di DB semuanya dipotong di batas itu.
+  - Server tetap menolak secara eksplisit (keputusan `batas` di `putuskanRotasi`) tanpa mencabut sesi lain. Cabang paralel dalam jendela 30 detik juga tidak boleh melahirkan sesi setelah batas.
+  - Token lama tanpa `auth_time` dihitung dari `iat`-nya.
+  - Di klien: peringatan "Waktu sesi hampir habis" muncul 5 menit sebelumnya, dengan pilihan "Lanjutkan bekerja" atau "Masuk ulang sekarang". Pengguna dikeluarkan 1 menit sebelum batas server, selagi sesi masih sah, sehingga draf semua tab tersimpan. Halaman masuk menampilkan pemberitahuan `alasan=batas`, lalu pengguna kembali ke halaman semula.
+  - Sisa waktu dikirim sebagai durasi (prop layout dan jawaban penyegaran), bukan jam dinding, jadi jam PC yang melenceng tidak berpengaruh.
+- **Sesi ditolak server** (dicabut admin, akun nonaktif, ganti sandi di perangkat lain, deteksi pencurian, refresh kedaluwarsa): penyegaran berikutnya mendapat 401, layar ditutup, draf dicoba disimpan, lalu pengguna diarahkan ke halaman masuk dengan `alasan=berakhir`.
+- **Keluar-idle K6 tetap tersedia tetapi nonaktif secara bawaan** (`SESI_IDLE_MENIT` bawaan `0`; 5–480 untuk mengaktifkan per instalasi).
+- **Gangguan sementara tidak mengakhiri sesi.** Dulu, galat DB sesaat saat refresh menghapus cookie, sehingga pengguna keluar. Kini galat selain 401 menjawab 503 dan cookie dibiarkan. API menerima JSON `SERVICE_UNAVAILABLE`, halaman menerima teks "muat ulang", dan penyegaran latar mencoba lagi pada putaran berikutnya (30 detik, juga saat tab terlihat, fokus, atau kembali daring).
+
+**Kode:**
+
+- `src/server/auth/batas-sesi.ts` (baru: batas mutlak, jeda penyegaran);
+- `tokens.ts` (`auth_time`, pemotongan `exp`, `bacaMenitRefresh`);
+- `cookies.ts` (`Max-Age` = sisa `exp`);
+- `session.ts` (`aturanSesiKlien`);
+- `idle.ts` (bawaan 0);
+- `modules/auth/rotasi.ts`, `auth.service.ts` (`SesiBatasError`);
+- `api/auth/refresh/route.ts`;
+- `components/layout/useSegarkanSesi.ts` (baru), `PenjagaSesi.tsx`, `AppShell.tsx`, `(dashboard)/layout.tsx`, `print/layout.tsx`;
+- `lib/sesi.ts`;
+- `app/page.tsx` (pemberitahuan `batas`/`berakhir`);
+- `LoginForm.tsx`;
+- `.env.example`.
+
+Tanpa perubahan tabel.
+
+**Hasil uji (dev & build produksi; `tsc` & ESLint bersih; data uji dibersihkan, data nyata identik):**
+
+- Unit 463/463 (baru: `tokens.test.ts`; keputusan `batas` termasuk cabang setelah batas & urutan terhadap reuse/logout; env refresh/batas/idle; jeda penyegaran; `perluSegarkan`; alasan keluar baru).
+- E2E API `sesi-tetap-e2e.mjs` 29/29:
+  - login: cookie 15/60 menit, `auth_time`, `expires_at` DB;
+  - penyegaran latar: `sisaMs`, `auth_time` dibawa rotasi;
+  - idle 45 menit tetap pulih;
+  - lewat batas: halaman → `alasan=batas`, API 401, sesi lain tak dicabut;
+  - dekat batas: `exp`/`Max-Age`/DB dipotong;
+  - cabang setelah batas ditolak tanpa merusak rantai;
+  - token lama tanpa `auth_time`;
+  - sesi dicabut → 401 + cookie dihapus;
+  - pemberitahuan halaman masuk;
+  - aturan sesi di payload layout;
+  - data nyata identik.
+- Regresi `sesi-e2e.v4.mjs` 43/43 (cek idle server dilewati karena bawaan 0, dicakup T3).
+- UI Chrome headless `sesi-tetap-ui.mjs` 19/19 (jam halaman digeser):
+  - login form mencatat sesi segar;
+  - idle 12 menit tanpa rotasi; 13+ menit tepat satu rotasi; ±70 menit idle tetap masuk tanpa peringatan;
+  - dua tab = satu rotasi;
+  - batas: peringatan ±4:50 → "Lanjutkan bekerja" → keluar ke `alasan=batas` & token dicabut;
+  - sesi dicabut server → `alasan=berakhir` & cookie terhapus;
+  - tanpa galat JS.
 
 ## 17. Sumber
 

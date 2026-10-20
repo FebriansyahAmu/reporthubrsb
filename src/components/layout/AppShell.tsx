@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import type { AturanSesi } from "@/lib/sesi";
 import { PendaftarPwa } from "./PendaftarPwa";
 import { PenjagaSesi } from "./PenjagaSesi";
 import { Sidebar } from "./Sidebar";
@@ -11,14 +12,14 @@ export function AppShell({
   children,
   user,
   allowedModules,
-  menitIdle,
+  sesi,
   unduhDesktop,
 }: {
   children: React.ReactNode;
   user: TopbarUser | null;
   allowedModules: string[];
-  /** Keluar otomatis setelah sekian menit tanpa aktivitas (0 = nonaktif). */
-  menitIdle: number;
+  /** Penyegaran latar, batas mutlak, dan (opsional) batas idle sesi. */
+  sesi: AturanSesi;
   /** Server punya rilis aplikasi desktop yang bisa diunduh. */
   unduhDesktop: boolean;
 }) {
@@ -26,7 +27,7 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen bg-bg">
-      <PenjagaSesi menitIdle={menitIdle} />
+      <PenjagaSesi {...sesi} />
       <PendaftarPwa />
       {/* Sidebar desktop */}
       <aside className="no-print hidden w-64 shrink-0 border-r border-border lg:block">

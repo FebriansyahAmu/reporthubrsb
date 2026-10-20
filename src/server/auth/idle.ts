@@ -1,5 +1,7 @@
 /**
  * Keluar otomatis saat idle (PRD Form RM Terpadu K6 — PC bersama di loket/bangsal).
+ * Sejak 20 Okt 2026 **nonaktif secara bawaan** (pengguna tetap masuk walau idle,
+ * lihat `batas-sesi.ts`); aktifkan per instalasi dengan `SESI_IDLE_MENIT` > 0.
  *
  * Dua lapis:
  * - **Klien** (`PenjagaIdle`): tanpa input pengguna di SEMUA tab selama batas →
@@ -12,9 +14,9 @@
  */
 import { ACCESS_TTL_SEC } from "./tokens";
 
-export const MENIT_IDLE_BAWAAN = 15;
+export const MENIT_IDLE_BAWAAN = 0;
 
-/** `SESI_IDLE_MENIT`: kosong/tak sah → 15; `0` → nonaktif; selain itu dijepit 5–480. */
+/** `SESI_IDLE_MENIT`: kosong/tak sah/`0` → nonaktif; selain itu dijepit 5–480. */
 export function bacaMenitIdle(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") return MENIT_IDLE_BAWAAN;
   const n = Number(raw.trim());

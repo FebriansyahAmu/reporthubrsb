@@ -6,6 +6,7 @@ import { AlertCircle, Eye, EyeOff, KeyRound, Lock, LogIn, User } from "lucide-re
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 import { diAplikasiDesktop, tujuanBawaanMasuk } from "@/lib/desktop";
+import { catatSesiSegar } from "@/lib/sesi";
 
 type KonstruktorKredensial = new (data: { id: string; password: string }) => Credential;
 
@@ -66,6 +67,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string | null }) {
         return;
       }
       tawarkanSimpanKredensial(username, password);
+      catatSesiSegar();
       // Cookie sesi sudah di-set server; pindah ke tujuan.
       router.replace(callbackUrl ?? tujuanBawaanMasuk());
       router.refresh();

@@ -17,7 +17,7 @@ Aplikasi Windows kecil yang **hanya membuka server ReportHub** dalam jendela sen
 | DevTools | Mati di build rilis. |
 | Satu instance | Membuka aplikasi lagi hanya memunculkan jendela yang sudah ada. |
 | Pembaruan | Diperiksa saat aplikasi dibuka, dari server ReportHub sendiri. Paket **wajib bertanda tangan** dan diverifikasi sebelum dipasang. |
-| Keluar otomatis saat idle | Sama dengan browser (K6, `SESI_IDLE_MENIT`). |
+| Sesi | Sama dengan browser: tetap masuk walau idle (disegarkan di latar), batas mutlak `SESI_MAKS_JAM`, keluar-idle opsional `SESI_IDLE_MENIT`. |
 | Halaman pertama | `/desktop`: server mengalihkan ke **Form RM** bila peran pengguna punya akses salah satu modul Form RM, selain itu ke `/beranda` (modul pertama yang diizinkan peran). Setelah masuk tanpa tujuan tertentu, aplikasi juga ke `/desktop` (browser ke `/beranda`). |
 | Simpan kata sandi | Pengelola kata sandi WebView2 menawarkan **Simpan / Not now** setelah masuk berhasil; akun tersimpan dipilih dari daftar saat kolom Username diklik. Bisa dimatikan per PC (lihat §2.1). Isian otomatis umum (alamat, riwayat isian) tetap mati agar data pasien tidak terisi ulang. |
 

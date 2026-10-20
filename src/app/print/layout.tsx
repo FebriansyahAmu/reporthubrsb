@@ -1,16 +1,17 @@
 import { PenjagaSesi } from "@/components/layout/PenjagaSesi";
-import { menitIdle } from "@/server/auth/idle";
+import { aturanSesiKlien } from "@/server/auth/session";
 
-export default function PrintLayout({
+export default async function PrintLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const sesi = await aturanSesiKlien();
   return (
     <div className="min-h-screen bg-surface-2 print:bg-white">
-      {/* Tab cetak juga memuat data pasien → ikut keluar otomatis saat idle. */}
+      {/* Tab cetak juga memuat data pasien → ikut menjaga sesi (penyegaran, batas, keluar bersama). */}
       <div className="print:hidden">
-        <PenjagaSesi menitIdle={menitIdle()} />
+        <PenjagaSesi {...sesi} />
       </div>
       {children}
     </div>

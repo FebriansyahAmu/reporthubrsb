@@ -8,6 +8,7 @@ import {
   verifyRefreshToken,
 } from "@/server/auth/tokens";
 import { batasIdleRefreshMs } from "@/server/auth/idle";
+import { batasSesiSec, jamMaksSesi } from "@/server/auth/batas-sesi";
 import { AppError, ForbiddenError, UnauthorizedError } from "@/server/lib/errors";
 import { querySimgosPenggunaByLogin } from "./simgos-pengguna.dal";
 import { verifySimgosPasswordHash } from "./simgos-password";
@@ -29,27 +30,38 @@ async function verifySimgosLogin(login: string, password: string): Promise<boole
 }
 
 export type AuthUser = { id: string; username: string; name: string; role: string };
-export type IssuedTokens = { access: string; refresh: string; user: AuthUser };
+export type IssuedTokens = {
+  access: string;
+  refresh: string;
+  user: AuthUser;
+  /** Batas mutlak sesi (ms epoch); null = tanpa batas. */
+  batasSesi: number | null;
+};
 
 type Meta = { userAgent?: string | null; ip?: string | null };
 
+/**
+ * Terbitkan pasangan token. `mulaiSec` = saat kata sandi dimasukkan (login/ganti
+ * sandi = sekarang; rotasi = `auth_time` token lama), sehingga rotasi tidak
+ * pernah memperpanjang batas mutlak sesi. Kedua token & baris DB dipotong di batas itu.
+ */
 async function issueTokens(
   user: { id: string; username: string; name: string; role: { key: string } },
   meta: Meta,
+  mulaiSec = Math.floor(Date.now() / 1000),
 ): Promise<IssuedTokens & { refreshId: string }> {
   const roleKey = user.role.key;
-  const access = await signAccessToken({
-    sub: user.id,
-    username: user.username,
-    name: user.name,
-    role: roleKey,
-  });
+  const batas = batasSesiSec(mulaiSec);
+  const access = await signAccessToken(
+    { sub: user.id, username: user.username, name: user.name, role: roleKey },
+    batas,
+  );
   const jti = crypto.randomUUID();
-  const refresh = await signRefreshToken(user.id, jti);
+  const refresh = await signRefreshToken(user.id, jti, mulaiSec, batas);
   const rec = await dal.storeRefreshToken({
     userId: user.id,
     tokenHash: dal.hashToken(refresh),
-    expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
+    expiresAt: new Date(Math.min(Date.now() + REFRESH_TTL_MS, batas === null ? Infinity : batas * 1000)),
     userAgent: meta.userAgent ?? null,
     ip: meta.ip ?? null,
   });
@@ -58,6 +70,7 @@ async function issueTokens(
     refresh,
     refreshId: rec.id,
     user: { id: user.id, username: user.username, name: user.name, role: roleKey },
+    batasSesi: batas === null ? null : batas * 1000,
   };
 }
 
@@ -97,11 +110,18 @@ export class SesiIdleError extends UnauthorizedError {
   }
 }
 
+/** Sesi ditolak karena melewati batas mutlak sejak login (`SESI_MAKS_JAM`). */
+export class SesiBatasError extends UnauthorizedError {
+  constructor() {
+    super(`Sesi sudah mencapai batas ${jamMaksSesi()} jam sejak masuk. Silakan masuk kembali.`);
+  }
+}
+
 /**
  * Rotasi refresh token: verifikasi tanda tangan + cek record di DB, terbitkan
  * pasangan baru, lalu cabut yang lama. Keputusan (rotasi / cabang paralel /
- * idle / reuse) ada di `putuskanRotasi`. Token mati yang dipakai lagi di luar
- * jendela paralel (indikasi pencurian) → cabut SEMUA token milik user tersebut.
+ * batas / idle / reuse) ada di `putuskanRotasi`. Token mati yang dipakai lagi di
+ * luar jendela paralel (indikasi pencurian) → cabut SEMUA token milik user tersebut.
  */
 export async function refresh(rawRefresh: string, meta: Meta): Promise<IssuedTokens> {
   const claims = await verifyRefreshToken(rawRefresh);
@@ -111,7 +131,14 @@ export async function refresh(rawRefresh: string, meta: Meta): Promise<IssuedTok
   if (!rec) throw new UnauthorizedError("Sesi tidak valid");
 
   const sekarang = Date.now();
-  const keputusan = putuskanRotasi(rec, claims.iat * 1000, sekarang, batasIdleRefreshMs());
+  const batas = batasSesiSec(claims.authTime);
+  const keputusan = putuskanRotasi(
+    rec,
+    claims.iat * 1000,
+    sekarang,
+    batasIdleRefreshMs(),
+    batas === null ? null : batas * 1000,
+  );
   if (keputusan === "reuse") {
     await dal.revokeAllUserTokens(rec.userId);
     throw new UnauthorizedError("Sesi kadaluarsa, silakan login ulang");
@@ -121,6 +148,11 @@ export async function refresh(rawRefresh: string, meta: Meta): Promise<IssuedTok
   if (keputusan === "ditolak" || (keputusan === "cabang" && !cabangSah)) {
     throw new UnauthorizedError("Sesi sudah berakhir, silakan login ulang");
   }
+  if (keputusan === "batas") {
+    // Token yang sudah dicabut (cabang) dibiarkan — rantai `replaced_by` tak boleh ditimpa.
+    if (!rec.revokedAt) await dal.revokeRefresh(rec.id);
+    throw new SesiBatasError();
+  }
   if (keputusan === "idle") {
     await dal.revokeRefresh(rec.id);
     throw new SesiIdleError();
@@ -129,7 +161,7 @@ export async function refresh(rawRefresh: string, meta: Meta): Promise<IssuedTok
   const user = await dal.findUserById(rec.userId);
   if (!user || !user.isActive) throw new UnauthorizedError("Akun tidak tersedia");
 
-  const { refreshId, ...issued } = await issueTokens(user, meta);
+  const { refreshId, ...issued } = await issueTokens(user, meta, claims.authTime);
   // `replaced_by` = id token pengganti (kolom VARCHAR(30); dulu diisi hash 64
   // karakter yang terpotong diam-diam). `cabang`: token lama sudah dicabut oleh
   // permintaan paralel pemenang rotasi.

@@ -1,11 +1,33 @@
 /**
- * Kontrak sesi di klien (PRD Form RM Terpadu K6): keluar otomatis saat idle
- * di SEMUA tab, dan kesempatan bagi form untuk menyimpan draf sebelum keluar.
+ * Kontrak sesi di klien: penyegaran latar (tetap masuk walau idle), batas
+ * mutlak sesi, keluar otomatis saat idle bila diaktifkan (PRD Form RM Terpadu
+ * K6), dan kesempatan bagi form untuk menyimpan draf sebelum keluar.
  * Murni — tanpa React.
  */
 
+/** Aturan sesi dari server (`aturanSesiKlien`) untuk `PenjagaSesi`. */
+export type AturanSesi = {
+  /** Keluar otomatis setelah sekian menit tanpa aktivitas (0 = nonaktif, bawaan). */
+  menitIdle: number;
+  /** Segarkan sesi di latar setiap sekian ms selama ada tab terbuka. */
+  jedaSegarkanMs: number;
+  /** Sisa waktu sampai batas mutlak sesi saat halaman dirender; null = tanpa batas. */
+  sisaSesiMs: number | null;
+};
+
 /** localStorage: waktu (ms) input pengguna terakhir di tab mana pun. */
 export const KUNCI_AKTIVITAS = "rh:aktivitas-terakhir";
+/** localStorage: waktu (ms) penyegaran sesi terakhir yang berhasil di tab mana pun. */
+export const KUNCI_SEGAR = "rh:sesi-disegarkan";
+/** Web Lock: hanya satu tab yang menyegarkan sesi pada satu waktu. */
+export const KUNCI_LOCK_SEGAR = "rh:segarkan-sesi";
+/** Peringatan batas mutlak tampil sekian ms sebelum keluar. */
+export const PERINGATAN_BATAS_MS = 5 * 60_000;
+/**
+ * Keluar sekian ms SEBELUM batas mutlak server, selagi sesi masih sah, agar
+ * draf semua tab sempat tersimpan.
+ */
+export const CADANGAN_BATAS_MS = 60_000;
 /** BroadcastChannel antar-tab: `{ jenis: "keluar", alasan }`. */
 export const KANAL_SESI = "rh:sesi";
 /**
@@ -18,13 +40,56 @@ export const PERINGATAN_IDLE_MS = 60_000;
 /** Batas tunggu simpan draf sebelum keluar (jaringan lambat tidak menahan layar terbuka). */
 export const BATAS_SIMPAN_SEBELUM_KELUAR_MS = 5_000;
 
-export type AlasanKeluar = "idle" | "manual";
+/**
+ * - `idle`     : batas idle tercapai (hanya bila `SESI_IDLE_MENIT` > 0);
+ * - `manual`   : tombol Keluar;
+ * - `batas`    : batas mutlak sesi sejak masuk tercapai;
+ * - `berakhir` : server menolak sesi (dicabut admin, akun nonaktif, ganti sandi di perangkat lain, dll.).
+ */
+export type AlasanKeluar = "idle" | "manual" | "batas" | "berakhir";
+const ALASAN_KELUAR: readonly AlasanKeluar[] = ["idle", "manual", "batas", "berakhir"];
 export type PesanSesi = { jenis: "keluar"; alasan: AlasanKeluar };
 export type DetailSebelumKeluar = { tunggu: (p: Promise<unknown>) => void };
 
 /** Sisa waktu (ms) sebelum keluar otomatis; ≤ 0 = sudah melewati batas. */
 export function sisaIdle(terakhirMs: number, sekarangMs: number, batasMs: number): number {
   return terakhirMs + batasMs - sekarangMs;
+}
+
+/** Toleransi jam PC mundur: catatan "masa depan" lebih dari ini dianggap tak sah. */
+const TOLERANSI_JAM_MUNDUR_MS = 60_000;
+
+/**
+ * Perlu menyegarkan sesi? Ya bila belum pernah tercatat, jeda sudah lewat, atau
+ * catatan berada di masa depan (jam PC diundur) — lebih baik rotasi berlebih
+ * daripada refresh token kedaluwarsa diam-diam.
+ */
+export function perluSegarkan(terakhirMs: number, sekarangMs: number, jedaMs: number): boolean {
+  if (terakhirMs <= 0) return true;
+  if (terakhirMs - sekarangMs > TOLERANSI_JAM_MUNDUR_MS) return true;
+  return sekarangMs - terakhirMs >= jedaMs;
+}
+
+/** Waktu (ms) bersama antar-tab dari localStorage; 0 bila tak ada / diblokir. */
+export function bacaWaktuBersama(kunci: string): number {
+  try {
+    return Number(localStorage.getItem(kunci)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function tulisWaktuBersama(kunci: string, ms: number): void {
+  try {
+    localStorage.setItem(kunci, String(ms));
+  } catch {
+    // Mode privat / penyimpanan diblokir: tiap tab menghitung sendiri.
+  }
+}
+
+/** Login baru = sesi segar; tab berikutnya tak perlu merotasi seketika. */
+export function catatSesiSegar(): void {
+  tulisWaktuBersama(KUNCI_SEGAR, Date.now());
 }
 
 /** "m:ss" untuk hitung mundur. */
@@ -36,7 +101,7 @@ export function formatHitungMundur(ms: number): string {
 export function pesanSesiSah(v: unknown): v is PesanSesi {
   if (!v || typeof v !== "object") return false;
   const p = v as Record<string, unknown>;
-  return p.jenis === "keluar" && (p.alasan === "idle" || p.alasan === "manual");
+  return p.jenis === "keluar" && ALASAN_KELUAR.includes(p.alasan as AlasanKeluar);
 }
 
 /**
@@ -52,13 +117,14 @@ export async function simpanSebelumKeluar(batasMs = BATAS_SIMPAN_SEBELUM_KELUAR_
 }
 
 /**
- * Halaman masuk setelah keluar. Idle → kembali ke halaman ini setelah login;
- * Keluar manual → dasbor (PC bersama: pengguna berikutnya tak diarahkan ke
- * halaman pasien pengguna sebelumnya).
+ * Halaman masuk setelah keluar. Otomatis (idle/batas/berakhir) → kembali ke
+ * halaman ini setelah login, dengan pemberitahuan alasannya; Keluar manual →
+ * dasbor (PC bersama: pengguna berikutnya tak diarahkan ke halaman pasien
+ * pengguna sebelumnya).
  */
 export function urlMasukKembali(alasan: AlasanKeluar, lokasi: { pathname: string; search: string }): string {
   if (alasan === "manual") return "/";
-  return `/?${new URLSearchParams({ callbackUrl: lokasi.pathname + lokasi.search, alasan: "idle" }).toString()}`;
+  return `/?${new URLSearchParams({ callbackUrl: lokasi.pathname + lokasi.search, alasan }).toString()}`;
 }
 
 /** Jeda agar tab lain sempat menyimpan draf sebelum sesi dicabut. */

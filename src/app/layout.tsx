@@ -1,19 +1,26 @@
 import type { Metadata, Viewport } from "next";
-import { Figtree, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/Toast";
 
+// Font di-host sendiri (`app/fonts/`, OFL) — bukan `next/font/google`: Google
+// kadang membalas URL `fonts.gstatic.com/l/font?kit=…&skey=…` yang membuat
+// Turbopack gagal ("next/font/google queries have exactly one entry"), dan build
+// produksi pun tak lagi bergantung pada internet. Berkas = subset latin variabel
+// yang sama persis dengan sajian Google Fonts.
+
 // Figtree — keluarga tunggal (bahasa "Cord"): 400 body → 800 display.
 // Judul terasa "distempel" berkat bobot berat; tracking negatif di ukuran besar.
-const figtree = Figtree({
+const figtree = localFont({
+  src: "./fonts/figtree-latin-wght.woff2",
   variable: "--font-figtree",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+  weight: "300 900",
 });
 
-const geistMono = Geist_Mono({
+const geistMono = localFont({
+  src: "./fonts/geist-mono-latin-wght.woff2",
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: "100 900",
 });
 
 export const metadata: Metadata = {

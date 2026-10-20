@@ -10,6 +10,7 @@
  *               "reuse interval" pada rotasi refresh token — dan HANYA bila
  *               rantai penggantinya masih aktif (`penggantiMasihAktif`).
  * - `ditolak` : token baru saja dicabut oleh logout → tolak tanpa mencabut sesi lain.
+ * - `batas`   : sesi melewati batas mutlak sejak login (`SESI_MAKS_JAM`) → tolak.
  * - `idle`    : tidak ada permintaan apa pun melewati batas idle (K6) → tolak.
  * - `reuse`   : token mati dipakai lagi di luar jendela → indikasi pencurian,
  *               cabut SEMUA sesi pengguna.
@@ -19,7 +20,7 @@ export const GRASI_ROTASI_MS = 30_000;
 /** Toleransi jam mundur kecil; selisih besar (mis. salah zona waktu) gagal tertutup → `reuse`. */
 const TOLERANSI_JAM_MS = 5_000;
 
-export type KeputusanRotasi = "rotasi" | "cabang" | "ditolak" | "idle" | "reuse";
+export type KeputusanRotasi = "rotasi" | "cabang" | "ditolak" | "batas" | "idle" | "reuse";
 
 export type RekamRefresh = {
   revokedAt: Date | null;
@@ -66,13 +67,21 @@ export function putuskanRotasi(
   sekarangMs: number,
   /** Umur maksimum token saat dirotasi; 0 = tanpa batas idle. */
   batasIdleMs: number,
+  /** Batas mutlak sesi (ms epoch, dari `auth_time`); null = tanpa batas. */
+  batasSesiMs: number | null = null,
 ): KeputusanRotasi {
+  const lewatBatas = batasSesiMs !== null && sekarangMs >= batasSesiMs;
   if (rec.revokedAt) {
     const umur = sekarangMs - rec.revokedAt.getTime();
-    if (umur >= -TOLERANSI_JAM_MS && umur <= GRASI_ROTASI_MS) return rec.replacedBy ? "cabang" : "ditolak";
+    if (umur >= -TOLERANSI_JAM_MS && umur <= GRASI_ROTASI_MS) {
+      if (!rec.replacedBy) return "ditolak";
+      // Cabang tak boleh melahirkan sesi baru setelah batas mutlak.
+      return lewatBatas ? "batas" : "cabang";
+    }
     return "reuse";
   }
   if (rec.expiresAt.getTime() < sekarangMs) return "reuse";
+  if (lewatBatas) return "batas";
   if (batasIdleMs > 0 && sekarangMs - diterbitkanMs > batasIdleMs) return "idle";
   return "rotasi";
 }

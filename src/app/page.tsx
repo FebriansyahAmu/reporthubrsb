@@ -4,9 +4,24 @@ import { BarChart3, FileText, ShieldCheck, TimerOff } from "lucide-react";
 import { LoginForm } from "@/features/auth/LoginForm";
 import { UnduhAplikasiDesktop } from "@/features/auth/UnduhAplikasiDesktop";
 import { jalurInternal } from "@/lib/jalur";
+import { jamMaksSesi } from "@/server/auth/batas-sesi";
 import { rilisWindowsTerbaru } from "@/server/modules/desktop/rilis";
 
 export const metadata: Metadata = { title: "Masuk · AuditTrail RS BOLTIM" };
+
+/** Pemberitahuan di atas form masuk sesuai alasan keluar otomatis (`urlMasukKembali`). */
+function pesanAlasan(alasan: unknown): string | null {
+  switch (alasan) {
+    case "idle":
+      return "Anda keluar otomatis karena tidak ada aktivitas. Masuk kembali untuk melanjutkan.";
+    case "batas":
+      return `Sesi sudah mencapai batas ${jamMaksSesi()} jam sejak masuk. Masuk kembali untuk melanjutkan.`;
+    case "berakhir":
+      return "Sesi Anda sudah berakhir. Masuk kembali untuk melanjutkan.";
+    default:
+      return null;
+  }
+}
 
 export default async function LoginPage({
   searchParams,
@@ -16,7 +31,7 @@ export default async function LoginPage({
   const { callbackUrl, alasan } = await searchParams;
   // Tanpa tujuan eksplisit: browser → /beranda (modul pertama yang diizinkan), aplikasi desktop → Form RM (ditentukan di klien).
   const target = (typeof callbackUrl === "string" && jalurInternal(callbackUrl)) || null;
-  const idle = alasan === "idle";
+  const pesan = pesanAlasan(alasan);
   // Manifest rusak/tak terbaca tidak boleh menggagalkan halaman masuk.
   const rilis = await rilisWindowsTerbaru().catch(() => null);
 
@@ -97,13 +112,13 @@ export default async function LoginPage({
             </p>
           </div>
 
-          {idle && (
+          {pesan && (
             <div
               role="status"
               className="mb-4 flex items-start gap-2 rounded-[var(--radius-md)] border border-brand/25 bg-brand-soft px-3 py-2.5 text-sm text-brand-soft-fg"
             >
               <TimerOff className="mt-0.5 size-4 shrink-0" aria-hidden />
-              <span>Anda keluar otomatis karena tidak ada aktivitas. Masuk kembali untuk melanjutkan.</span>
+              <span>{pesan}</span>
             </div>
           )}
 
