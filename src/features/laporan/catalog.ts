@@ -10,6 +10,7 @@ import {
   FlaskConical,
   HandCoins,
   Hospital,
+  MapPinned,
   NotebookText,
   Pill,
   ShieldCheck,
@@ -62,6 +63,14 @@ export const LAPORAN_CATALOG: ReportGroup[] = [
         icon: ClipboardList,
         status: "tersedia",
         href: "/laporan/pengunjung",
+      },
+      {
+        title: "Klasifikasi Kunjungan per Domisili",
+        description:
+          "Kunjungan IGD, rawat jalan & rawat inap menurut domisili pasien — dalam vs luar Kab. Bolaang Mongondow Timur, per kecamatan & kabupaten/kota asal. Ekspor Excel.",
+        icon: MapPinned,
+        status: "tersedia",
+        href: "/laporan/domisili",
       },
       {
         title: "Kunjungan per Poli / Unit",

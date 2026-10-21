@@ -44,18 +44,21 @@ const BARIS = "flex w-full items-center gap-2 sm:w-auto";
 const TAHUN = "w-[5.5rem] shrink-0 sm:w-24";
 
 /**
- * Pemilih periode RL 3.2: bulan (bawaan formulir SIRS 6), triwulan, atau
- * rentang tanggal bebas (maks. RL32_MAKS_HARI hari). Tidak bisa memilih
- * periode setelah hari ini atau sebelum TAHUN_AWAL.
+ * Pemilih periode laporan (RL 3.2, Klasifikasi Domisili): bulan (bawaan
+ * formulir SIRS 6), triwulan, atau rentang tanggal bebas (maks. RL32_MAKS_HARI
+ * hari). Tidak bisa memilih periode setelah hari ini atau sebelum TAHUN_AWAL.
  */
 export function PemilihPeriode({
   nilai,
   onChange,
   hariIni,
+  idAwalan = "rl32",
 }: {
   nilai: PilihanPeriode;
   onChange: (p: PilihanPeriode) => void;
   hariIni: string;
+  /** Awalan `id` kontrol, unik per halaman. */
+  idAwalan?: string;
 }) {
   const kini = useMemo(() => bulanDari(hariIni), [hariIni]);
   const kiniTw = useMemo(() => ({ tahun: kini.tahun, tw: triwulanDari(kini.bulan) }), [kini]);
@@ -120,7 +123,7 @@ export function PemilihPeriode({
             </button>
             <div className="min-w-0 flex-1 sm:w-36 sm:flex-none">
               <Select
-                id="rl32-bulan"
+                id={`${idAwalan}-bulan`}
                 value={String(bulan.bulan)}
                 options={opsiBulan}
                 onChange={(v) => set({ bulan: { ...bulan, bulan: Number(v) } })}
@@ -158,7 +161,7 @@ export function PemilihPeriode({
             </button>
             <div className="min-w-0 flex-1 sm:w-40 sm:flex-none">
               <Select
-                id="rl32-triwulan"
+                id={`${idAwalan}-triwulan`}
                 value={String(triwulan.tw)}
                 options={opsiTriwulan}
                 onChange={(v) => set({ triwulan: { ...triwulan, tw: Number(v) as Triwulan } })}
@@ -185,17 +188,17 @@ export function PemilihPeriode({
 
         {nilai.mode === "rentang" && (
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-            <label htmlFor="rl32-dari" className="sr-only">
+            <label htmlFor={`${idAwalan}-dari`} className="sr-only">
               Tanggal awal
             </label>
-            <label htmlFor="rl32-sampai" className="sr-only">
+            <label htmlFor={`${idAwalan}-sampai`} className="sr-only">
               Tanggal akhir
             </label>
             {/* Ponsel: dua kolom sama lebar; layar lebar: sebaris dengan tanda pisah. */}
             <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center">
               <div className="min-w-0 sm:w-[10.5rem]">
                 <DatePicker
-                  id="rl32-dari"
+                  id={`${idAwalan}-dari`}
                   value={rentang.from}
                   onChange={(v) => v && set({ rentang: ubahRentang(rentang, "from", v, hariIni) })}
                   min={TANGGAL_AWAL}
@@ -208,7 +211,7 @@ export function PemilihPeriode({
               </span>
               <div className="min-w-0 sm:w-[10.5rem]">
                 <DatePicker
-                  id="rl32-sampai"
+                  id={`${idAwalan}-sampai`}
                   value={rentang.to}
                   onChange={(v) => v && set({ rentang: ubahRentang(rentang, "to", v, hariIni) })}
                   min={rentang.from}
