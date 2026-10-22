@@ -19,6 +19,18 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@prisma/client", "@prisma/adapter-mariadb", "mariadb"],
 
   /**
+   * Optimizer gambar (`/_next/image`, publik tanpa login) HANYA menerima logo
+   * statis — satu-satunya pemakai `next/image`. Jalur lain (mis. `/api/...`,
+   * berkas unggahan) ditolak 400, sehingga input gambar tak tepercaya tak pernah
+   * sampai ke `sharp` (pertahanan berlapis atas CVE-2026-96889, SVG → RCE).
+   * Tanpa `remotePatterns` = gambar dari host luar ditolak; SVG tetap dilarang
+   * (`dangerouslyAllowSVG` bawaan false).
+   */
+  images: {
+    localPatterns: [{ pathname: "/logo/**", search: "" }],
+  },
+
+  /**
    * Origin yang boleh meminta aset dev internal (`/_next/*`, HMR) di `next dev`.
    * WAJIB memuat IP LAN agar HP bisa membuka & meng-hydrate halaman (mis. /sign
    * TTD jarak jauh) — tanpa ini, dari IP LAN halaman ter-render tapi JS client

@@ -6,7 +6,11 @@
 # TIDAK ada di image.
 # =============================================================================
 
-ARG NODE_VERSION=22-alpine
+# Versi Node DIPATOK (bukan `22-alpine` mengambang): build ulang bisa diulang
+# persis & naik versi = keputusan sadar. 24.22.1 = rilis keamanan 21 Okt 2026
+# (CVE-2026-111497 Brotli → RCE, bypass cek hostname TLS, dll.); 24 = Active LTS,
+# sama dengan Node di PC dev. Naikkan saat ada rilis keamanan Node berikutnya.
+ARG NODE_VERSION=24.22.1-alpine3.24
 
 # --- deps: install dependency + generate 2 Prisma client (via postinstall) ----
 FROM node:${NODE_VERSION} AS deps
@@ -39,8 +43,16 @@ RUN npm run build
 
 # --- runner: image runtime minimal --------------------------------------------
 FROM node:${NODE_VERSION} AS runner
-# tini = init ringan untuk reaping proses & penerusan sinyal (SIGTERM) yang benar.
-RUN apk add --no-cache tini
+# apk upgrade: tambalan keamanan paket Alpine (openssl, musl, zlib, …) yang terbit
+# setelah base image dibuat. tini = init ringan untuk reaping proses & penerusan
+# sinyal (SIGTERM). npm/npx/corepack/yarn DIBUANG: runtime (server, healthcheck,
+# service `migrate`) hanya memanggil `node` — kurangi permukaan serangan & temuan
+# CVE di dependensi bawaan npm.
+RUN apk upgrade --no-cache \
+ && apk add --no-cache tini \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+           /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+           /opt/yarn-* /usr/local/bin/yarn /usr/local/bin/yarnpkg
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \

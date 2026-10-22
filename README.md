@@ -61,7 +61,8 @@ Bahasa visual: *maritime "Cord"* (navy + harbor-blue), font Figtree, **mode tera
 
 ## Persiapan
 
-Prasyarat: Node.js 20+ dan akses jaringan ke server MySQL SIMGOS (read-only) &
+Prasyarat: Node.js 24 LTS (≥ 24.22.1, rilis keamanan Okt 2026; sama dengan image
+Docker) dan akses jaringan ke server MySQL SIMGOS (read-only) &
 `reporthub` (read-write).
 
 ```bash

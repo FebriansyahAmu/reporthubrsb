@@ -153,4 +153,52 @@ Audit dipanggil dari **service** (bukan API), agar tercatat apa pun jalur pemang
 - [ ] User DB yang dipakai benar-benar read-only (uji: coba INSERT → harus ditolak).
 - [ ] Tidak ada jalur `migrate`/`db push` ke schema SIMGOS.
 
+---
+
+## 9. Patch Keamanan Dependensi & Image
+
+**Rutin:**
+- Pantau [blog keamanan Next.js](https://nextjs.org/blog) dan [rilis keamanan Node.js](https://nodejs.org/en/blog/vulnerability).
+- Jangan hanya mengandalkan `npm audit`. Advisory Next.js sering belum masuk database npm, sehingga `next@16.3.8` lolos audit padahal rentan.
+- `npm audit --omit=dev` (yang masuk ke image produksi) harus bersih. Temuan dev-only dicatat beserta alasannya.
+- Versi Node di `Dockerfile` dipatok (`ARG NODE_VERSION`). Naikkan setiap ada rilis keamanan Node, lalu build ulang image.
+
+**Pertahanan berlapis yang dipasang:**
+- **Optimizer gambar** (`/_next/image`, publik): `images.localPatterns` hanya mengizinkan `/logo/**` tanpa query string. Jalur lain, host luar, dan SVG ditolak 400.
+- **Image runner:**
+  - `apk upgrade` untuk tambalan paket Alpine;
+  - npm/npx/corepack/yarn dibuang, karena runtime hanya memanggil `node`;
+  - berjalan sebagai non-root UID 1001;
+  - init `tini`.
+
+### Log patch 22 Okt 2026
+
+| Komponen | Sebelum → sesudah | Advisory | Dampak ke aplikasi ini |
+| --- | --- | --- | --- |
+| `next` | 16.3.8 → **16.4.2** | CVE-2026-96889 / GHSA-2464-fhr4-w9xw: RCE di Image Optimization lewat SVG (memori `sharp`, glibc Linux; rentan ≤ 16.4.0) | `next/image` dipakai untuk logo, dan `/_next/image` publik tanpa login. Image kita Alpine (musl), tetapi tetap ditambal plus dikunci dengan `localPatterns`. |
+| | | GHSA-673q-mjm6-r5xr: RCE di fungsi `use cache` | Tidak dipakai (tanpa Cache Components). Tetap ditambal sesuai anjuran Vercel. |
+| | | GHSA-p3m5-59mp-jv5r: DoS lewat Server Actions | Tidak ada Server Action. |
+| | | CVE-2026-94545: RCE `next/og` `ImageResponse` lewat SVG (16.2.0–16.3.5) | Sudah aman sejak 16.3.6; `next/og` juga tidak dipakai. |
+| `sharp` | 0.35.5 | Batas aman CVE-2026-96889 adalah ≥ 0.35.5 | Lockfile sudah 0.35.5, termasuk biner `linuxmusl`. |
+| `react`, `react-dom` | 19.2.4 → **19.2.9** | GHSA-xqc2-xf4c-x3h3, GHSA-h3gv-c5rc-p453 (`react-server-dom-*`) | RSC dibundel di dalam `next`, sehingga tertambal lewat 16.4.x. Paket `react` diselaraskan. |
+| Node.js (Docker) | `22-alpine` mengambang → **24.22.1-alpine3.24** dipatok | Rilis 21 Okt 2026: CVE-2026-111497 (Brotli → RCE), bypass cek hostname TLS CVE-2026-105483 / CVE-2026-106069, `dns` NUL, dll. Rentan: < 22.23.4 / < 24.22.1 / < 26.12.1. | `fetch()` server (webservice SIMGOS, BPJS) mendekompresi Brotli secara otomatis. Node 24 sama dengan PC dev. |
+| `mariadb` | 3.5.3 (+ 3.4.5 di adapter) → **3.5.4** | SQL injection di text protocol (`NO_BACKSLASH_ESCAPES`, SET expansion), kebocoran memori GeoJSON, kebocoran kata sandi via MitM | Driver kedua DB. Query kita di-bind, tetapi tetap ditambal. |
+| `@prisma/*`, `prisma` | 7.9.0 → **7.10.1** | Membawa `mariadb` 3.5.4 dan menambal rantai CLI (`mysql2`, `deepmerge-ts`, `valibot`, `find-my-way`) | — |
+| `uuid` (via exceljs) | 8.3.2 → **11.1.1** (`overrides`) | GHSA-w5hq-g745-h8pq | exceljs hanya memanggil `v4()` tanpa `buf`, sehingga tidak terjangkau. Override tetap dipasang untuk membersihkan audit. |
+| `vitest` (dev) | 3.2.7 → **4.1.12** | `tinypool` RCE (critical), `@vitest/mocker` path traversal | Hanya dipakai saat uji lokal. |
+| Transitif dev | `npm audit fix` | brace-expansion, browserslist, fast-uri, js-yaml, nanoid, source-map-js, vite | — |
+
+**Sisa temuan (diterima):**
+- `braces` ≤ 3.0.3 lewat `eslint-config-next` → `fast-glob` → `micromatch`. Belum ada versi tambalan, dan saran `npm audit` (turun ke `eslint-config-next@14`) salah.
+- Hanya dipakai lint saat dev; tidak masuk image produksi. `npm audit --omit=dev` = 0.
+
+**Validasi:**
+- `tsc` dan ESLint bersih; unit 473/473 (Vitest 4).
+- Build produksi lolos.
+- Uji pasca-patch 17/17: optimizer menerima logo, menolak jalur lain, traversal, query, host luar, dan lebar tidak terdaftar.
+- Regresi E2E produksi:
+  - Domisili 44/44;
+  - sesi 43/43;
+  - sesi-tetap 27/29. Dua cek `expires_at` meleset karena jam server DB reporthub 16 detik lebih cepat (drift NTP), bukan karena kode.
+
 Lanjut ke → [07-roadmap.md](./07-roadmap.md)
