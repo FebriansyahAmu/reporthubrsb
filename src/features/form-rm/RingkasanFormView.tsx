@@ -7,6 +7,7 @@ import { DatePicker, DateTimePicker } from "@/components/ui/DatePicker";
 import { KeadaanKeluarTertaut } from "@/features/form-rm/KeadaanKeluarTertaut";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
+import { SaranNamaSaya } from "@/features/form-rm/isian/SaranNamaSaya";
 import { BidangIsian } from "@/features/form-rm/isian/kunci";
 import { LabelAsal } from "@/features/form-rm/isian/TandaAsal";
 import { useIsian } from "@/features/form-rm/isian/useIsian";
@@ -235,12 +236,16 @@ export function RingkasanFormView({
         <Section title="Dokter yang Merawat & Keadaan Keluar">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div className="space-y-3 rounded-[var(--radius-md)] border border-border bg-surface-2/30 p-3">
-              <TextField label="Nama Dokter yang Merawat" asal="dokterMerawatNama" value={form.dokterMerawatNama} onChange={(v) => set("dokterMerawatNama", v)} placeholder="Nama dokter" />
+              <div>
+                <TextField label="Nama Dokter yang Merawat" asal="dokterMerawatNama" value={form.dokterMerawatNama} onChange={(v) => set("dokterMerawatNama", v)} placeholder="Nama dokter" />
+                <SaranNamaSaya nama={form.dokterMerawatNama} onPilih={(v) => set("dokterMerawatNama", v)} />
+              </div>
               <SignaturePad
                 label="Tanda Tangan Dokter"
                 value={form.dokterMerawatTtd}
                 onChange={(v) => set("dokterMerawatTtd", v)}
                 context={[header.nama, "RM.01 — Dokter Merawat"].filter(Boolean).join(" · ")}
+                petugas={{ nama: form.dokterMerawatNama, onNama: (v) => set("dokterMerawatNama", v) }}
               />
             </div>
             <div>
@@ -330,7 +335,10 @@ export function RingkasanFormView({
                       <Label>Tanggal</Label>
                       <DatePicker value={form.sebabKematianTanggal} onChange={(v) => set("sebabKematianTanggal", v)} placeholder="Pilih tanggal" />
                     </div>
-                    <TextField label="Nama Dokter" value={form.dokterKematianNama} onChange={(v) => set("dokterKematianNama", v)} placeholder="Nama dokter" />
+                    <div>
+                      <TextField label="Nama Dokter" value={form.dokterKematianNama} onChange={(v) => set("dokterKematianNama", v)} placeholder="Nama dokter" />
+                      <SaranNamaSaya nama={form.dokterKematianNama} onPilih={(v) => set("dokterKematianNama", v)} />
+                    </div>
                   </div>
                   <SignaturePad
                     label="Tanda Tangan Dokter"
@@ -338,6 +346,7 @@ export function RingkasanFormView({
                     onChange={(v) => set("dokterKematianTtd", v)}
                     reuse={form.dokterMerawatTtd}
                     context={[header.nama, "RM.01 — Sebab Kematian"].filter(Boolean).join(" · ")}
+                    petugas={{ nama: form.dokterKematianNama, onNama: (v) => set("dokterKematianNama", v) }}
                   />
                 </div>
               </div>

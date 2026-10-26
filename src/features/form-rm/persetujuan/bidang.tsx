@@ -10,9 +10,11 @@ import { Input, Label } from "@/components/ui/Field";
 import { SelectOther } from "@/components/ui/Select";
 import { cn } from "@/lib/cn";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
+import { SaranNamaSaya } from "@/features/form-rm/isian/SaranNamaSaya";
 import { LabelAsal } from "@/features/form-rm/isian/TandaAsal";
 import type { FormRmHeader } from "@/server/modules/form-rm/form-rm.types";
 import { Meter } from "./alur";
+import { Saran } from "./saran";
 import {
   HUBUNGAN_KELUARGA,
   INFORMASI_WAJIB,
@@ -121,6 +123,7 @@ export function PihakInformasi({ awalan, form, set, pasienNama }: { awalan: stri
             onChange={(e) => set("pemberiInformasi", e.target.value)}
             placeholder="Nama dokter pemberi informasi"
           />
+          <SaranNamaSaya nama={form.pemberiInformasi} onPilih={(v) => set("pemberiInformasi", v)} />
         </div>
         <div>
           <Label htmlFor={`${awalan}-penerima`}>Pasien / Keluarga (penerima informasi)</Label>
@@ -168,6 +171,7 @@ export function TtdInformasi({
           value={form.pemberiTtd}
           onChange={(v) => set("pemberiTtd", v)}
           context={konteks("Pemberi informasi")}
+          petugas={{ nama: form.pemberiInformasi, onNama: (v) => set("pemberiInformasi", v) }}
         />
       </KotakTtd>
       <KotakTtd
@@ -440,9 +444,12 @@ export function KotakSaksi({
         onChange={(e) => onNama(e.target.value)}
         placeholder={`Nama saksi ${no}`}
         aria-label={`Nama saksi ${no}`}
-        className="mb-3"
       />
-      <SignaturePad label={`Tanda tangan saksi ${no}`} value={ttd} onChange={onTtd} context={konteks} />
+      <div className="mb-3">
+        <SaranNamaSaya nama={nama} onPilih={onNama} />
+      </div>
+      {/* Saksi bisa petugas RS → boleh memakai TTD tersimpan; nama tak diisi otomatis (bisa keluarga). */}
+      <SignaturePad label={`Tanda tangan saksi ${no}`} value={ttd} onChange={onTtd} context={konteks} petugas={{ nama, onNama }} />
     </KotakTtd>
   );
 }
@@ -776,18 +783,7 @@ export function KonfirmasiGanti({
   );
 }
 
-/** Tombol saran satu-klik di bawah kolom (mis. "Pasien sendiri: …"). */
-export function Saran({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="mt-1.5 inline-flex max-w-full items-center gap-1 truncate rounded-full border border-brand/30 bg-brand-soft/60 px-2.5 py-0.5 text-left text-xs font-medium text-brand-soft-fg transition-colors hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-    >
-      <span className="truncate">{children}</span>
-    </button>
-  );
-}
+export { Saran };
 
 /** Rumpang pratinjau kalimat yang masih kosong. */
 export function Rumpang({ children }: { children: React.ReactNode }) {

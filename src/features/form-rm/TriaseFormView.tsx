@@ -32,6 +32,7 @@ import { DateTimePicker, nowLocalDateTime } from "@/components/ui/DatePicker";
 import { Switch } from "@/components/ui/Switch";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
+import { SaranNamaSaya } from "@/features/form-rm/isian/SaranNamaSaya";
 import { BidangIsian } from "@/features/form-rm/isian/kunci";
 import { LabelAsal, TandaAsal } from "@/features/form-rm/isian/TandaAsal";
 import { useIsian } from "@/features/form-rm/isian/useIsian";
@@ -657,12 +658,14 @@ export function TriaseFormView({
                   onChange={(e) => set("petugasNama", e.target.value)}
                   placeholder="Nama dokter / perawat"
                 />
+                <SaranNamaSaya nama={form.petugasNama} onPilih={(v) => set("petugasNama", v)} />
               </div>
               <SignaturePad
                 label="Tanda Tangan"
                 value={form.petugasTtd}
                 onChange={(v) => set("petugasTtd", v)}
                 context={[header.nama, "Triase RM.04 — Dokter/Perawat"].filter(Boolean).join(" · ")}
+                petugas={{ nama: form.petugasNama, onNama: (v) => set("petugasNama", v), isiNamaOtomatis: true }}
               />
             </div>
           </div>

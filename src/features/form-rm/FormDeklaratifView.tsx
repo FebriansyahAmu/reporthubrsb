@@ -8,6 +8,7 @@ import { Input, Label } from "@/components/ui/Field";
 import { DatePicker, DateTimePicker, nowLocalDateTime } from "@/components/ui/DatePicker";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
+import { SaranNamaSaya } from "@/features/form-rm/isian/SaranNamaSaya";
 import { BidangIsian, useTerkunci } from "@/features/form-rm/isian/kunci";
 import { LabelAsal } from "@/features/form-rm/isian/TandaAsal";
 import { useIsian } from "@/features/form-rm/isian/useIsian";
@@ -91,6 +92,7 @@ function Isian({
                       lingkup={b.kolom}
                       nilai={form}
                       ubah={(v) => ubahAtas(x.id, v)}
+                      ubahKolom={ubahAtas}
                       konteksTtd={konteksTtd}
                     />
                   ))}
@@ -102,7 +104,9 @@ function Isian({
                 key={t.id}
                 t={t}
                 baris={Array.isArray(form[t.id]) ? (form[t.id] as BarisDeklaratif[]) : []}
-                ubah={(rows) => ubahAtas(t.id, rows)}
+                ubah={(fn) =>
+                  setForm((f) => ({ ...f, [t.id]: fn(Array.isArray(f[t.id]) ? (f[t.id] as BarisDeklaratif[]) : []) }))
+                }
                 konteksTtd={konteksTtd}
               />
             ))}
@@ -123,24 +127,25 @@ function TabelUi({
 }: {
   t: KolomTabel;
   baris: BarisDeklaratif[];
-  ubah: (rows: BarisDeklaratif[]) => void;
+  /** Pembaruan fungsional: beberapa kolom satu baris bisa berubah dalam satu aksi (mis. paraf + nama). */
+  ubah: (fn: (rows: BarisDeklaratif[]) => BarisDeklaratif[]) => void;
   konteksTtd: string;
 }) {
   const terkunci = useTerkunci();
   // Baris terakhir terbuka; baris lain ringkas (bisa dibuka) agar daftar panjang tetap terbaca.
   const [buka, setBuka] = useState<Set<number>>(() => new Set([Math.max(0, baris.length - 1)]));
   const tetap = t.barisAwal ?? 0;
-  const ubahBaris = (i: number, id: string, v: unknown) => ubah(baris.map((r, j) => (j === i ? { ...r, [id]: v } : r)));
+  const ubahBaris = (i: number, id: string, v: unknown) => ubah((rows) => rows.map((r, j) => (j === i ? { ...r, [id]: v } : r)));
 
   function tambah() {
     const baru = barisKosong(t);
     // Pengkajian ulang dimulai pada waktu sekarang.
     for (const x of t.kolom) if (x.jenis === "tanggalJam") baru[x.id] = nowLocalDateTime();
-    ubah([...baris, baru]);
+    ubah((rows) => [...rows, baru]);
     setBuka(new Set([baris.length]));
   }
   function hapus(i: number) {
-    ubah(baris.filter((_, j) => j !== i));
+    ubah((rows) => rows.filter((_, j) => j !== i));
     setBuka(new Set());
   }
   const alih = (i: number) =>
@@ -190,6 +195,7 @@ function TabelUi({
                         lingkup={t.kolom}
                         nilai={r}
                         ubah={(v) => ubahBaris(i, x.id, v)}
+                        ubahKolom={(id, v) => ubahBaris(i, id, v)}
                         konteksTtd={`${konteksTtd} · ${t.namaBaris} ${i + 1}`}
                       />
                     ))}
@@ -232,6 +238,7 @@ function KolomUi({
   lingkup,
   nilai,
   ubah,
+  ubahKolom,
   konteksTtd,
 }: {
   k: KolomBaris | Extract<KolomDeklaratif, { jenis: "info" }>;
@@ -239,6 +246,8 @@ function KolomUi({
   lingkup: readonly KolomDeklaratif[];
   nilai: DataDeklaratif;
   ubah: (v: unknown) => void;
+  /** Ubah kolom lain di lingkup yang sama (nama penanda tangan TTD petugas). */
+  ubahKolom: (id: string, v: unknown) => void;
   konteksTtd: string;
 }) {
   if (k.jenis === "info") return <p className="text-xs text-fg-muted sm:col-span-2 lg:col-span-3">{k.teks}</p>;
@@ -262,7 +271,7 @@ function KolomUi({
   return (
     <div className={cn("min-w-0", lebar)}>
       {k.jenis !== "ttd" && k.jenis !== "centang" && judul}
-      <InputKolom k={k} id={id} nilai={v} ubah={ubah} konteksTtd={konteksTtd} />
+      <InputKolom k={k} id={id} nilai={v} ubah={ubah} konteksTtd={konteksTtd} lingkup={lingkup} data={nilai} ubahKolom={ubahKolom} />
       {k.keterangan && <p className="mt-1 text-[11px] text-fg-subtle">{k.keterangan}</p>}
     </div>
   );
@@ -274,17 +283,25 @@ function InputKolom({
   nilai,
   ubah,
   konteksTtd,
+  lingkup,
+  data,
+  ubahKolom,
 }: {
   k: KolomIsian;
   id: string;
   nilai: unknown;
   ubah: (v: unknown) => void;
   konteksTtd: string;
+  lingkup: readonly KolomDeklaratif[];
+  data: DataDeklaratif;
+  ubahKolom: (id: string, v: unknown) => void;
 }) {
   const teks = typeof nilai === "string" ? nilai : "";
   switch (k.jenis) {
-    case "teks":
-      return k.baris && k.baris > 1 ? (
+    case "teks": {
+      // Kolom nama penanda tangan TTD petugas → saran "Nama saya".
+      const namaPetugas = lingkup.some((x) => x.jenis === "ttd" && x.petugas?.kolomNama === k.id);
+      const kontrol = k.baris && k.baris > 1 ? (
         <textarea
           id={id}
           rows={k.baris}
@@ -297,6 +314,15 @@ function InputKolom({
       ) : (
         <Input id={id} value={teks} maxLength={k.maks ?? 300} placeholder={k.placeholder} onChange={(e) => ubah(e.target.value)} />
       );
+      return namaPetugas ? (
+        <>
+          {kontrol}
+          <SaranNamaSaya nama={teks} onPilih={ubah} />
+        </>
+      ) : (
+        kontrol
+      );
+    }
     case "angka":
       return (
         <div className="flex items-center gap-2">
@@ -343,8 +369,28 @@ function InputKolom({
           {k.wajib && <span className="text-danger">*</span>}
         </label>
       );
-    case "ttd":
-      return <SignaturePad label={k.label} value={teks} onChange={ubah} context={konteksTtd} />;
+    case "ttd": {
+      const p = k.petugas;
+      const namaId = p?.kolomNama;
+      return (
+        <SignaturePad
+          label={k.label}
+          value={teks}
+          onChange={ubah}
+          context={konteksTtd}
+          petugas={
+            p && {
+              jenis: p.jenis,
+              isiNamaOtomatis: p.isiNamaOtomatis,
+              nama: namaId && typeof data[namaId] === "string" ? (data[namaId] as string) : "",
+              onNama: (n) => {
+                if (namaId) ubahKolom(namaId, n);
+              },
+            }
+          }
+        />
+      );
+    }
   }
 }
 

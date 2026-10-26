@@ -93,3 +93,21 @@ CREATE TABLE IF NOT EXISTS form_rm_identitas_sementara (
   updated_at           DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   CONSTRAINT fk_form_rm_identitas_sementara_isian FOREIGN KEY (isian_id) REFERENCES form_rm_isian(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- TTD tersimpan MILIK PETUGAS (pengguna login) untuk dipakai ulang di slot
+-- petugas/dokter/saksi. Satu baris per (pengguna, jenis): TTD & PARAF. Hanya
+-- pemiliknya yang bisa membaca/memakai. Saat dipakai, PNG DISALIN ke
+-- form_rm_ttd isian (rekam medis tak ikut berubah bila TTD ini diganti/dihapus).
+-- Pengguna dihapus → TTD tersimpannya ikut terhapus (data pribadi).
+CREATE TABLE IF NOT EXISTS form_rm_ttd_petugas (
+  id          VARCHAR(30)  NOT NULL PRIMARY KEY,
+  user_id     VARCHAR(30)  NOT NULL,                            -- = users.id
+  jenis       VARCHAR(10)  NOT NULL,                            -- TTD / PARAF
+  png         MEDIUMBLOB   NOT NULL,
+  sha256      CHAR(64)     NOT NULL,
+  ukuran      INT          NOT NULL,
+  created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uq_form_rm_ttd_petugas (user_id, jenis),
+  CONSTRAINT fk_form_rm_ttd_petugas_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

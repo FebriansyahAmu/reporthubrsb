@@ -8,6 +8,7 @@ import { DatePicker, DateTimePicker, nowLocalDateTime } from "@/components/ui/Da
 import { SelectOther } from "@/components/ui/Select";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
+import { SaranNamaSaya } from "@/features/form-rm/isian/SaranNamaSaya";
 import { BidangIsian } from "@/features/form-rm/isian/kunci";
 import { LabelAsal } from "@/features/form-rm/isian/TandaAsal";
 import { useIsian } from "@/features/form-rm/isian/useIsian";
@@ -263,12 +264,15 @@ function EntryCard({
       {entry.aktif && (
         <div className="space-y-5 border-t border-border px-4 py-4">
           <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-            <TextField
-              label="Edukator (Nama)"
-              value={entry.edukatorNama}
-              onChange={(v) => onPatch({ edukatorNama: v })}
-              placeholder="Nama petugas edukator"
-            />
+            <div>
+              <TextField
+                label="Edukator (Nama)"
+                value={entry.edukatorNama}
+                onChange={(v) => onPatch({ edukatorNama: v })}
+                placeholder="Nama petugas edukator"
+              />
+              <SaranNamaSaya nama={entry.edukatorNama} onPilih={(v) => onPatch({ edukatorNama: v })} />
+            </div>
             <div>
               <Label>Tanggal &amp; Jam</Label>
               <DateTimePicker

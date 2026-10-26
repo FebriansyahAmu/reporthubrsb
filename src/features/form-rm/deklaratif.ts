@@ -3,6 +3,7 @@ import type { BagianSimrs } from "./asal";
 import type { KategoriForm } from "./kategori";
 import type { CakupanForm, DefinisiForm, JenisKunjungan, Kertas, KodeForm, SasaranPasien } from "./registry";
 import { ttdSchema } from "./skema";
+import type { JenisTtdSaya } from "./ttd-saya";
 
 /**
  * MESIN FORM DEKLARATIF (PRD §8.2) — murni & aman untuk klien. Form
@@ -37,7 +38,19 @@ export type KolomIsian =
   | (Dasar & { readonly jenis: "pilihan"; readonly opsi: readonly Opsi[] })
   | (Dasar & { readonly jenis: "pilihanGanda"; readonly opsi: readonly Opsi[] })
   | (Dasar & { readonly jenis: "centang" })
-  | (Dasar & { readonly jenis: "ttd" });
+  | (Dasar & { readonly jenis: "ttd"; readonly petugas?: TtdPetugasDeklaratif });
+
+/**
+ * TTD/paraf PETUGAS RS: tawarkan "tanda tangan saya" milik pengguna login.
+ * `kolomNama` = id kolom teks nama penanda tangan di lingkup yang sama (diisi
+ * nama pengguna saat TTD tersimpan dipakai, atau saat menandatangani bila
+ * `isiNamaOtomatis` & nama masih kosong).
+ */
+export type TtdPetugasDeklaratif = {
+  readonly jenis?: JenisTtdSaya;
+  readonly kolomNama?: string;
+  readonly isiNamaOtomatis?: boolean;
+};
 
 /** Skor terhitung — TIDAK disimpan; dihitung dari kolom pilihan berskor di lingkup yang sama. */
 export type KolomSkor = Omit<Dasar, "wajib"> & {

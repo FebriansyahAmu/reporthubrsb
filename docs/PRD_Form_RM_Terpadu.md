@@ -1156,6 +1156,99 @@ Tanpa perubahan tabel.
   - sesi dicabut server → `alasan=berakhir` & cookie terhapus;
   - tanpa galat JS.
 
+### Tanda tangan saya — TTD & nama petugas dipakai ulang (26 Okt 2026)
+
+**Permintaan pemilik:** saat menandatangani form, petugas bisa memilih tanda tangannya yang tersimpan, tanpa menggambar atau mengunggah ulang. Nama petugas diambil dari nama pengguna yang login, tetapi tetap bisa diketik manual.
+
+**Keputusan pemilik:**
+- disimpan di tabel baru DB reporthub;
+- hanya pemilik akun yang bisa memakai TTD-nya.
+
+**Perilaku:**
+
+- **Slot yang mendapat fitur ini:** hanya slot petugas RS. Slot pasien, keluarga, penerima, dan yang menyatakan tidak berubah. Ada dua jenis tersimpan per pengguna, TTD dan paraf.
+
+  | Form | Slot | Nama terisi otomatis saat menandatangani |
+  | --- | --- | --- |
+  | RM.04 | Petugas triase | Ya |
+  | RM.03 | Petugas | Ya |
+  | RM.41 | Petugas RS | Ya |
+  | RM.41 | Saksi | Tidak |
+  | RM.01 | Dokter merawat, dokter sebab kematian | Tidak |
+  | RM.22/RM.33 | Pemberi informasi, saksi 1 & 2 | Tidak |
+  | RM.33 | Dokter | Tidak |
+  | RM.50 | Paraf per kantong | Ya (paraf) |
+  | Morse | Paraf perawat per pengkajian | Ya (paraf) |
+
+  Kolom TTD deklaratif menandai `petugas: { jenis, kolomNama, isiNamaOtomatis }`.
+- **"Pakai tanda tangan / paraf saya — atas nama …"** muncul di pemilih metode bila pengguna sudah menyimpannya.
+  - Satu klik mengisi TTD **dan** menyetel nama slot ke nama lengkap bergelar pengguna, menimpa nama lain. TTD dan nama selalu milik satu orang.
+  - Gambarnya disalin ke `form_rm_ttd` isian sebagai TTD baru. Rekam medis tidak ikut berubah bila TTD tersimpan diganti atau dihapus.
+- **"Simpan juga sebagai tanda tangan saya"** adalah centang di tahap gambar, unggah, kamera, atau via HP, dengan bawaan tidak dicentang.
+  - Hanya ditawarkan bila nama slot kosong atau sama dengan nama pengguna. Dengan begitu, TTD dokter yang menandatangani di PC perawat tidak tersimpan sebagai milik perawat.
+  - Mencentangnya mengganti TTD tersimpan sebelumnya.
+- **Nama otomatis:**
+  - Slot petugas yang namanya masih kosong terisi nama pengguna login saat TTD dibubuhkan. Nama yang sudah diketik atau berasal dari SIMRS tidak ditimpa.
+  - Di bawah kolom nama petugas, dokter, saksi, edukator RM.21, dan nama perawat Morse ada saran satu klik **"Nama saya: …"**.
+  - Kolom nama tetap bebas diketik.
+- **Hapus TTD tersimpan:** tombol tempat sampah di samping kartu, dengan konfirmasi sebaris.
+- Di luar halaman Form RM (Master pejabat, Bukti Pelayanan) fitur ini tidak tampil, karena tidak ada provider.
+
+**Keamanan:**
+
+- **API `/api/form-rm/ttd-saya`:**
+  - `GET` butuh hak lihat Form RM; `PUT {jenis, png}` dan `DELETE ?jenis=` butuh hak ubah;
+  - id pengguna **selalu dari sesi**, sehingga tak ada jalur membaca atau mengubah TTD orang lain;
+  - skema strict, data-URL PNG saja, body maks 700 KB;
+  - PNG dinormalkan server seperti TTD isian: chunk metadata dan data sesudah IEND dibuang, dimensi ≤ 4096;
+  - penjaga lintas situs dan batas laju tulis Form RM;
+  - `no-store` dan `nosniff`.
+- **Audit:** `form-rm.ttd-saya.simpan` dan `form-rm.ttd-saya.hapus`, berisi jenis, 16 karakter sidik, dan ukuran. Gambar tidak pernah masuk log.
+- **Batas yang disadari:** server tidak bisa membuktikan bahwa gambar yang disimpan benar-benar tanda tangan pemilik akun. Kendalinya ada tiga:
+  - centang eksplisit;
+  - pembatasan nama;
+  - jejak audit.
+
+**Data:** tabel baru `form_rm_ttd_petugas` di reporthub, bukan SIMGOS.
+- Kolom: `user_id`, `jenis` TTD/PARAF, `png`, `sha256`, `ukuran`, dan waktu.
+- Unik per (pengguna, jenis), dengan FK `users` ON DELETE CASCADE.
+- DDL ada di `scripts/db/form-rm.sql`, idempoten. Di produksi: `docker compose run --rm migrate scripts/db/migrate-form-rm.mjs`.
+
+**Kode:**
+
+- `src/features/form-rm/ttd-saya.ts` (aturan murni + uji);
+- `isian/TtdSayaProvider.tsx` (di layout Form RM), `isian/SaranNamaSaya.tsx`;
+- `SignaturePad.tsx` (prop `petugas`);
+- `persetujuan/saran.tsx` (`Saran` dipisah agar tidak saling impor);
+- `server/modules/form-rm/ttd-saya.service.ts`, `app/api/form-rm/ttd-saya/route.ts`;
+- form RM.01/03/04/21/22/33/41/50 dan mesin deklaratif. Tabel deklaratif kini memakai pembaruan fungsional, supaya dua kolom satu baris bisa berubah dalam satu aksi.
+
+**Hasil uji (build produksi; `tsc` & ESLint bersih; data uji dibersihkan sampai 0):**
+
+- Unit 482/482 (baru `ttd-saya.test.ts`).
+- E2E API `ttd-saya-e2e.mjs` 38/38:
+  - RBAC 401/403;
+  - nama bergelar;
+  - normalisasi PNG (polyglot `tEXt` + PHP sesudah IEND dibuang);
+  - ganti per jenis;
+  - isolasi antar-pengguna (DELETE/PUT B tak menyentuh A, `userId` sisipan ditolak);
+  - validasi 422/413/404, CSRF 403;
+  - dipakai di isian Triase: bytes identik disalin, isian tak berubah saat TTD tersimpan diganti atau dihapus;
+  - audit tanpa gambar.
+- UI Chrome `ttd-saya-ui.mjs` 15/15:
+  - saran nama;
+  - gambar + centang → tersimpan + nama otomatis;
+  - centang hilang untuk nama orang lain;
+  - "Pakai" mengganti nama;
+  - simpan otomatis `ttd:<id>`;
+  - hapus dengan konfirmasi;
+  - ponsel 390 px tanpa luapan;
+  - tanpa galat JS.
+- Regresi Morse `ttd-saya-morse-ui.mjs` 10/10:
+  - tambah pengkajian → "Pakai paraf saya" mengisi paraf dan nama di baris yang sama;
+  - baris 1 utuh;
+  - hapus baris benar.
+
 ## 17. Sumber
 
 - Kode: `src/server/modules/form-rm/*`, `src/features/form-rm/*` (termasuk `isian/`), `src/app/(dashboard)/form-rm/*`, `src/app/print/form-rm/*`, `src/app/api/form-rm/*`, `prisma/app/schema.prisma` (model `FormRm*`), `src/server/lib/request.ts`.

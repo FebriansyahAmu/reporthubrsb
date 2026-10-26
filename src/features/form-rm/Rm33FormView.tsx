@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Field";
 import { cn } from "@/lib/cn";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
+import { SaranNamaSaya } from "@/features/form-rm/isian/SaranNamaSaya";
 import { BidangIsian, KunciIsian } from "@/features/form-rm/isian/kunci";
 import { LabelAsal } from "@/features/form-rm/isian/TandaAsal";
 import { useIsian } from "@/features/form-rm/isian/useIsian";
@@ -245,10 +246,12 @@ export function Rm33FormView({ isian, header, izin }: { isian: IsianForm; header
                       !samaNama(form.dokterPelaksana, form.pemberiInformasi) && (
                         <Saran onClick={() => set("dokterNama", form.pemberiInformasi)}>Pemberi informasi: {form.pemberiInformasi}</Saran>
                       )}
+                    <SaranNamaSaya nama={form.dokterNama} onPilih={(v) => set("dokterNama", v)} />
                   </div>
                   <SignaturePad label="Tanda tangan dokter" value={form.dokterTtd} onChange={(v) => set("dokterTtd", v)}
                     context={ttdKonteks(keputusan ? `${keputusan.label} — dokter` : "Dokter")}
-                    reuse={samaNama(form.dokterNama, form.pemberiInformasi) ? form.pemberiTtd : ""} />
+                    reuse={samaNama(form.dokterNama, form.pemberiInformasi) ? form.pemberiTtd : ""}
+                    petugas={{ nama: form.dokterNama, onNama: (v) => set("dokterNama", v) }} />
                 </KotakTtd>
                 <KotakSaksi no={1} nama={form.saksi1Nama} ttd={form.saksi1Ttd} onNama={(v) => set("saksi1Nama", v)} onTtd={(v) => set("saksi1Ttd", v)} konteks={ttdKonteks("Saksi 1")} />
                 <KotakSaksi no={2} nama={form.saksi2Nama} ttd={form.saksi2Ttd} onNama={(v) => set("saksi2Nama", v)} onTtd={(v) => set("saksi2Ttd", v)} konteks={ttdKonteks("Saksi 2")} />

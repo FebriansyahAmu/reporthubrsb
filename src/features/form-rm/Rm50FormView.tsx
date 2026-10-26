@@ -23,6 +23,8 @@ import { Input, Label } from "@/components/ui/Field";
 import { cn } from "@/lib/cn";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
+import { SaranNamaSaya } from "@/features/form-rm/isian/SaranNamaSaya";
+import { useNamaSaya } from "@/features/form-rm/isian/TtdSayaProvider";
 import { BidangIsian } from "@/features/form-rm/isian/kunci";
 import { LabelAsal } from "@/features/form-rm/isian/TandaAsal";
 import { useIsian } from "@/features/form-rm/isian/useIsian";
@@ -354,6 +356,7 @@ function KartuKantong({
   konteks: string;
 }) {
   const id = `rm50-k${no}`;
+  const namaSaya = useNamaSaya();
   const kurang = kurangKantong(k, no);
   const lengkap = kurang.length === 0;
   const kadal = kedaluwarsa(k);
@@ -549,12 +552,16 @@ function KartuKantong({
                 onChange={(e) => onUbah((x) => ({ ...x, parafNama: e.target.value, paraf: x.paraf.startsWith("ttd:") && !samaNama(e.target.value, x.parafNama) ? "" : x.paraf }))}
                 placeholder="Nama petugas yang memaraf" />
               <div className="mb-2 flex flex-wrap gap-x-1">
-                {namaSaran.filter((n) => !samaNama(n, k.parafNama)).slice(0, 3).map((n) => (
+                {/* Ganti nama → paraf tersimpan (terikat nama lama) dilepas, sama seperti mengetik nama. */}
+                <SaranNamaSaya nama={k.parafNama}
+                  onPilih={(n) => onUbah((x) => ({ ...x, parafNama: n, paraf: x.paraf.startsWith("ttd:") ? "" : x.paraf }))} />
+                {namaSaran.filter((n) => !samaNama(n, k.parafNama) && !samaNama(n, namaSaya)).slice(0, 3).map((n) => (
                   <Saran key={n} onClick={() => onUbah((x) => ({ ...x, parafNama: n, paraf: x.paraf.startsWith("ttd:") ? "" : x.paraf }))}>{n}</Saran>
                 ))}
               </div>
               <SignaturePad label={`Paraf ${labelKantong(no).toLowerCase()}`} value={k.paraf} onChange={(v) => onUbah((x) => ({ ...x, paraf: v }))}
-                context={konteks} reuse={kosong(k.parafNama) ? "" : parafLain} />
+                context={konteks} reuse={kosong(k.parafNama) ? "" : parafLain}
+                petugas={{ jenis: "PARAF", nama: k.parafNama, onNama: (n) => onUbah((x) => ({ ...x, parafNama: n })), isiNamaOtomatis: true }} />
             </div>
           </div>
 

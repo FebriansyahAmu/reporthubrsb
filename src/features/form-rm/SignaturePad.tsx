@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import SignaturePadLib from "signature_pad";
 import {
   ArrowLeft,
+  BadgeCheck,
   Camera,
   Check,
   Copy,
@@ -15,10 +16,18 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import { pesanGalat } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 import { ImageCropper } from "@/features/form-rm/ImageCropper";
 import { useTerkunci } from "@/features/form-rm/isian/kunci";
+import { useTtdSaya } from "@/features/form-rm/isian/TtdSayaProvider";
 import { srcTtd } from "@/features/form-rm/skema";
+import {
+  bolehSimpanSebagaiSaya,
+  LABEL_JENIS_TTD_SAYA,
+  namaSetelahTtd,
+  type JenisTtdSaya,
+} from "@/features/form-rm/ttd-saya";
 import {
   type CropRect,
   PHOTO_MAXDIM_DEFAULT,
@@ -34,6 +43,20 @@ const DEFAULT_CROP: CropRect = { x: 0.05, y: 0.05, w: 0.9, h: 0.9 };
 
 type RemoteSession = { token: string; qr: string; url: string };
 
+/**
+ * Slot penanda tangan PETUGAS RS (petugas, dokter, saksi, paraf). Di halaman
+ * Form RM (ada `TtdSayaProvider`) slot ini menawarkan TTD/paraf tersimpan milik
+ * pengguna login dan mengisi nama penanda tangan dari nama pengguna.
+ */
+export type SlotPetugas = {
+  /** Nama penanda tangan slot ini (kolom nama di form). */
+  nama: string;
+  onNama: (nama: string) => void;
+  jenis?: JenisTtdSaya;
+  /** Slot petugas (bukan dokter/saksi): TTD baru di slot bernama kosong mengisi nama pengguna login. */
+  isiNamaOtomatis?: boolean;
+};
+
 /** Penangkap tanda tangan: pilih metode → gambar/unggah/kamera/via HP → crop & sesuaikan. */
 export function SignaturePad({
   label,
@@ -41,6 +64,7 @@ export function SignaturePad({
   onChange,
   context = "",
   reuse = "",
+  petugas,
 }: {
   label: string;
   value: string;
@@ -49,11 +73,30 @@ export function SignaturePad({
   context?: string;
   /** TTD dari slot lain yang bisa dipakai ulang (sekali klik) bila slot ini kosong. */
   reuse?: string;
+  petugas?: SlotPetugas;
 }) {
   const terkunci = useTerkunci();
   const [editing, setEditing] = useState(!value);
   const [mode, setMode] = useState<Mode>("");
   const [error, setError] = useState<string | null>(null);
+
+  // "Tanda tangan saya" — hanya di slot petugas dalam halaman Form RM.
+  const ttdSaya = useTtdSaya();
+  const dataSaya = petugas ? (ttdSaya?.data ?? null) : null;
+  const jenisSaya: JenisTtdSaya = petugas?.jenis ?? "TTD";
+  const labelSaya = LABEL_JENIS_TTD_SAYA[jenisSaya];
+  const milikSaya = dataSaya?.item[jenisSaya];
+  const namaSaya = dataSaya?.nama ?? "";
+  const tawarSimpan = !!dataSaya && bolehSimpanSebagaiSaya(petugas?.nama ?? "", namaSaya);
+  const [simpanSaya, setSimpanSaya] = useState(false);
+  const [infoSaya, setInfoSaya] = useState<{ ok: boolean; teks: string } | null>(null);
+  const [konfirmHapus, setKonfirmHapus] = useState(false);
+  const [hapusBerjalan, setHapusBerjalan] = useState(false);
+  // Nilai terbaru untuk `commit` yang dipanggil dari poll TTD jarak jauh (closure lama).
+  const terbaru = useRef({ petugas, dataSaya, simpanSaya, tawarSimpan });
+  useEffect(() => {
+    terbaru.current = { petugas, dataSaya, simpanSaya, tawarSimpan };
+  });
 
   // TTD jarak jauh (hand-off ke HP via QR).
   const [remote, setRemote] = useState<RemoteSession | null>(null);
@@ -244,16 +287,48 @@ export function SignaturePad({
     setMaxDim(PHOTO_MAXDIM_DEFAULT);
     setSrcImage(src);
   }
-  function commit(dataUrl: string) {
+  /** `dariSaya` = TTD tersimpan milik pengguna yang dipakai (bukan tangkapan baru). */
+  function commit(dataUrl: string, dariSaya = false) {
     if (!dataUrl) {
       setError("Tanda tangan kosong.");
       return;
     }
     setError(null);
+    setInfoSaya(null);
     onChange(dataUrl);
+    const t = terbaru.current;
+    if (t.petugas && t.dataSaya) {
+      const nama = namaSetelahTtd({
+        nama: t.petugas.nama,
+        namaPengguna: t.dataSaya.nama,
+        saya: dariSaya,
+        isiOtomatis: !!t.petugas.isiNamaOtomatis,
+      });
+      if (nama !== t.petugas.nama) t.petugas.onNama(nama);
+      if (!dariSaya && t.simpanSaya && t.tawarSimpan && ttdSaya) {
+        ttdSaya
+          .simpan(jenisSaya, dataUrl)
+          .then(() => setInfoSaya({ ok: true, teks: `Tersimpan sebagai ${labelSaya} saya — bisa dipakai lagi di form lain.` }))
+          .catch((e) => setInfoSaya({ ok: false, teks: `Gagal menyimpan ${labelSaya} saya: ${pesanGalat(e)}` }));
+      }
+    }
+    setSimpanSaya(false);
     setEditing(false);
     setMode("");
     resetCapture();
+  }
+
+  async function hapusMilikSaya() {
+    if (!ttdSaya) return;
+    setHapusBerjalan(true);
+    try {
+      await ttdSaya.hapus(jenisSaya);
+      setKonfirmHapus(false);
+    } catch (e) {
+      setError(pesanGalat(e, `Gagal menghapus ${labelSaya} tersimpan.`));
+    } finally {
+      setHapusBerjalan(false);
+    }
   }
   /** Gambar (signature_pad): langsung PNG + hapus latar, tanpa crop/ambang. */
   async function drawUse() {
@@ -346,6 +421,7 @@ export function SignaturePad({
             </button>
           </div>
         </div>
+        {infoSaya && <InfoSaya {...infoSaya} />}
       </div>
     );
   }
@@ -375,6 +451,53 @@ export function SignaturePad({
         {/* 1) Pemilih metode */}
         {mode === "" && (
           <div className="space-y-2">
+            {milikSaya && !konfirmHapus && (
+              <div className="flex items-stretch gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => commit(milikSaya.dataUrl, true)}
+                  className="flex min-w-0 flex-1 items-center gap-3 rounded-[var(--radius-md)] border border-brand/40 bg-brand-soft px-3 py-2 text-left transition-colors hover:border-brand/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={milikSaya.dataUrl}
+                    alt={`${labelSaya} tersimpan`}
+                    className="h-9 w-16 shrink-0 rounded-[var(--radius-sm)] border border-border bg-white object-contain"
+                  />
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-brand-soft-fg">
+                      <BadgeCheck className="size-3.5 shrink-0" /> Pakai {labelSaya} saya
+                    </span>
+                    <span className="block truncate text-xs text-fg-muted">atas nama {namaSaya}</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setKonfirmHapus(true)}
+                  aria-label={`Hapus ${labelSaya} tersimpan`}
+                  title={`Hapus ${labelSaya} tersimpan`}
+                  className="flex w-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] border border-border bg-surface text-fg-subtle transition-colors hover:border-danger/40 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </div>
+            )}
+            {milikSaya && konfirmHapus && (
+              <div role="alertdialog" aria-label={`Hapus ${labelSaya} tersimpan`} className="rounded-[var(--radius-md)] border border-warning/40 bg-warning-soft px-3 py-2 text-xs text-fg">
+                <p>Hapus {labelSaya} tersimpan Anda? Isian yang sudah memakainya tidak berubah.</p>
+                <div className="mt-2 flex justify-end gap-2">
+                  <SmallBtn onClick={() => setKonfirmHapus(false)} icon={<ArrowLeft className="size-3.5" />}>Batal</SmallBtn>
+                  <button
+                    type="button"
+                    onClick={hapusMilikSaya}
+                    disabled={hapusBerjalan}
+                    className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-danger bg-danger px-2.5 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+                  >
+                    {hapusBerjalan ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />} Hapus
+                  </button>
+                </div>
+              </div>
+            )}
             {reuse && (
               <button
                 type="button"
@@ -515,9 +638,34 @@ export function SignaturePad({
           </div>
         )}
 
+        {mode !== "" && tawarSimpan && (
+          <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-[var(--radius-md)] bg-surface-2/60 px-2.5 py-2 text-xs text-fg-muted">
+            <input
+              type="checkbox"
+              checked={simpanSaya}
+              onChange={(e) => setSimpanSaya(e.target.checked)}
+              className="mt-0.5 size-3.5 shrink-0 accent-[var(--brand)]"
+            />
+            <span>
+              Simpan juga sebagai <b className="font-medium text-fg">{labelSaya} saya</b> ({namaSaya}) agar bisa dipakai lagi tanpa
+              menandatangani ulang{milikSaya ? ` — mengganti ${labelSaya} tersimpan sebelumnya` : ""}.
+            </span>
+          </label>
+        )}
+
         {error && <p className="mt-2 text-xs text-danger">{error}</p>}
       </div>
+      {infoSaya && <InfoSaya {...infoSaya} />}
     </div>
+  );
+}
+
+function InfoSaya({ ok, teks }: { ok: boolean; teks: string }) {
+  return (
+    <p role="status" className={cn("mt-1.5 flex items-start gap-1.5 text-xs", ok ? "text-success" : "text-danger")}>
+      {ok && <BadgeCheck className="mt-px size-3.5 shrink-0" aria-hidden />}
+      {teks}
+    </p>
   );
 }
 

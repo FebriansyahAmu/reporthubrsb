@@ -86,6 +86,7 @@ model User {
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
   refreshTokens RefreshToken[]
+  ttdTersimpan  FormRmTtdPetugas[]
 
   @@index([roleId])
   @@map("users")
@@ -210,6 +211,25 @@ model FormRmTtd {
 
   @@unique([isianId, sha256], map: "uq_form_rm_ttd")
   @@map("form_rm_ttd")
+}
+
+/// TTD tersimpan milik petugas (pengguna login) untuk dipakai ulang; satu per
+/// (pengguna, jenis TTD/PARAF). Hanya pemiliknya yang membaca/memakai. Dipakai =
+/// PNG disalin ke `form_rm_ttd` isian. DDL manual: scripts/db/form-rm.sql.
+model FormRmTtdPetugas {
+  id        String   @id @default(cuid()) @db.VarChar(30)
+  userId    String   @map("user_id") @db.VarChar(30)
+  /// TTD | PARAF
+  jenis     String   @db.VarChar(10)
+  png       Bytes    @db.MediumBlob
+  sha256    String   @db.Char(64)
+  ukuran    Int
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_form_rm_ttd_petugas_user")
+
+  @@unique([userId, jenis], map: "uq_form_rm_ttd_petugas")
+  @@map("form_rm_ttd_petugas")
 }
 
 /// Snapshot isian di setiap transisi status. APPEND-ONLY; `hash` = HMAC-SHA256

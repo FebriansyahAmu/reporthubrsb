@@ -9,6 +9,7 @@ import { Input, Label } from "@/components/ui/Field";
 import { cn } from "@/lib/cn";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
+import { SaranNamaSaya } from "@/features/form-rm/isian/SaranNamaSaya";
 import { BidangIsian, KunciIsian } from "@/features/form-rm/isian/kunci";
 import { LabelAsal } from "@/features/form-rm/isian/TandaAsal";
 import { useIsian } from "@/features/form-rm/isian/useIsian";
@@ -269,14 +270,22 @@ export function Rm41FormView({ isian, header, izin }: { isian: IsianForm; header
             <KotakTtd ikon={ShieldCheck} peran="Petugas RS" nama={form.petugasNama}>
               <LabelAsal path="petugasNama" htmlFor="rm41-petugas">Nama jelas</LabelAsal>
               <Input id="rm41-petugas" value={form.petugasNama} maxLength={120} onChange={(e) => set("petugasNama", e.target.value)}
-                placeholder="Nama petugas" className="mb-3" />
-              <SignaturePad label="Tanda tangan petugas RS" value={form.petugasTtd} onChange={(v) => set("petugasTtd", v)} context={ttdKonteks("Petugas RS")} />
+                placeholder="Nama petugas" />
+              <div className="mb-3">
+                <SaranNamaSaya nama={form.petugasNama} onPilih={(v) => set("petugasNama", v)} />
+              </div>
+              <SignaturePad label="Tanda tangan petugas RS" value={form.petugasTtd} onChange={(v) => set("petugasTtd", v)} context={ttdKonteks("Petugas RS")}
+                petugas={{ nama: form.petugasNama, onNama: (v) => set("petugasNama", v), isiNamaOtomatis: true }} />
             </KotakTtd>
             <KotakTtd ikon={UsersRound} peran="Saksi" nama={form.saksiNama}>
               <Label htmlFor="rm41-saksi">Nama jelas</Label>
               <Input id="rm41-saksi" value={form.saksiNama} maxLength={120} onChange={(e) => set("saksiNama", e.target.value)}
-                placeholder="Nama saksi" className="mb-3" />
-              <SignaturePad label="Tanda tangan saksi" value={form.saksiTtd} onChange={(v) => set("saksiTtd", v)} context={ttdKonteks("Saksi")} />
+                placeholder="Nama saksi" />
+              <div className="mb-3">
+                <SaranNamaSaya nama={form.saksiNama} onPilih={(v) => set("saksiNama", v)} />
+              </div>
+              <SignaturePad label="Tanda tangan saksi" value={form.saksiTtd} onChange={(v) => set("saksiTtd", v)} context={ttdKonteks("Saksi")}
+                petugas={{ nama: form.saksiNama, onNama: (v) => set("saksiNama", v) }} />
             </KotakTtd>
             <KotakTtd ikon={UserRound} peran="Saya yang menyatakan" nama={form.pernyataNama} kosongNama="Isi nama di langkah 1">
               {!form.selaku && (

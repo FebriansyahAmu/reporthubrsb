@@ -77,7 +77,7 @@ const PENGKAJIAN: readonly KolomBaris[] = [
   { jenis: "skor", id: "skor", label: "Total skor", dari: FAKTOR, kategori: KATEGORI_MORSE },
   { jenis: "pilihanGanda", id: "intervensi", label: "Intervensi pencegahan jatuh", opsi: INTERVENSI, lebar: 2 },
   { jenis: "teks", id: "petugasNama", label: "Nama perawat", wajib: true, maks: 120 },
-  { jenis: "ttd", id: "paraf", label: "Paraf perawat" },
+  { jenis: "ttd", id: "paraf", label: "Paraf perawat", petugas: { jenis: "PARAF", kolomNama: "petugasNama", isiNamaOtomatis: true } },
 ];
 
 /** Label kolom SIMRS baris pengkajian awal (penanda asal & muat ulang). */

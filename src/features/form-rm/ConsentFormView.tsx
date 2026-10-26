@@ -8,6 +8,7 @@ import { DatePicker, DateTimePicker } from "@/components/ui/DatePicker";
 import { Select, SelectOther } from "@/components/ui/Select";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
+import { SaranNamaSaya } from "@/features/form-rm/isian/SaranNamaSaya";
 import { BidangIsian } from "@/features/form-rm/isian/kunci";
 import { LabelAsal } from "@/features/form-rm/isian/TandaAsal";
 import { useIsian } from "@/features/form-rm/isian/useIsian";
@@ -223,12 +224,16 @@ export function ConsentFormView({
             </div>
             <div className="space-y-3 rounded-[var(--radius-md)] border border-border bg-surface-2/30 p-3">
               <p className="text-sm font-semibold text-fg">Petugas Rumah Sakit</p>
-              <TextField label="Nama" value={form.petugasNama} onChange={(v) => set("petugasNama", v)} placeholder="Nama petugas" />
+              <div>
+                <TextField label="Nama" value={form.petugasNama} onChange={(v) => set("petugasNama", v)} placeholder="Nama petugas" />
+                <SaranNamaSaya nama={form.petugasNama} onPilih={(v) => set("petugasNama", v)} />
+              </div>
               <SignaturePad
                 label="Tanda Tangan"
                 value={form.petugasTtd}
                 onChange={(v) => set("petugasTtd", v)}
                 context={[header.nama, "General Consent — Petugas"].filter(Boolean).join(" · ")}
+                petugas={{ nama: form.petugasNama, onNama: (v) => set("petugasNama", v), isiNamaOtomatis: true }}
               />
             </div>
           </div>
