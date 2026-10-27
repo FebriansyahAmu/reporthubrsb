@@ -1,6 +1,7 @@
 import "server-only";
 import { getSimgos } from "@/server/db/simgos.client";
 import { SIMGOS_DB } from "@/server/db/simgos-databases";
+import type { DasarIgdAsal } from "./berkas-klaim.types";
 
 /** Header pasien + jumlah keberadaan tiap dokumen klaim untuk satu NOPEN. */
 export type BerkasDetailRow = {
@@ -166,56 +167,132 @@ export async function querySpriKunjunganByNopen(nopen: string): Promise<string |
 export type CpptSource = { nopen: string; kunjungan: string };
 
 /**
- * Sumber CPPT **IGD asal** untuk satu episode Rawat Inap (NOPEN RI) — READ-ONLY.
- *
- * IGD & RI adalah pendaftaran/NOPEN BERBEDA; tautannya via SPRI
- * (`medicalrecord.perencanaan_rawat_inap`): `PENDAFTARAN_RI_NOMOR` = NOPEN RI,
- * `KUNJUNGAN` = leg IGD asal. Kita ambil leg IGD itu + NOPEN-nya (dari
- * `pendaftaran.kunjungan`) HANYA bila leg tsb benar-benar punya CPPT (agar ada
- * gunanya digabung). Mengembalikan `null` bila tak ada SPRI / IGD tanpa CPPT.
+ * Episode IGD asal satu episode RI; `kunjungan` = leg sumber SPRI (dasar `spri`).
+ * Dasar penautan:
+ * - `spri`             — SPRI dengan `PENDAFTARAN_RI_NOMOR` = NOPEN RI (tautan eksplisit).
+ * - `tagihan`          — kasir SIMGOS sudah menggabung keduanya dalam SATU tagihan.
+ * - `spri-tak-tertaut` — IGD tepat sebelum masuk RI yang punya SPRI, tetapi SPRI-nya
+ *                        tak menunjuk NOPEN RI ini (kosong, ke pendaftaran batal, atau
+ *                        ke pendaftaran tanpa kunjungan RI — RI didaftarkan ulang).
+ * - `waktu`            — IGD tepat sebelum masuk RI, tanpa SPRI.
  */
-export async function queryCpptIgdSourceByNopen(nopen: string): Promise<CpptSource | null> {
-  const sql = `
-    SELECT s.KUNJUNGAN AS KUNJUNGAN, k.NOPEN AS NOPEN
-    FROM ${SIMGOS_DB.MEDICALRECORD}.perencanaan_rawat_inap s
-    JOIN ${SIMGOS_DB.PENDAFTARAN}.kunjungan k ON k.NOMOR = s.KUNJUNGAN
-    WHERE s.PENDAFTARAN_RI_NOMOR = ? AND s.STATUS = 1
-      AND s.KUNJUNGAN IS NOT NULL AND s.KUNJUNGAN <> ''
-      AND EXISTS (
-        SELECT 1 FROM ${SIMGOS_DB.MEDICALRECORD}.cppt c
-        WHERE c.KUNJUNGAN = s.KUNJUNGAN AND c.STATUS = 1)
-    ORDER BY s.DIBUAT_TANGGAL DESC
-    LIMIT 1`;
+export type IgdAsal = { nopen: string; dasar: DasarIgdAsal; kunjungan: string | null };
 
-  const rows = await getSimgos().$queryRawUnsafe<{ NOPEN: string | null; KUNJUNGAN: string | null }[]>(
-    sql,
+const PD = SIMGOS_DB.PENDAFTARAN;
+const MR = SIMGOS_DB.MEDICALRECORD;
+const MSTR = SIMGOS_DB.MASTER;
+const PB = SIMGOS_DB.PEMBAYARAN;
+
+/** Episode punya leg Rawat Inap aktif (`master.ruangan.JENIS_KUNJUNGAN = 3`). */
+const ADA_LEG_RI = (nopenExpr: string) => `EXISTS (
+  SELECT 1 FROM ${PD}.kunjungan kx JOIN ${MSTR}.ruangan rx ON rx.ID = kx.RUANGAN AND rx.JENIS_KUNJUNGAN = 3
+  WHERE kx.NOPEN = ${nopenExpr} AND kx.STATUS <> 0)`;
+
+/** Jendela: leg IGD berakhir paling lama sekian jam sebelum leg RI pertama dimulai. */
+const JENDELA_IGD_JAM = 24;
+
+/**
+ * Episode **IGD asal** untuk satu episode Rawat Inap (NOPEN RI) — READ-ONLY.
+ *
+ * IGD & RI di SIMGOS adalah pendaftaran/NOPEN BERBEDA. Tautan eksplisitnya SPRI
+ * (`perencanaan_rawat_inap.PENDAFTARAN_RI_NOMOR`), tetapi kolom itu baru terisi
+ * sejak Juli 2026 dan sering tak menunjuk NOPEN RI final: kosong, ke pendaftaran
+ * yang dibatalkan, atau ke pendaftaran kosong (RI didaftarkan ulang) — mis.
+ * NOPEN RI 2609220012 yang SPRI-nya menunjuk 2609220011 (batal). Urutan:
+ *   1. SPRI langsung.
+ *   2. Tagihan SIMGOS yang sama (kasir sudah menggabung).
+ *   3. Leg IGD pasien yang sama yang dimulai sebelum leg RI pertama dan berakhir
+ *      ≤ 24 jam sebelumnya (yang paling akhir), bukan milik RI lain via SPRI.
+ * Langkah 3 diuji terhadap 550 pasangan pasti (SPRI langsung + tagihan gabungan
+ * SIMGOS, 120 hari): 550 cocok, 0 salah. NB `DIBUAT_TANGGAL` SPRI ber-ON UPDATE
+ * → tidak dipakai sebagai waktu SPRI.
+ */
+export async function queryIgdAsalByRiNopen(nopen: string): Promise<IgdAsal | null> {
+  const db = getSimgos();
+  const spri = await db.$queryRawUnsafe<{ NOPEN: string | null; KUNJUNGAN: string | null }[]>(
+    `SELECT k.NOPEN AS NOPEN, s.KUNJUNGAN AS KUNJUNGAN
+     FROM ${MR}.perencanaan_rawat_inap s
+     JOIN ${PD}.kunjungan k ON k.NOMOR = s.KUNJUNGAN
+     WHERE s.PENDAFTARAN_RI_NOMOR = ? AND s.STATUS = 1 AND k.NOPEN <> ?
+     ORDER BY s.ID DESC
+     LIMIT 1`,
+    nopen,
     nopen,
   );
-  const r = rows[0];
-  const kunjungan = r?.KUNJUNGAN?.trim();
-  const igdNopen = r?.NOPEN != null ? String(r.NOPEN).trim() : "";
-  return kunjungan && igdNopen ? { nopen: igdNopen, kunjungan } : null;
+  const s = spri[0];
+  if (s?.NOPEN) return { nopen: String(s.NOPEN).trim(), dasar: "spri", kunjungan: s.KUNJUNGAN?.trim() || null };
+
+  const tagihan = await db.$queryRawUnsafe<{ NOPEN: string }[]>(
+    `SELECT tp2.PENDAFTARAN AS NOPEN
+     FROM ${PB}.tagihan_pendaftaran tp
+     JOIN ${PB}.tagihan_pendaftaran tp2 ON tp2.TAGIHAN = tp.TAGIHAN AND tp2.STATUS = 1 AND tp2.PENDAFTARAN <> tp.PENDAFTARAN
+     WHERE tp.PENDAFTARAN = ? AND tp.STATUS = 1
+       AND EXISTS (SELECT 1 FROM ${PD}.kunjungan k JOIN ${MSTR}.ruangan r ON r.ID = k.RUANGAN AND r.JENIS_KUNJUNGAN = 2
+                   WHERE k.NOPEN = tp2.PENDAFTARAN AND k.STATUS <> 0)
+     ORDER BY tp2.PENDAFTARAN DESC
+     LIMIT 1`,
+    nopen,
+  );
+  if (tagihan[0]?.NOPEN) return { nopen: String(tagihan[0].NOPEN).trim(), dasar: "tagihan", kunjungan: null };
+
+  const waktu = await db.$queryRawUnsafe<{ NOPEN: string; SPRI_N: number | bigint | string }[]>(
+    `SELECT k.NOPEN AS NOPEN,
+            (SELECT COUNT(*) FROM ${MR}.perencanaan_rawat_inap s
+               JOIN ${PD}.kunjungan ks ON ks.NOMOR = s.KUNJUNGAN
+              WHERE ks.NOPEN = p2.NOMOR AND s.STATUS = 1) AS SPRI_N
+     FROM ${PD}.pendaftaran ri
+     JOIN ${PD}.pendaftaran p2 ON p2.NORM = ri.NORM AND p2.NOMOR <> ri.NOMOR AND p2.STATUS IN (1, 2)
+     JOIN ${PD}.kunjungan k ON k.NOPEN = p2.NOMOR AND k.REF IS NULL AND k.STATUS <> 0
+     JOIN ${MSTR}.ruangan r ON r.ID = k.RUANGAN AND r.JENIS_KUNJUNGAN = 2
+     JOIN (SELECT MIN(kr.MASUK) AS MASUK
+             FROM ${PD}.kunjungan kr JOIN ${MSTR}.ruangan rr ON rr.ID = kr.RUANGAN AND rr.JENIS_KUNJUNGAN = 3
+            WHERE kr.NOPEN = ? AND kr.STATUS <> 0) m ON m.MASUK IS NOT NULL
+     WHERE ri.NOMOR = ?
+       AND k.MASUK <= m.MASUK
+       AND COALESCE(k.KELUAR, k.MASUK) >= m.MASUK - INTERVAL ${JENDELA_IGD_JAM} HOUR
+       AND NOT ${ADA_LEG_RI("p2.NOMOR")}
+       AND NOT EXISTS (
+         SELECT 1 FROM ${MR}.perencanaan_rawat_inap s
+           JOIN ${PD}.kunjungan ks ON ks.NOMOR = s.KUNJUNGAN
+           JOIN ${PD}.pendaftaran pr ON pr.NOMOR = s.PENDAFTARAN_RI_NOMOR AND pr.STATUS IN (1, 2)
+          WHERE ks.NOPEN = p2.NOMOR AND s.STATUS = 1 AND s.PENDAFTARAN_RI_NOMOR <> ?
+            AND ${ADA_LEG_RI("pr.NOMOR")})
+     ORDER BY k.MASUK DESC
+     LIMIT 1`,
+    nopen,
+    nopen,
+    nopen,
+  );
+  const w = waktu[0];
+  if (!w?.NOPEN) return null;
+  return { nopen: String(w.NOPEN).trim(), dasar: Number(w.SPRI_N) > 0 ? "spri-tak-tertaut" : "waktu", kunjungan: null };
 }
 
 /**
- * NOPEN episode **IGD asal** untuk satu episode Rawat Inap (NOPEN RI) — READ-ONLY.
- * Sama seperti `queryCpptIgdSourceByNopen` TAPI tanpa syarat CPPT (dipakai untuk
- * tagihan: IGD & RI adalah pendaftaran/NOPEN berbeda, ditautkan via SPRI
- * `perencanaan_rawat_inap` → leg IGD → NOPEN-nya). `null` bila episode tak lewat
- * IGD / tak ada SPRI.
+ * Sumber CPPT **IGD asal** untuk satu episode Rawat Inap (NOPEN RI) — READ-ONLY.
+ * Episode IGD dari `queryIgdAsalByRiNopen`; leg yang dipakai = leg ber-CPPT di
+ * episode itu (leg sumber SPRI diutamakan, lalu leg IGD, lalu terbanyak catatan).
+ * `null` bila tak ada IGD asal / IGD tanpa CPPT.
  */
-export async function queryIgdNopenByRiNopen(nopen: string): Promise<string | null> {
-  const sql = `
-    SELECT k.NOPEN AS NOPEN
-    FROM ${SIMGOS_DB.MEDICALRECORD}.perencanaan_rawat_inap s
-    JOIN ${SIMGOS_DB.PENDAFTARAN}.kunjungan k ON k.NOMOR = s.KUNJUNGAN
-    WHERE s.PENDAFTARAN_RI_NOMOR = ? AND s.STATUS = 1
-      AND s.KUNJUNGAN IS NOT NULL AND s.KUNJUNGAN <> ''
-    ORDER BY s.DIBUAT_TANGGAL DESC
-    LIMIT 1`;
-  const rows = await getSimgos().$queryRawUnsafe<{ NOPEN: string | null }[]>(sql, nopen);
-  const igd = rows[0]?.NOPEN != null ? String(rows[0].NOPEN).trim() : "";
-  return igd || null;
+export async function queryCpptIgdSourceByNopen(nopen: string): Promise<CpptSource | null> {
+  const asal = await queryIgdAsalByRiNopen(nopen);
+  if (!asal) return null;
+  const rows = await getSimgos().$queryRawUnsafe<KunjunganRow[]>(
+    `SELECT k.NOMOR AS KUNJUNGAN
+     FROM ${PD}.kunjungan k
+     JOIN ${MSTR}.ruangan r ON r.ID = k.RUANGAN
+     WHERE k.NOPEN = ? AND k.STATUS <> 0
+       AND EXISTS (SELECT 1 FROM ${MR}.cppt c WHERE c.KUNJUNGAN = k.NOMOR AND c.STATUS = 1)
+     ORDER BY (k.NOMOR = ?) DESC,
+              (r.JENIS_KUNJUNGAN = 2) DESC,
+              (SELECT COUNT(*) FROM ${MR}.cppt c WHERE c.KUNJUNGAN = k.NOMOR AND c.STATUS = 1) DESC,
+              k.MASUK ASC
+     LIMIT 1`,
+    asal.nopen,
+    asal.kunjungan ?? "",
+  );
+  const kunjungan = rows[0]?.KUNJUNGAN?.trim();
+  return kunjungan ? { nopen: asal.nopen, kunjungan } : null;
 }
 
 /** Header cetak Bukti Pelayanan: identitas pasien + diagnosa + peserta BPJS. */
@@ -349,7 +426,12 @@ export async function queryMainRuanganByNopen(nopen: string): Promise<string | n
 
 /* ============================================================================
    TAGIHAN — total & rincian biaya episode (READ-ONLY).
-   `pembayaran.tagihan.ID` = NOPEN (terbukti universal). Header memuat TOTAL +
+   Tagihan sebuah pendaftaran = `pembayaran.tagihan_pendaftaran` (PENDAFTARAN =
+   NOPEN, STATUS 1 → TAGIHAN), sama dengan Laporan Pendapatan. BUKAN
+   `tagihan.ID = NOPEN`: nomornya biasanya kebetulan sama, tetapi bisa bergeser
+   (120 hari: 22 pendaftaran — 21 di antaranya ke tagihan PASIEN LAIN), dan
+   tagihan yang digabung kasir (`gabung_tagihan`) memindah pendaftaran asal ke
+   tagihan tujuan (tagihan asal STATUS 0). Header memuat TOTAL +
    rincian per-komponen biaya (gaya INA-CBG). Item detail dari
    `pembayaran.rincian_tagihan` (polimorfik per JENIS): 1&3 = tindakan
    (`layanan.tindakan_medis`→`master.tindakan`), 4 = farmasi
@@ -379,20 +461,33 @@ export const TAGIHAN_KATEGORI: { col: string; label: string }[] = [
   { col: "SEWA_ALAT", label: "Sewa Alat" },
 ];
 
-/** Header tagihan: ID (=NOPEN), tanggal, total, + kolom komponen biaya. */
+/**
+ * Header tagihan: ID tagihan, tanggal, total, pendaftaran lain yang ikut ditagih
+ * di tagihan yang sama (dipisah koma; digabung kasir SIMGOS), + kolom komponen biaya.
+ */
 export type TagihanHeaderRow = {
   ID: string;
   TANGGAL: Date | string | null;
   TOTAL: string | number;
+  NOPEN_LAIN: string | null;
 } & Record<string, string | number | null | Date>;
 
-/** Header `pembayaran.tagihan` untuk satu episode (ID = NOPEN). Null bila belum ada tagihan. */
+/**
+ * Header tagihan AKTIF yang menagih satu pendaftaran (NOPEN) — lewat
+ * `tagihan_pendaftaran`. Tagihan STATUS 1 (belum final) / 2 (final); 0 = batal.
+ * Null bila pendaftaran belum punya tagihan.
+ */
 export async function queryTagihanHeader(nopen: string): Promise<TagihanHeaderRow | null> {
   const cols = TAGIHAN_KATEGORI.map((k) => `t.${k.col}`).join(", ");
   const sql = `
-    SELECT t.ID, t.TANGGAL, t.TOTAL, ${cols}
-    FROM ${SIMGOS_DB.PEMBAYARAN}.tagihan t
-    WHERE t.ID = ? AND t.STATUS = 1
+    SELECT t.ID, t.TANGGAL, t.TOTAL, ${cols},
+           (SELECT GROUP_CONCAT(tp2.PENDAFTARAN ORDER BY tp2.PENDAFTARAN)
+              FROM ${PB}.tagihan_pendaftaran tp2
+             WHERE tp2.TAGIHAN = t.ID AND tp2.STATUS = 1 AND tp2.PENDAFTARAN <> tp.PENDAFTARAN) AS NOPEN_LAIN
+    FROM ${PB}.tagihan_pendaftaran tp
+    JOIN ${PB}.tagihan t ON t.ID = tp.TAGIHAN AND t.STATUS IN (1, 2)
+    WHERE tp.PENDAFTARAN = ? AND tp.STATUS = 1
+    ORDER BY tp.UTAMA DESC, tp.ID DESC
     LIMIT 1`;
   const rows = await getSimgos().$queryRawUnsafe<TagihanHeaderRow[]>(sql, nopen);
   return rows[0] ?? null;
@@ -410,11 +505,11 @@ export type RincianTagihanRow = {
 };
 
 /**
- * Rincian item `pembayaran.rincian_tagihan` untuk satu episode (TAGIHAN = NOPEN),
- * READ-ONLY. Nama di-resolve via COALESCE tiga jalur JENIS; tanggal memakai
- * tanggal layanan asal (bukan timestamp baris rincian).
+ * Rincian item `pembayaran.rincian_tagihan` untuk satu tagihan (ID tagihan dari
+ * `queryTagihanHeader`, BUKAN NOPEN), READ-ONLY. Nama di-resolve via COALESCE
+ * tiga jalur JENIS; tanggal memakai tanggal layanan asal (bukan timestamp baris).
  */
-export async function queryRincianTagihan(nopen: string): Promise<RincianTagihanRow[]> {
+export async function queryRincianTagihan(tagihanId: string): Promise<RincianTagihanRow[]> {
   const B = SIMGOS_DB.PEMBAYARAN;
   const L = SIMGOS_DB.LAYANAN;
   const M = SIMGOS_DB.MASTER;
@@ -443,5 +538,5 @@ export async function queryRincianTagihan(nopen: string): Promise<RincianTagihan
     WHERE rt.TAGIHAN = ? AND rt.STATUS = 1
     ORDER BY rt.JENIS, TGL, NAMA
     LIMIT 500`;
-  return getSimgos().$queryRawUnsafe<RincianTagihanRow[]>(sql, nopen);
+  return getSimgos().$queryRawUnsafe<RincianTagihanRow[]>(sql, tagihanId);
 }

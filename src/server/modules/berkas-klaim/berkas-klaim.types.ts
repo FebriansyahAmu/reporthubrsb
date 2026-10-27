@@ -118,7 +118,7 @@ export type BerkasDetail = {
   turunan: TurunanLayananItem[];
   dokumen: DokumenBerkas[];
   /**
-   * true bila episode RI ini punya CPPT leg IGD asal (via SPRI) yang bisa
+   * true bila episode RI ini punya CPPT leg IGD asal (`queryIgdAsalByRiNopen`) yang bisa
    * digabung saat mencetak CPPT (menampilkan opsi "Sertakan CPPT IGD").
    */
   cpptIgdAvailable: boolean;
@@ -150,12 +150,32 @@ export type TagihanItem = {
 export type TagihanRingkas = {
   /** false bila episode belum punya tagihan. */
   ada: boolean;
+  /** ID `pembayaran.tagihan` yang menagih episode ini ("" bila belum ada). Tidak selalu = NOPEN. */
+  tagihanId: string;
   total: number;
   /** Tanggal tagihan "YYYY-MM-DD" atau "". */
   tanggal: string;
   /** Komponen biaya bernilai > 0, terurut menurun. */
   kategori: TagihanKategori[];
+  /** NOPEN lain yang ikut ditagih di tagihan yang sama (sudah digabung kasir SIMGOS). */
+  nopenLain: string[];
 };
 
 /** Ringkasan + seluruh item (untuk modal rincian). */
-export type TagihanLengkap = TagihanRingkas & { items: TagihanItem[] };
+export type TagihanLengkap = TagihanRingkas & {
+  items: TagihanItem[];
+  /** NOPEN IGD yang digabungkan pada tampilan gabungan (`?igd=1`); undefined = tunggal. */
+  igdNopen?: string;
+};
+
+/** Dasar penautan IGD asal → RI (lihat `queryIgdAsalByRiNopen`). */
+export type DasarIgdAsal = "spri" | "tagihan" | "spri-tak-tertaut" | "waktu";
+
+/** Tagihan IGD asal satu episode RI, untuk opsi "Gabungkan Tagihan IGD". */
+export type TagihanIgd = {
+  nopen: string;
+  total: number;
+  dasar: DasarIgdAsal;
+  /** true = IGD & RI sudah SATU tagihan di SIMGOS → total RI sudah termasuk IGD (jangan dijumlah lagi). */
+  sudahDigabung: boolean;
+};

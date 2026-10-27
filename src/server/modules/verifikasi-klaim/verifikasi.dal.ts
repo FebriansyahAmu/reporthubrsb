@@ -293,12 +293,22 @@ export async function queryPenunjang(nopens: readonly string[]): Promise<Map<str
   );
 }
 
-/** NOPEN yang punya tagihan aktif (`pembayaran.tagihan.ID` = NOPEN). */
+/**
+ * NOPEN yang ditagih tagihan aktif — lewat `tagihan_pendaftaran` (BUKAN
+ * `tagihan.ID` = NOPEN: nomor tagihan bisa bergeser ke pendaftaran lain, dan
+ * pendaftaran yang tagihannya digabung kasir ditagih di tagihan tujuan).
+ */
 export async function queryTagihanAda(nopens: readonly string[]): Promise<Set<string>> {
   const rows = await perChunk(nopens, (chunk, ph) =>
-    query<{ nopen: string }>(`SELECT ${CAP} ID AS nopen FROM ${PB}.tagihan WHERE STATUS = 1 AND ID IN (${ph})`, chunk),
+    query<{ nopen: string }>(
+      `SELECT ${CAP} DISTINCT tp.PENDAFTARAN AS nopen
+         FROM ${PB}.tagihan_pendaftaran tp
+         JOIN ${PB}.tagihan t ON t.ID = tp.TAGIHAN AND t.STATUS IN (1, 2)
+        WHERE tp.STATUS = 1 AND tp.PENDAFTARAN IN (${ph})`,
+      chunk,
+    ),
   );
-  return new Set(rows.map((r) => String(r.nopen)));
+  return new Set(rows.map((r) => String(r.nopen).trim()));
 }
 
 /* ------------------------------------------- sasaran tindak lanjut (V1) */

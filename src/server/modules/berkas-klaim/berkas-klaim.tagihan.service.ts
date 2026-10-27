@@ -1,12 +1,13 @@
 import "server-only";
 import { isSimgosConfigured } from "@/server/lib/env";
 import {
-  queryIgdNopenByRiNopen,
+  queryIgdAsalByRiNopen,
   queryRincianTagihan,
   queryTagihanHeader,
   TAGIHAN_KATEGORI,
 } from "./berkas-klaim.dal";
 import type {
+  TagihanIgd,
   TagihanItem,
   TagihanKategori,
   TagihanLengkap,
@@ -29,12 +30,13 @@ function wallDate(v: Date | string | null): string {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
-const EMPTY: TagihanRingkas = { ada: false, total: 0, tanggal: "", kategori: [] };
+const EMPTY: TagihanRingkas = { ada: false, tagihanId: "", total: 0, tanggal: "", kategori: [], nopenLain: [] };
 
 /**
- * Ringkasan tagihan satu episode (`pembayaran.tagihan.ID` = NOPEN), READ-ONLY.
- * Mengembalikan total + komponen biaya bernilai > 0 (terurut menurun). `ada:false`
- * bila SIMGOS belum dikonfigurasi atau episode belum punya tagihan.
+ * Ringkasan tagihan yang menagih satu episode (via `tagihan_pendaftaran`), READ-ONLY.
+ * Mengembalikan total + komponen biaya bernilai > 0 (terurut menurun) + NOPEN lain
+ * di tagihan yang sama. `ada:false` bila SIMGOS belum dikonfigurasi atau episode
+ * belum punya tagihan.
  */
 export async function getTagihanRingkas(nopen: string): Promise<TagihanRingkas> {
   if (!isSimgosConfigured()) return EMPTY;
@@ -49,7 +51,14 @@ export async function getTagihanRingkas(nopen: string): Promise<TagihanRingkas> 
     .filter((k) => k.nilai > 0)
     .sort((a, b) => b.nilai - a.nilai);
 
-  return { ada: true, total: num(h.TOTAL), tanggal: wallDate(h.TANGGAL), kategori };
+  return {
+    ada: true,
+    tagihanId: String(h.ID).trim(),
+    total: num(h.TOTAL),
+    tanggal: wallDate(h.TANGGAL),
+    kategori,
+    nopenLain: (h.NOPEN_LAIN ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+  };
 }
 
 /** Ringkasan + seluruh item rincian (untuk modal). READ-ONLY. */
@@ -57,7 +66,7 @@ export async function getTagihanLengkap(nopen: string): Promise<TagihanLengkap> 
   const ringkas = await getTagihanRingkas(nopen);
   if (!ringkas.ada) return { ...ringkas, items: [] };
 
-  const rows = await queryRincianTagihan(nopen);
+  const rows = await queryRincianTagihan(ringkas.tagihanId);
   const items: TagihanItem[] = rows.map((r) => ({
     jenis: num(r.JENIS),
     nama: r.NAMA?.trim() || "-",
@@ -72,17 +81,23 @@ export async function getTagihanLengkap(nopen: string): Promise<TagihanLengkap> 
 }
 
 /**
- * Ringkasan tagihan IGD asal untuk satu episode RI (via SPRI). READ-ONLY.
- * `null` bila episode tak lewat IGD / IGD belum punya tagihan.
+ * Tagihan IGD asal untuk satu episode RI — READ-ONLY. IGD dicari lewat SPRI,
+ * tagihan SIMGOS yang sama, atau IGD tepat sebelum masuk RI (`queryIgdAsalByRiNopen`).
+ * `sudahDigabung` = IGD & RI sudah SATU tagihan di SIMGOS (total RI sudah memuat
+ * IGD). `null` bila tak ada IGD asal / IGD belum punya tagihan.
  */
-export async function getTagihanIgdRingkas(
-  riNopen: string,
-): Promise<{ nopen: string; total: number } | null> {
+export async function getTagihanIgdRingkas(riNopen: string): Promise<TagihanIgd | null> {
   if (!isSimgosConfigured()) return null;
-  const igdNopen = await queryIgdNopenByRiNopen(riNopen);
-  if (!igdNopen) return null;
-  const r = await getTagihanRingkas(igdNopen);
-  return r.ada ? { nopen: igdNopen, total: r.total } : null;
+  const [asal, riTagihan] = await Promise.all([queryIgdAsalByRiNopen(riNopen), getTagihanRingkas(riNopen)]);
+  if (!asal) return null;
+  const igd = await getTagihanRingkas(asal.nopen);
+  if (!igd.ada) return null;
+  return {
+    nopen: asal.nopen,
+    total: igd.total,
+    dasar: asal.dasar,
+    sudahDigabung: riTagihan.ada && igd.tagihanId === riTagihan.tagihanId,
+  };
 }
 
 /** Gabung dua kategori biaya per `key` (jumlahkan nilai), buang 0, urut menurun. */
@@ -97,24 +112,26 @@ function mergeKategori(a: TagihanKategori[], b: TagihanKategori[]): TagihanKateg
 }
 
 /**
- * Tagihan GABUNGAN: episode RI + episode IGD asal (via SPRI) dalam satu tampilan.
+ * Tagihan GABUNGAN: episode RI + episode IGD asal dalam satu tampilan.
  * Total & kategori dijumlahkan; item digabung (IGD dulu, kronologis) dengan tag
- * `sumber`. Bila episode tak punya IGD/tagihan IGD → kembalikan tagihan RI apa
- * adanya (tanpa tag sumber). READ-ONLY.
+ * `sumber`. Bila tak ada IGD/tagihan IGD, atau keduanya SUDAH satu tagihan di
+ * SIMGOS (tak boleh dijumlah dua kali) → tagihan RI apa adanya. READ-ONLY.
  */
 export async function getTagihanGabungan(riNopen: string): Promise<TagihanLengkap> {
-  const ri = await getTagihanLengkap(riNopen);
-  const igdNopen = await queryIgdNopenByRiNopen(riNopen);
-  if (!igdNopen) return ri;
-  const igd = await getTagihanLengkap(igdNopen);
-  if (!igd.ada) return ri;
-  if (!ri.ada) return igd;
+  const [ri, asal] = await Promise.all([getTagihanLengkap(riNopen), queryIgdAsalByRiNopen(riNopen)]);
+  if (!asal) return ri;
+  const igd = await getTagihanLengkap(asal.nopen);
+  if (!igd.ada || (ri.ada && igd.tagihanId === ri.tagihanId)) return ri;
+  if (!ri.ada) return { ...igd, igdNopen: asal.nopen };
 
   return {
     ada: true,
+    tagihanId: ri.tagihanId,
     total: ri.total + igd.total,
     tanggal: ri.tanggal,
     kategori: mergeKategori(ri.kategori, igd.kategori),
+    nopenLain: ri.nopenLain,
+    igdNopen: asal.nopen,
     items: [
       ...igd.items.map((it) => ({ ...it, sumber: "IGD" as const })),
       ...ri.items.map((it) => ({ ...it, sumber: "RI" as const })),

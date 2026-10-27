@@ -4,7 +4,7 @@ import {
   getTagihanLengkap,
 } from "@/server/modules/berkas-klaim/berkas-klaim.tagihan.service";
 import { authorize } from "@/server/rbac/guard";
-import { ok, fail } from "@/server/lib/http";
+import { ok, fail, tanpaCache } from "@/server/lib/http";
 
 export const runtime = "nodejs";
 
@@ -21,8 +21,9 @@ export async function GET(
     const { nopen } = await params;
     const gabung = req.nextUrl.searchParams.get("igd") === "1";
     const data = gabung ? await getTagihanGabungan(nopen) : await getTagihanLengkap(nopen);
-    return ok(data);
+    // Data biaya pasien: jangan pernah di-cache browser/proxy.
+    return tanpaCache(ok(data));
   } catch (err) {
-    return fail(err);
+    return tanpaCache(fail(err));
   }
 }

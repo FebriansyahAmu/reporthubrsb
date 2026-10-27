@@ -71,7 +71,15 @@ export function TagihanRincian({
         onClose={() => setOpen(false)}
         size="xl"
         title="Rincian Tagihan"
-        description={`NOPEN ${nopen} · Total ${formatRupiah(total)}${igd ? " · Gabungan RI + IGD" : ""}`}
+        description={[
+          `NOPEN ${nopen}`,
+          // ID tagihan SIMGOS tak selalu = NOPEN (mis. tagihan yang digabung kasir).
+          data?.tagihanId && data.tagihanId !== nopen ? `Tagihan ${data.tagihanId}` : null,
+          `Total ${formatRupiah(total)}`,
+          igd ? `Gabungan RI + IGD${data?.igdNopen ? ` (NOPEN ${data.igdNopen})` : ""}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
         icon={
           <div className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-brand-soft text-brand-soft-fg">
             <Receipt className="size-4.5" />

@@ -152,11 +152,7 @@ export default async function BerkasDetailPage({
         </div>
 
         {/* Total tagihan + opsi gabung IGD + tombol rincian */}
-        <TagihanPanel
-          nopen={detail.nopen}
-          tagihan={tagihan}
-          igdTotal={tagihanIgd?.total ?? null}
-        />
+        <TagihanPanel nopen={detail.nopen} tagihan={tagihan} igd={tagihanIgd} />
 
         {detail.turunan.length > 0 && (
           <div className="mt-4">
