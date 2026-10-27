@@ -32,10 +32,13 @@ export default async function PemilihPasienPage({ params }: { params: Promise<{ 
   if (!hak.boleh(def.kategori, "view")) redirect("/403");
 
   const kategoriSasaran = new Set(def.sasaran.jenis.map((j) => JENIS_KUNJUNGAN_KATEGORI[j]));
+  const ruangSasaran = (id: string) => !def.sasaran.ruangan || def.sasaran.ruangan.some((r) => id.startsWith(r.id));
   const [ruangan, draf, belumTertaut] = await Promise.all([
     getRuanganKunjunganList()
       .catch(() => [])
-      .then((rs) => rs.filter((r) => kategoriSasaran.has(r.kategori)).map((r) => ({ id: r.id, nama: r.nama }))),
+      .then((rs) =>
+        rs.filter((r) => kategoriSasaran.has(r.kategori) && ruangSasaran(r.id)).map((r) => ({ id: r.id, nama: r.nama })),
+      ),
     drafSaya(def, user.id),
     daftarBelumTertaut(def, user.id),
   ]);

@@ -1,4 +1,4 @@
-import { ClipboardPlus, FileSignature, FileText, GraduationCap, Siren, type LucideIcon } from "lucide-react";
+import { Baby, ClipboardPlus, FileSignature, FileText, GraduationCap, Siren, type LucideIcon } from "lucide-react";
 
 /**
  * KATEGORI FORM RM — dasar katalog dan modul RBAC per kategori
@@ -23,6 +23,11 @@ export const KATEGORI_FORM = {
     label: "Asesmen Keperawatan",
     keterangan: "Pengkajian keperawatan berkala: risiko jatuh, nyeri, dan asesmen lanjutan.",
     ikon: ClipboardPlus,
+  },
+  kebidanan: {
+    label: "Kebidanan",
+    keterangan: "Pemantauan persalinan dengan partograf dan catatan persalinan.",
+    ikon: Baby,
   },
   edukasi: {
     label: "Edukasi",

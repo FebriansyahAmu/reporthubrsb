@@ -9,6 +9,7 @@ import { cekTtdPernyataan, emptyRm22Form, kekuranganRm22, ringkasRm22, type Rm22
 import { cekTtdRm33, emptyRm33Form, kekuranganRm33, ringkasRm33, type Rm33Data } from "./rm33.constants";
 import { cekTtdRm41, emptyRm41Form, kekuranganRm41 } from "./rm41.constants";
 import { cekParafRm50, emptyRm50Form, kekuranganRm50, ringkasRm50, type Rm50Data } from "./rm50.constants";
+import { cekParafRm70, emptyRm70Form, kekuranganRm70 } from "./rm70.constants";
 import { emptyTriaseForm, hitungKategori, TRIASE_JENIS } from "./triase.constants";
 import { KATEGORI_FORM, type KategoriForm } from "./kategori";
 import {
@@ -19,6 +20,7 @@ import {
   rm33FormSchema,
   rm41FormSchema,
   rm50FormSchema,
+  rm70FormSchema,
   triaseFormSchema,
 } from "./skema";
 
@@ -37,7 +39,7 @@ import {
 export { KATEGORI_FORM, type KategoriForm };
 
 /** "RM.MORSE" = kode sementara — diganti nomor RM resmi dari templat RS sebelum dipakai di produksi. */
-export const KODE_FORM = ["RM.04", "RM.21", "RM.01", "RM.03", "RM.22", "RM.33", "RM.41", "RM.50", "RM.MORSE"] as const;
+export const KODE_FORM = ["RM.04", "RM.21", "RM.01", "RM.03", "RM.22", "RM.33", "RM.41", "RM.50", "RM.70", "RM.MORSE"] as const;
 export type KodeForm = (typeof KODE_FORM)[number];
 
 /** EPISODE = satu isian per pendaftaran (NOPEN); KUNJUNGAN = per kunjungan ruang. */
@@ -57,13 +59,47 @@ export type SasaranPasien = {
    * dalam N jam terakhir. Pasien lain dicari lewat No.RM / nama / NIK.
    */
   readonly jendelaJam: number;
+  /**
+   * Ada = hanya leg di ruangan ini (dan berjenis `jenis`) yang menjadi sasaran:
+   * pemilih pasien, daftar per pasien, profil pasien, tautan, dan pembuatan
+   * isian (ditolak di server). `id` = prefiks ID `master.ruangan` (9 digit =
+   * satu ruang, 7 digit = bangsal beserta semua ruangnya).
+   */
+  readonly ruangan?: readonly RuangSasaran[];
 };
 
-/** "Pasien IGD & Rawat Inap" / "Pasien Rawat Jalan, IGD & Rawat Inap" — ringkasan sasaran untuk katalog & pemilih pasien. */
-export const labelSasaran = (s: SasaranPasien): string => {
-  const label = s.jenis.map((j) => LABEL_JENIS_KUNJUNGAN[j]);
-  return `Pasien ${label.length > 1 ? `${label.slice(0, -1).join(", ")} & ${label[label.length - 1]}` : label.join("")}`;
-};
+export type RuangSasaran = { readonly id: string; readonly nama: string };
+
+/** Penyaring leg SIMGOS dari sasaran form (masukan DAL). */
+export type SaringLeg = { readonly jenis: readonly number[]; readonly ruangan?: readonly string[] };
+export const saringLeg = (s: SasaranPasien): SaringLeg =>
+  s.ruangan ? { jenis: s.jenis, ruangan: s.ruangan.map((r) => r.id) } : { jenis: s.jenis };
+
+/** Leg kunjungan satu episode (jenis & ID ruangan) — penentu kecocokan sasaran. */
+export type LegEpisode = { readonly jenis: number; readonly ruanganId: string };
+
+/** Episode punya leg yang cocok sasaran form (jenis, dan ruangan bila dibatasi). */
+export const cocokSasaran = (s: SasaranPasien, legs: readonly LegEpisode[]): boolean =>
+  legs.some(
+    (l) =>
+      (s.jenis as readonly number[]).includes(l.jenis) && (!s.ruangan || s.ruangan.some((r) => l.ruanganId.startsWith(r.id))),
+  );
+
+const daftarDan = (label: readonly string[]) =>
+  label.length > 1 ? `${label.slice(0, -1).join(", ")} & ${label[label.length - 1]}` : label.join("");
+
+/**
+ * "Pasien IGD & Rawat Inap" / "Pasien Rawat Jalan, IGD & Rawat Inap" / "Pasien
+ * IRDO & Perawatan OBGYN" — ringkasan sasaran untuk katalog & pemilih pasien.
+ */
+export const labelSasaran = (s: SasaranPasien): string =>
+  `Pasien ${daftarDan(s.ruangan ? s.ruangan.map((r) => r.nama) : s.jenis.map((j) => LABEL_JENIS_KUNJUNGAN[j]))}`;
+
+/** Alasan penolakan (409) saat pendaftaran tak punya leg sasaran form. */
+export const pesanBukanSasaran = (s: SasaranPasien): string =>
+  s.ruangan
+    ? `Formulir ini hanya untuk pasien ${daftarDan(s.ruangan.map((r) => r.nama))}; pendaftaran ini tidak punya kunjungan di ruang tersebut`
+    : `Pendaftaran ini tidak punya kunjungan ${s.jenis.map((j) => LABEL_JENIS_KUNJUNGAN[j]).join(" / ")}`;
 
 export type Kertas = { ukuran: "A4" | "F4"; orientasi: "potret" | "lanskap" };
 
@@ -637,6 +673,63 @@ const monitoringTransfusi: DefinisiForm<z.output<typeof rm50FormSchema>> = {
   cekPerubahan: cekParafRm50,
 };
 
+/*
+ * RM.70: satu isian per persalinan (episode) — partograf di halaman depan,
+ * catatan persalinan di baliknya. Persalinan ditangani di IRDO (IGD kebidanan)
+ * dan dilanjutkan di Perawatan OBGYN, jadi sasarannya HANYA kedua ruang itu
+ * (`RUANG_PERSALINAN`); tidak wajib per episode. Partograf belum pernah
+ * dicatat di SIMRS (tabel obstetri & kelahiran SIMGOS kosong) → isi otomatis
+ * hanya G/P/A (ditulis di CPPT, mis. "G2P1A0") dan tanggal & jam masuk.
+ */
+const SIMRS_RM70: readonly BagianSimrs[] = [
+  {
+    id: "obstetri",
+    judul: "Riwayat obstetri (CPPT)",
+    kolom: [
+      { path: "gravida", label: "G (gravida)", sumber: "obstetri" },
+      { path: "para", label: "P (para)", sumber: "obstetri" },
+      { path: "abortus", label: "A (abortus)", sumber: "obstetri" },
+    ],
+  },
+  {
+    id: "masuk",
+    judul: "Tanggal & jam",
+    kolom: [{ path: "masukWaktu", label: "Tanggal & jam masuk", sumber: "identitas" }],
+  },
+];
+
+/**
+ * Ruang persalinan (`master.ruangan`, ditelusuri 27 Okt 2026): IRDO = IGD
+ * kebidanan (134/135 pasien perempuan, 94 dari 112 pasien Perawatan OBGYN masuk
+ * lewat sini); bangsal Perawatan Umum OBGYN mencakup Perawatan OBGYN Kelas 3.
+ * IRDA (101010103) = IGD anak, bukan sasaran.
+ */
+export const RUANG_PERSALINAN: readonly RuangSasaran[] = [
+  { id: "101010104", nama: "IRDO" },
+  { id: "1010204", nama: "Perawatan OBGYN" },
+];
+
+const partograf: DefinisiForm<z.output<typeof rm70FormSchema>> = {
+  kode: "RM.70",
+  versi: 1,
+  judul: "Proses Pemantauan Persalinan (Partograf)",
+  kategori: "kebidanan",
+  cakupan: "EPISODE",
+  berulang: false,
+  sasaran: { jenis: [2, 3], jendelaJam: 72, ruangan: RUANG_PERSALINAN },
+  wajibUntuk: [],
+  kertas: { ukuran: "F4", orientasi: "potret" },
+  simrs: SIMRS_RM70,
+  skema: rm70FormSchema,
+  kosong: () => rm70FormSchema.parse(emptyRm70Form()),
+  petaTtd: (d, f) => ({
+    ...d,
+    grafik: { ...d.grafik, paraf: d.grafik.paraf.map((p, i) => ({ ...p, paraf: f(p.paraf, `grafik.paraf.${i}.paraf`) })) },
+  }),
+  syaratFinal: (d) => Object.values(kekuranganRm70(d)).flat(),
+  cekPerubahan: cekParafRm70,
+};
+
 /** Urutan = urutan tampil di katalog. */
 export const DEFINISI_FORM: readonly DefinisiForm[] = [
   triase,
@@ -647,6 +740,7 @@ export const DEFINISI_FORM: readonly DefinisiForm[] = [
   persetujuanRujukan,
   pulangAps,
   monitoringTransfusi,
+  partograf,
   morse,
 ];
 

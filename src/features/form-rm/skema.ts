@@ -5,6 +5,31 @@ import { KEPUTUSAN_RM33 } from "./rm33.constants";
 import { SELAKU_RM41 } from "./rm41.constants";
 import { FASE_TTV, GOLONGAN_DARAH, KEADAAN_KANTONG, MAKS_KANTONG, POLA_TTV, YA_TIDAK, type IdFase } from "./rm50.constants";
 import {
+  ATONIA_UTERI,
+  BARIS_KALA4,
+  BUTIR_KALA3,
+  DAFTAR_LAJUR_SEL,
+  DERAJAT_LASERASI,
+  DISTOSIA_BAHU,
+  DURASI_KONTRAKSI,
+  GARIS_AKHIR,
+  GAWAT_JANIN,
+  KETUBAN,
+  KOLOM_GRAFIK,
+  KONDISI_BAYI,
+  LAJUR_SEL,
+  MATERI_KIE,
+  PENDAMPING,
+  PENYUSUPAN,
+  SUHU_KALA4,
+  SUMBU,
+  TEMPAT_PERSALINAN,
+  TINDAKAN_BAYI,
+  TINDAKAN_LASERASI,
+  type IdButirKala3,
+  type LajurSel,
+} from "./rm70.constants";
+import {
   CARA_DATANG_OPTS,
   EMERGENCY_OPTS,
   KASUS_OPTS,
@@ -337,6 +362,171 @@ export const rm50FormSchema = z.strictObject({
     .max(MAKS_KANTONG, `Paling banyak ${MAKS_KANTONG} kantong (kapasitas formulir)`)
     .default([])
     .refine((k) => new Set(k.map((x) => x.id)).size === k.length, "Pengenal baris kantong ganda"),
+});
+
+/* ------------------------------------------- RM.70 Partograf & Catatan Persalinan */
+
+const jamSchema = z.string().regex(/^(([01]\d|2[0-3]):[0-5]\d)?$/, "Format jam HH:mm").default("");
+const garisSchema = z.number().int().min(0).max(GARIS_AKHIR);
+const kolomSchema = z.number().int().min(0).max(KOLOM_GRAFIK - 1);
+const unik = (a: readonly unknown[]) => new Set(a).size === a.length;
+
+/** Titik pada garis waktu; satu titik per garis, nilai dalam rentang sah lajurnya. */
+const daftarTitik = (s: { sahMin: number; sahMax: number }) =>
+  z
+    .array(z.strictObject({ k: garisSchema, v: z.number().int().min(s.sahMin).max(s.sahMax) }))
+    .max(GARIS_AKHIR + 1)
+    .default([])
+    .refine((a) => unik(a.map((x) => x.k)), "Satu nilai per garis waktu");
+
+/** Isi kotak per kolom; satu isi per kotak. Kotak kosong tidak disimpan. */
+const daftarSel = <V extends z.ZodType>(v: V) =>
+  z
+    .array(z.strictObject({ c: kolomSchema, v }))
+    .max(KOLOM_GRAFIK)
+    .default([])
+    .refine((a) => unik(a.map((x) => x.c)), "Satu isi per kotak waktu");
+
+const idEnum = <T extends readonly { id: string }[]>(opsi: T) =>
+  z.enum(opsi.map((o) => o.id) as [T[number]["id"], ...T[number]["id"][]]);
+const pilihanGanda = <T extends readonly { id: string }[]>(opsi: T) =>
+  z.array(idEnum(opsi)).max(opsi.length).default([]).refine(unik, "Pilihan ganda");
+
+const nilaiTd = z.number().int().min(SUMBU.td.sahMin).max(SUMBU.td.sahMax).nullable();
+
+const grafikRm70Schema = z.strictObject({
+  mulai: waktuSchema,
+  djj: daftarTitik(SUMBU.djj),
+  ketuban: daftarSel(idEnum(KETUBAN)),
+  penyusupan: daftarSel(idEnum(PENYUSUPAN)),
+  pembukaan: daftarTitik(SUMBU.pembukaan),
+  penurunan: daftarTitik(SUMBU.penurunan),
+  kontraksi: z
+    .array(z.strictObject({ c: kolomSchema, n: z.number().int().min(1).max(5), d: idEnum(DURASI_KONTRAKSI) }))
+    .max(KOLOM_GRAFIK)
+    .default([])
+    .refine((a) => unik(a.map((x) => x.c)), "Satu isi per kotak waktu"),
+  ...(Object.fromEntries(DAFTAR_LAJUR_SEL.map((l) => [l, daftarSel(z.string().min(1).max(LAJUR_SEL[l].maks))])) as Record<
+    LajurSel,
+    ReturnType<typeof daftarSel<z.ZodString>>
+  >),
+  nadi: daftarTitik(SUMBU.nadi),
+  td: z
+    .array(
+      z
+        .strictObject({ k: garisSchema, s: nilaiTd, d: nilaiTd })
+        .refine((t) => t.s !== null || t.d !== null, "TD tanpa nilai")
+        .refine((t) => t.s === null || t.d === null || t.s > t.d, "Sistolik harus lebih tinggi dari diastolik"),
+    )
+    .max(GARIS_AKHIR + 1)
+    .default([])
+    .refine((a) => unik(a.map((x) => x.k)), "Satu nilai per garis waktu"),
+  paraf: z
+    .array(
+      z.strictObject({
+        id: z.string().regex(/^[a-z0-9]{6,16}$/, "Pengenal paraf tidak valid"),
+        c: kolomSchema,
+        nama: str(120),
+        paraf: ttdSchema,
+      }),
+    )
+    .max(KOLOM_GRAFIK)
+    .default([])
+    .refine((a) => unik(a.map((x) => x.c)) && unik(a.map((x) => x.id)), "Satu paraf per kotak waktu"),
+  catatan: str(240),
+});
+
+const yaTidakAlasanSchema = z.strictObject({ jawab: z.enum(["", "ya", "tidak"]).default(""), alasan: str(120) });
+const angkaMaks = (digit: number, pesan: string) => z.string().regex(new RegExp(`^\\d{0,${digit}}$`), pesan).default("");
+
+const persalinanRm70Schema = z.strictObject({
+  tanggal: tanggalSchema,
+  penolong: str(120),
+  tempat: z.enum(["", ...TEMPAT_PERSALINAN.map((t) => t.id)] as ["", ...(typeof TEMPAT_PERSALINAN)[number]["id"][]]).default(""),
+  tempatLain: str(80),
+  alamat: str(160),
+  kala1: z.strictObject({
+    waspada: z.enum(["", "Y", "T"]).default(""),
+    lain: z.boolean().default(false),
+    lainKet: str(120),
+    tatalaksana: str(300),
+    hasil: str(200),
+  }),
+  kala2: z.strictObject({
+    lama: angkaMaks(3, "Lama Kala II diisi menit"),
+    episiotomi: z.enum(["", "ya", "tidak"]).default(""),
+    indikasi: str(120),
+    pendamping: pilihanGanda(PENDAMPING),
+    gawatJanin: pilihanGanda(GAWAT_JANIN),
+    distosia: pilihanGanda(DISTOSIA_BAHU),
+    tatalaksana: str(300),
+    hasil: str(200),
+  }),
+  kala3: z.strictObject({
+    lama: angkaMaks(3, "Lama Kala III diisi menit"),
+    perdarahan: angkaMaks(4, "Jumlah perdarahan diisi ml"),
+    ...(Object.fromEntries(BUTIR_KALA3.map((b) => [b.id, yaTidakAlasanSchema])) as Record<IdButirKala3, typeof yaTidakAlasanSchema>),
+    laserasi: z.enum(["", ...DERAJAT_LASERASI]).default(""),
+    tindakan: pilihanGanda(TINDAKAN_LASERASI),
+    tindakanLain: str(80),
+    atonia: pilihanGanda(ATONIA_UTERI),
+    lain: str(160),
+    tatalaksana: str(300),
+    hasil: str(200),
+  }),
+});
+
+const bayiRm70Schema = z.strictObject({
+  berat: angkaMaks(4, "Berat badan diisi gram"),
+  panjang: z.string().regex(/^(\d{1,2}([.,]\d)?)?$/, "Panjang badan mis. 48 atau 48,5").default(""),
+  jk: z.enum(["", "L", "P"]).default(""),
+  apgar1: z.string().regex(/^(10|\d)?$/, "APGAR 0–10").default(""),
+  apgar5: z.string().regex(/^(10|\d)?$/, "APGAR 0–10").default(""),
+  asi: z.enum(["", "ya", "tidak"]).default(""),
+  asiAlasan: str(120),
+  kondisi: pilihanGanda(KONDISI_BAYI),
+  tindakan: pilihanGanda(TINDAKAN_BAYI),
+  tindakanLain: str(80),
+  cacat: z.boolean().default(false),
+  cacatKet: str(160),
+  lain: z.boolean().default(false),
+  lainKet: str(160),
+  tatalaksana: str(300),
+  hasil: str(200),
+});
+
+const barisKala4Schema = z.strictObject({
+  pukul: jamSchema,
+  td: z.string().regex(/^(\d{2,3}\/\d{2,3})?$/, "TD mis. 120/80").default(""),
+  nadi: angkaMaks(3, "Nadi diisi angka"),
+  suhu: z.string().regex(/^(\d{2}([.,]\d{1,2})?)?$/, "Suhu mis. 36,5").default(""),
+  tfu: str(24),
+  kontraksi: str(24),
+  kandungKemih: str(24),
+  perdarahan: angkaMaks(4, "Perdarahan diisi ml"),
+});
+
+export const rm70FormSchema = z.strictObject({
+  gravida: z.string().regex(/^(\d{1,2})?$/, "G diisi angka").default(""),
+  para: z.string().regex(/^(\d{1,2})?$/, "P diisi angka").default(""),
+  abortus: z.string().regex(/^(\d{1,2})?$/, "A diisi angka").default(""),
+  masukWaktu: waktuSchema,
+  ketubanJam: jamSchema,
+  mulesJam: jamSchema,
+  grafik: grafikRm70Schema,
+  persalinan: persalinanRm70Schema,
+  bayi: bayiRm70Schema,
+  kala4: z.strictObject({
+    baris: z
+      .array(barisKala4Schema)
+      .length(BARIS_KALA4.length)
+      // Kotak suhu selain awal tiap jam diarsir di kertas (suhu diukur sekali per jam).
+      .refine((b) => b.every((x, i) => SUHU_KALA4.has(i) || x.suhu === ""), "Suhu Kala IV hanya pada baris pertama tiap jam"),
+    masalah: str(200),
+    tatalaksana: str(300),
+    hasil: str(200),
+  }),
+  kie: z.array(z.strictObject({ tanggal: tanggalSchema, pelaksana: str(120), ket: str(120) })).length(MATERI_KIE.length),
 });
 
 /* --------------------------------------------------- penyesuaian data */

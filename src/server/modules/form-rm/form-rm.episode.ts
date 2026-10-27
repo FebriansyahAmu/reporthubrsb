@@ -1,6 +1,6 @@
 import { hitungUmur } from "@/lib/format";
-import { JENIS_KUNJUNGAN, type JenisKunjungan } from "@/features/form-rm/registry";
-import type { LegSasaranRow } from "./form-rm.dal";
+import { JENIS_KUNJUNGAN, type JenisKunjungan, type LegEpisode } from "@/features/form-rm/registry";
+import type { LegEpisodeRow, LegSasaranRow } from "./form-rm.dal";
 import type { EpisodeSasaran } from "./form-rm.types";
 
 /**
@@ -69,6 +69,14 @@ export function petaJenisEpisode(
   }
   return peta;
 }
+
+/** Baris leg episode SIMGOS → leg (jenis & ruangan) satu episode; jenis tak dikenal dibuang. */
+export const legDariBaris = (rows: readonly LegEpisodeRow[]): LegEpisode[] =>
+  rows.map((r) => ({ jenis: Number(r.JENIS_KUNJUNGAN), ruanganId: String(r.RUANGAN_ID) })).filter((l) => adalahJenis(l.jenis));
+
+/** Jenis kunjungan dari leg satu episode. */
+export const jenisDariLeg = (legs: readonly LegEpisode[]): Set<JenisKunjungan> =>
+  new Set(legs.map((l) => l.jenis).filter(adalahJenis));
 
 /** Halaman dari daftar penuh (halaman di luar jangkauan dijepit ke halaman terakhir). */
 export function halamanDari<T>(semua: readonly T[], halaman: number, ukuran: number) {

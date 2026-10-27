@@ -1,4 +1,4 @@
-import { Ambulance, DoorOpen, Droplet, FileHeart, FilePenLine, FileText, GraduationCap, ShieldAlert, Siren, type LucideIcon } from "lucide-react";
+import { Activity, Ambulance, DoorOpen, Droplet, FileHeart, FilePenLine, FileText, GraduationCap, ShieldAlert, Siren, type LucideIcon } from "lucide-react";
 import type { KodeForm } from "./registry";
 
 type TampilanForm = {
@@ -65,6 +65,12 @@ export const TAMPILAN_FORM: Record<KodeForm, TampilanForm> = {
     keterangan: "Per transfusi: kantong darah, tanda vital sebelum–selama–sesudah transfusi, dan reaksi.",
     ikon: Droplet,
     berulang: { satuan: "transfusi", bila: "Diisi bila pasien mendapat transfusi" },
+  },
+  "RM.70": {
+    singkat: "Partograf",
+    label: "Partograf & Catatan Persalinan",
+    keterangan: "Grafik pemantauan kala I (janin, kemajuan persalinan, kondisi ibu) dan catatan persalinan Kala I–IV, bayi baru lahir & KIE.",
+    ikon: Activity,
   },
   "RM.MORSE": {
     singkat: "Risiko Jatuh",

@@ -18,10 +18,12 @@ export const SUMBER_SIMRS = [
   "morse",
   "rujukan",
   "alergi",
+  "obstetri",
 ] as const;
 export type SumberId = (typeof SUMBER_SIMRS)[number];
 
 export const LABEL_SUMBER: Record<SumberId, string> = {
+  obstetri: "Riwayat obstetri (CPPT)",
   rujukan: "Rujukan keluar",
   alergi: "Riwayat alergi",
   morse: "Pengkajian risiko jatuh (Morse)",

@@ -12,7 +12,7 @@ import {
 } from "@/server/lib/errors";
 import { ambilPath, normalkanAsal, pasangPath, samaNilai, type AsalIsian } from "@/features/form-rm/asal";
 import type { AksiForm, HakForm } from "@/features/form-rm/hak";
-import { definisiForm, type DefinisiForm } from "@/features/form-rm/registry";
+import { cocokSasaran, definisiForm, pesanBukanSasaran, type DefinisiForm } from "@/features/form-rm/registry";
 import { pangkasTeksPanjang } from "@/features/form-rm/skema";
 import { JK_SEMENTARA, SYARAT_TERTAUT, type IdentitasSementara } from "@/features/form-rm/sementara";
 import {
@@ -22,6 +22,7 @@ import {
   type AksiIsian,
   type StatusIsian,
 } from "@/features/form-rm/isian.status";
+import { legEpisode } from "./form-rm.pasien";
 import { getFormRmHeader } from "./form-rm.service";
 import type { FormRmHeader } from "./form-rm.types";
 import { auditIsian } from "./isian.audit";
@@ -200,8 +201,13 @@ export async function bukaAtauBuatIsian(
     }
   }
 
-  const header = await getFormRmHeader(input.nopen);
+  const [header, legs] = await Promise.all([
+    getFormRmHeader(input.nopen),
+    def.sasaran.ruangan ? legEpisode(input.nopen) : null,
+  ]);
   if (!header) throw new NotFoundError("Pendaftaran tidak ditemukan atau tidak aktif");
+  // Form berbatas ruangan (mis. partograf): hanya episode yang pernah di ruang itu.
+  if (legs && !cocokSasaran(def.sasaran, legs)) throw new BusinessRuleError(pesanBukanSasaran(def.sasaran));
   const { data, asal } = await isiOtomatis(def, input.nopen, header);
 
   const buat = (urutan: number) =>

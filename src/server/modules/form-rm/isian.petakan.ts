@@ -3,9 +3,10 @@ import { jkDariHeader, umurTahun } from "@/features/form-rm/persetujuan/informas
 import type { KodeForm } from "@/features/form-rm/registry";
 import { tindakanRujukan } from "@/features/form-rm/rm33.constants";
 import { GOLONGAN_DARAH } from "@/features/form-rm/rm50.constants";
+import { bulatSetengahJam, TEMPAT_RS } from "@/features/form-rm/rm70.constants";
 import type { DiagnosaRow, TriaseSimgosRow } from "./form-rm.dal";
 import type { FormRmHeader, KeluarSimrs, TriaseForm, TriaseSimrs } from "./form-rm.types";
-import type { AlergiRow, EdukasiRow, EpisodeRow, KeluargaRow, MorseRow, PulangRow, RujukanRow, SosialRow } from "./isian.sumber.dal";
+import type { AlergiRow, EdukasiRow, EpisodeRow, KeluargaRow, MorseRow, ObstetriRow, PulangRow, RujukanRow, SosialRow } from "./isian.sumber.dal";
 
 /**
  * PEMETAAN ISI OTOMATIS (PRD §8.3) — fungsi MURNI: baris sumber SIMGOS → nilai
@@ -26,6 +27,7 @@ export type TipeSumber = {
   morse: MorseRow;
   rujukan: RujukanRow;
   alergi: AlergiRow[];
+  obstetri: ObstetriRow;
 };
 
 /** Hasil sumber yang ADA datanya (sumber kosong / gagal tidak dicantumkan). */
@@ -456,6 +458,21 @@ export function petaAlergi(rows: readonly AlergiRow[]): Record<string, unknown> 
   return negatif ? { alergi: "tidak" } : {};
 }
 
+/* ---------------------------------------------------------------- obstetri */
+
+/**
+ * "G3P2A0" / "g2 p1 a0" (cocokan CPPT) → G, P, A. Kehamilan yang sedang
+ * berlangsung ikut dihitung G, jadi G ≥ P + A; selain itu dianggap salah tulis
+ * dan tidak diisi.
+ */
+export function petaObstetri(r: ObstetriRow): Record<string, unknown> {
+  const m = /^G\s*(\d{1,2})\s*P\s*(\d{1,2})\s*A\s*(\d{1,2})$/i.exec(bersih(r.GPA));
+  if (!m) return {};
+  const [g, p, a] = [m[1], m[2], m[3]].map(Number);
+  if (g < 1 || g < p + a) return {};
+  return { gravida: String(g), para: String(p), abortus: String(a) };
+}
+
 /* ---------------------------------------------------------------- edukasi */
 
 const ya = (v: Id) => kode(v) === 1;
@@ -737,6 +754,22 @@ export const PETA_FORM: Readonly<Partial<Record<KodeForm, PetaForm>>> = {
       if (h.episode) isi(out, "episode", { dokter: bersih(h.episode.DPJP) });
       if (h.alergi) isi(out, "alergi", petaAlergi(h.alergi));
       return out;
+    },
+  },
+  "RM.70": {
+    sumber: ["identitas", "obstetri"],
+    petakan(h) {
+      const out: NilaiSimrs = {};
+      if (h.identitas) isi(out, "identitas", { masukWaktu: waktu(jamDinding(h.identitas.masuk)) });
+      if (h.obstetri) isi(out, "obstetri", petaObstetri(h.obstetri));
+      return out;
+    },
+    bawaan(d) {
+      // Grafik dimulai pada jam masuk (dibulatkan ke setengah jam); persalinan di rumah sakit ini.
+      const g = d.grafik as { mulai: string };
+      if (!g.mulai && typeof d.masukWaktu === "string") g.mulai = bulatSetengahJam(d.masukWaktu);
+      const p = d.persalinan as { tempat: string; tempatLain: string };
+      if (!p.tempat) Object.assign(p, { tempat: "lainnya", tempatLain: TEMPAT_RS });
     },
   },
   "RM.MORSE": {

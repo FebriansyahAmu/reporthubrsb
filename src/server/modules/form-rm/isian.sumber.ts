@@ -10,6 +10,7 @@ import {
   queryIgdAsal,
   queryKeluarga,
   queryMorse,
+  queryObstetri,
   queryPulang,
   queryRujukan,
   querySosial,
@@ -46,6 +47,8 @@ const SUMBER: { readonly [S in SumberId]: DefSumber<S> } = {
   edukasi: { igdAsal: true, ambil: (k) => queryEdukasi(k.nopen) },
   morse: { igdAsal: true, ambil: (k) => queryMorse(k.nopen) },
   alergi: { igdAsal: true, ambil: async (k) => takKosong(await queryAlergi(k.nopen)) },
+  // Episode OBGYN rawat inap: G/P/A ditulis saat masuk IRDO (episode IGD asal).
+  obstetri: { igdAsal: true, ambil: (k) => queryObstetri(k.nopen) },
   // Rujukan milik episode tempat dibuat (episode RI membuat rujukannya sendiri).
   rujukan: { igdAsal: false, ambil: (k) => queryRujukan(k.nopen) },
 };

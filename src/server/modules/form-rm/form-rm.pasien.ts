@@ -2,11 +2,11 @@ import "server-only";
 import { isSimgosConfigured } from "@/server/lib/env";
 import type { HakForm } from "@/features/form-rm/hak";
 import { kelengkapanDari, statusPasien } from "@/features/form-rm/kelengkapan";
-import type { DefinisiForm, JenisKunjungan } from "@/features/form-rm/registry";
+import { saringLeg, type DefinisiForm, type JenisKunjungan, type LegEpisode } from "@/features/form-rm/registry";
 import { formBoleh } from "./form-rm.akses";
-import { queryJenisEpisode, queryLegAktif, queryLegPasien, queryLegRentang, queryNormCari } from "./form-rm.dal";
+import { queryLegAktif, queryLegEpisode, queryLegPasien, queryLegRentang, queryNormCari } from "./form-rm.dal";
 import { tafsirCari } from "@/features/form-rm/cari";
-import { halamanDari, kelompokkanEpisode, petaJenisEpisode } from "./form-rm.episode";
+import { halamanDari, kelompokkanEpisode, legDariBaris, petaJenisEpisode } from "./form-rm.episode";
 import type {
   DaftarPasienForm,
   FormRmListResult,
@@ -47,9 +47,10 @@ export async function daftarPasienForm(def: DefinisiForm, a: PasienFormArgs): Pr
   }
 
   const acuan = new Date();
+  const sasaran = [saringLeg(def.sasaran)];
   const legs = kunci
-    ? await queryLegPasien({ jenis: def.sasaran.jenis, norm: await queryNormCari(kunci) })
-    : await queryLegAktif({ jenis: def.sasaran.jenis, jendelaJam: def.sasaran.jendelaJam, ruanganId: a.ruanganId });
+    ? await queryLegPasien({ sasaran, norm: await queryNormCari(kunci) })
+    : await queryLegAktif({ sasaran, jendelaJam: def.sasaran.jendelaJam, ruanganId: a.ruanganId });
   const episode = kelompokkanEpisode(legs, acuan);
 
   const isian = await isianAktifPerNopen(episode.map((e) => e.nopen), [def.kode]);
@@ -74,15 +75,17 @@ export type FormRmListArgs = {
 };
 
 /**
- * Daftar per pasien: episode dengan leg sasaran (form yang boleh dilihat) yang
- * masuk dalam rentang, beserta kelengkapan form wajibnya. Jenis kunjungan
- * episode diambil dari SEMUA lognya (bukan hanya yang di rentang) agar form
- * wajib tepat.
+ * Daftar per pasien: episode dengan leg sasaran (form yang boleh dilihat,
+ * termasuk batas ruangannya) yang masuk dalam rentang, beserta kelengkapan
+ * form wajibnya. Jenis kunjungan episode diambil dari SEMUA lognya (bukan hanya
+ * yang di rentang) agar form wajib tepat.
  */
 export async function getFormRmList(a: FormRmListArgs, hak: HakForm): Promise<FormRmListResult> {
   const forms = formBoleh(hak);
-  const semuaJenis = jenisSasaran(forms);
-  const jenis = a.jenis ? semuaJenis.filter((j) => j === a.jenis) : semuaJenis;
+  const sasaran = forms
+    .map((d) => saringLeg(d.sasaran))
+    .map((s) => (a.jenis ? { ...s, jenis: s.jenis.filter((j) => j === a.jenis) } : s))
+    .filter((s) => s.jenis.length > 0);
   const kosong: FormRmListResult = {
     ...halamanDari([], 1, UKURAN_DAFTAR),
     lengkapCount: 0,
@@ -90,10 +93,10 @@ export async function getFormRmList(a: FormRmListArgs, hak: HakForm): Promise<Fo
     total: 0,
     updatedAt: new Date().toISOString(),
   };
-  if (!isSimgosConfigured() || jenis.length === 0) return kosong;
+  if (!isSimgosConfigured() || sasaran.length === 0) return kosong;
 
   const episode = kelompokkanEpisode(
-    await queryLegRentang({ jenis, from: a.from, toExclusive: a.toExclusive, ruanganId: a.ruanganId }),
+    await queryLegRentang({ sasaran, from: a.from, toExclusive: a.toExclusive, ruanganId: a.ruanganId }),
     new Date(),
   );
   const q = a.search?.trim().toLowerCase();
@@ -101,7 +104,7 @@ export async function getFormRmList(a: FormRmListArgs, hak: HakForm): Promise<Fo
 
   const nopens = cocok.map((e) => e.nopen);
   const [jenisRows, isianMap] = await Promise.all([
-    queryJenisEpisode(nopens),
+    queryLegEpisode(nopens),
     isianAktifPerNopen(nopens, forms.map((d) => d.kode)),
   ]);
   const jenisEpisode = petaJenisEpisode(jenisRows);
@@ -121,8 +124,8 @@ export async function getFormRmList(a: FormRmListArgs, hak: HakForm): Promise<Fo
   };
 }
 
-/** Jenis kunjungan seluruh leg aktif satu episode (profil pasien). */
-export async function jenisEpisode(nopen: string): Promise<Set<JenisKunjungan>> {
-  if (!isSimgosConfigured()) return new Set();
-  return petaJenisEpisode(await queryJenisEpisode([nopen])).get(nopen) ?? new Set();
+/** Leg aktif satu episode (jenis & ruangan): profil pasien, kecocokan sasaran saat buat & tautkan. */
+export async function legEpisode(nopen: string): Promise<LegEpisode[]> {
+  if (!isSimgosConfigured()) return [];
+  return legDariBaris(await queryLegEpisode([nopen]));
 }

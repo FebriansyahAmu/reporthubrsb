@@ -8,10 +8,11 @@ import { KartuForm, KartuFormBerulang } from "@/features/form-rm/KartuFormPasien
 import { PitaKelengkapan } from "@/features/form-rm/PitaKelengkapan";
 import { DAFTAR_KATEGORI, KATEGORI_FORM, MODUL_AKSES_FORM_RM } from "@/features/form-rm/kategori";
 import { kelengkapanDari } from "@/features/form-rm/kelengkapan";
-import { LABEL_JENIS_KUNJUNGAN } from "@/features/form-rm/registry";
+import { cocokSasaran, LABEL_JENIS_KUNJUNGAN } from "@/features/form-rm/registry";
 import { requireAnyModule } from "@/server/rbac/guard";
 import { formBoleh, hakFormRm } from "@/server/modules/form-rm/form-rm.akses";
-import { jenisEpisode } from "@/server/modules/form-rm/form-rm.pasien";
+import { jenisDariLeg } from "@/server/modules/form-rm/form-rm.episode";
+import { legEpisode } from "@/server/modules/form-rm/form-rm.pasien";
 import { getFormRmHeader } from "@/server/modules/form-rm/form-rm.service";
 import { nopenSchema } from "@/server/modules/form-rm/isian.schema";
 import { isianAktifPerNopen, isianBerulangPerNopen } from "@/server/modules/form-rm/isian.cari";
@@ -48,12 +49,17 @@ export default async function ProfilPasienFormRm({ params }: { params: Promise<{
   }
 
   const hak = await hakFormRm(user);
-  const forms = formBoleh(hak);
-  const [isian, berulang, jenis] = await Promise.all([
-    isianAktifPerNopen([nopen], forms.map((d) => d.kode)).then((m) => m.get(nopen) ?? {}),
-    isianBerulangPerNopen(nopen, forms),
-    jenisEpisode(nopen),
+  const boleh = formBoleh(hak);
+  const [isian, berulang, legs] = await Promise.all([
+    isianAktifPerNopen([nopen], boleh.map((d) => d.kode)).then((m) => m.get(nopen) ?? {}),
+    isianBerulangPerNopen(nopen, boleh),
+    legEpisode(nopen),
   ]);
+  const jenis = jenisDariLeg(legs);
+  // Form berbatas ruangan (mis. partograf) hanya untuk episode di ruang itu — kecuali sudah punya isian.
+  const forms = boleh.filter(
+    (d) => !d.sasaran.ruangan || cocokSasaran(d.sasaran, legs) || isian[d.kode] || (berulang[d.kode]?.length ?? 0) > 0,
+  );
   const k = kelengkapanDari(isian, forms, jenis);
   const wajib = new Set(k.formulir.filter((f) => f.wajib).map((f) => f.kode));
   const kategori = DAFTAR_KATEGORI.map((kat) => ({ kat, forms: forms.filter((d) => d.kategori === kat) })).filter(

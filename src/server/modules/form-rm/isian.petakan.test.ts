@@ -33,6 +33,7 @@ import {
   petaKeluarga,
   petaPendidikan,
   petaMorse,
+  petaObstetri,
   petaPerkawinan,
   petaAlergi,
   petaRujukan,
@@ -177,6 +178,7 @@ const alergiRows: AlergiRow[] = [
 ];
 
 const lengkap: HasilSumber = {
+  obstetri: { GPA: "G3P2A0" },
   alergi: alergiRows,
   rujukan: rujukanRow,
   morse: morseRow,
@@ -478,6 +480,31 @@ describe("peta isi otomatis per form", () => {
       alergiKet: ["Ranitidine, Udang", "alergi"],
     });
     expect(petaWajib("RM.50").petakan({ sosial: { ...sosial, GOL_DARAH: "Tidak Tahu" } })).toEqual({});
+  });
+
+  it("RM.70: G/P/A dari CPPT + jam masuk; bawaan = grafik mulai jam masuk (½ jam) & tempat RSUD", () => {
+    const n = petaWajib("RM.70").petakan(lengkap);
+    expect(Object.fromEntries(Object.entries(n).map(([p, v]) => [p, [v.nilai, v.sumber]]))).toEqual({
+      masukWaktu: ["2026-10-07T08:04", "identitas"],
+      gravida: ["3", "obstetri"],
+      para: ["2", "obstetri"],
+      abortus: ["0", "obstetri"],
+    });
+    const def = DEFINISI_FORM.find((x) => x.kode === "RM.70")!;
+    const data = def.kosong() as Record<string, unknown>;
+    data.masukWaktu = "2026-10-07T08:04";
+    petaWajib("RM.70").bawaan?.(data, "2026-10-07");
+    expect((data.grafik as { mulai: string }).mulai).toBe("2026-10-07T08:00");
+    expect(data.persalinan).toMatchObject({ tempat: "lainnya", tempatLain: "RSUD Boltim" });
+  });
+
+  it("G/P/A: spasi & huruf kecil dibaca; G < P + A atau G 0 = salah tulis (tidak diisi)", () => {
+    expect(petaObstetri({ GPA: "g2 p1 a0" })).toEqual({ gravida: "2", para: "1", abortus: "0" });
+    expect(petaObstetri({ GPA: "G4P1A2" })).toEqual({ gravida: "4", para: "1", abortus: "2" });
+    expect(petaObstetri({ GPA: "G2P3A0" })).toEqual({});
+    expect(petaObstetri({ GPA: "G0P0A0" })).toEqual({});
+    expect(petaObstetri({ GPA: null })).toEqual({});
+    expect(petaObstetri({ GPA: "G2P1" })).toEqual({});
   });
 
   it("riwayat alergi: penyangkalan → tidak; teks umum/tak diketahui → tidak diisi; positif menang", () => {

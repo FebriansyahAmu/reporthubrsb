@@ -2,6 +2,7 @@ import "server-only";
 import { getSimgos } from "@/server/db/simgos.client";
 import { SIMGOS_DB } from "@/server/db/simgos-databases";
 import type { KunciCariPasien } from "@/features/form-rm/cari";
+import type { SaringLeg } from "@/features/form-rm/registry";
 
 /** Baris header identitas pasien untuk kepala formulir RM (READ-ONLY). */
 export type FormRmHeaderRow = {
@@ -68,11 +69,32 @@ export type LegSasaranRow = {
   TANGGAL_LAHIR: string | null;
 };
 
-/** `jenis` hanya dari registri (1/2/3) — tetap divalidasi agar tak pernah jadi celah. */
-function klausaJenis(jenis: readonly number[]): { sql: string; params: number[] } {
-  const sah = [...new Set(jenis)].filter((j) => j === 1 || j === 2 || j === 3);
-  if (sah.length === 0) throw new Error("Jenis kunjungan sasaran kosong");
-  return { sql: `r.JENIS_KUNJUNGAN IN (${sah.map(() => "?").join(", ")})`, params: sah };
+/** Prefiks ID `master.ruangan` (5–9 digit angka). */
+const PREFIKS_RUANGAN = /^\d{5,9}$/;
+
+/**
+ * Sasaran form (dari registri: jenis 1/2/3 + prefiks ruangan opsional) → satu
+ * klausa OR per sasaran. Tetap divalidasi agar tak pernah jadi celah; prefiks
+ * hanya angka dan selalu dikirim sebagai parameter.
+ */
+function klausaSasaran(sasaran: readonly SaringLeg[]): { sql: string; params: unknown[] } {
+  // Banyak form bersasaran sama → satu klausa saja.
+  const bagian = new Map<string, { sql: string; params: unknown[] }>();
+  for (const s of sasaran) {
+    const jenis = [...new Set(s.jenis)].filter((j) => j === 1 || j === 2 || j === 3).sort();
+    const ruang = s.ruangan ? [...new Set(s.ruangan)].filter((id) => PREFIKS_RUANGAN.test(id)).sort() : null;
+    if (jenis.length === 0 || ruang?.length === 0) continue;
+    let sql = `r.JENIS_KUNJUNGAN IN (${jenis.map(() => "?").join(", ")})`;
+    const params: unknown[] = [...jenis];
+    if (ruang) {
+      sql += ` AND (${ruang.map(() => "r.ID LIKE ?").join(" OR ")})`;
+      params.push(...ruang.map((id) => `${id}%`));
+    }
+    bagian.set(`${sql}|${params.join(",")}`, { sql, params });
+  }
+  if (bagian.size === 0) throw new Error("Sasaran kunjungan kosong");
+  const semua = [...bagian.values()];
+  return { sql: `(${semua.map((b) => `(${b.sql})`).join(" OR ")})`, params: semua.flatMap((b) => b.params) };
 }
 
 /** Leg ruangan layanan (ID 9 digit) dari pendaftaran aktif; leg batal dibuang. */
@@ -103,11 +125,11 @@ const AKTIF_MAKS_HARI = 90;
  * ≤ 90 hari) atau masuk dalam `jendelaJam` terakhir. READ-ONLY.
  */
 export async function queryLegAktif(a: {
-  jenis: readonly number[];
+  sasaran: readonly SaringLeg[];
   jendelaJam: number;
   ruanganId?: string;
 }): Promise<LegSasaranRow[]> {
-  const j = klausaJenis(a.jenis);
+  const j = klausaSasaran(a.sasaran);
   const jam = Math.min(Math.max(1, Math.trunc(a.jendelaJam)), 24 * AKTIF_MAKS_HARI);
   let syarat = `k.MASUK >= NOW() - INTERVAL ${AKTIF_MAKS_HARI} DAY AND (k.KELUAR IS NULL OR k.MASUK >= NOW() - INTERVAL ? HOUR)`;
   const params: unknown[] = [...j.params, jam];
@@ -120,12 +142,12 @@ export async function queryLegAktif(a: {
 
 /** Leg sasaran yang MASUK dalam rentang [from, toExclusive) — daftar per pasien. READ-ONLY. */
 export async function queryLegRentang(a: {
-  jenis: readonly number[];
+  sasaran: readonly SaringLeg[];
   from: string;
   toExclusive: string;
   ruanganId?: string;
 }): Promise<LegSasaranRow[]> {
-  const j = klausaJenis(a.jenis);
+  const j = klausaSasaran(a.sasaran);
   let syarat = "k.MASUK >= ? AND k.MASUK < ?";
   const params: unknown[] = [...j.params, a.from, a.toExclusive];
   if (a.ruanganId) {
@@ -165,21 +187,24 @@ export async function queryNormCari(kunci: KunciCariPasien): Promise<string[]> {
 }
 
 /** Leg sasaran milik pasien tertentu (terbaru dulu, maks 300). READ-ONLY. */
-export async function queryLegPasien(a: { jenis: readonly number[]; norm: readonly string[] }): Promise<LegSasaranRow[]> {
+export async function queryLegPasien(a: { sasaran: readonly SaringLeg[]; norm: readonly string[] }): Promise<LegSasaranRow[]> {
   if (a.norm.length === 0) return [];
-  const j = klausaJenis(a.jenis);
+  const j = klausaSasaran(a.sasaran);
   const syarat = `pp.NORM IN (${a.norm.map(() => "?").join(", ")})`;
   return getSimgos().$queryRawUnsafe<LegSasaranRow[]>(sqlLeg(j.sql, syarat, 300), ...j.params, ...a.norm.map(Number));
 }
 
+export type LegEpisodeRow = { NOPEN: string; JENIS_KUNJUNGAN: number | string; RUANGAN_ID: string };
+
 /**
- * Jenis kunjungan (1/2/3) seluruh leg aktif tiap episode — penentu form wajib
- * (`wajibUntuk`), termasuk leg di luar rentang daftar. READ-ONLY.
+ * Jenis kunjungan (1/2/3) & ruangan seluruh leg aktif tiap episode — penentu
+ * form wajib (`wajibUntuk`) dan kecocokan sasaran ruangan, termasuk leg di luar
+ * rentang daftar. READ-ONLY.
  */
-export async function queryJenisEpisode(nopens: readonly string[]): Promise<{ NOPEN: string; JENIS_KUNJUNGAN: number | string }[]> {
+export async function queryLegEpisode(nopens: readonly string[]): Promise<LegEpisodeRow[]> {
   if (nopens.length === 0) return [];
   const sql = `
-    SELECT ${CAP} DISTINCT k.NOPEN, r.JENIS_KUNJUNGAN
+    SELECT ${CAP} DISTINCT k.NOPEN, r.JENIS_KUNJUNGAN, r.ID AS RUANGAN_ID
     FROM ${SIMGOS_DB.PENDAFTARAN}.kunjungan k
     JOIN ${SIMGOS_DB.MASTER}.ruangan r ON r.ID = k.RUANGAN
     WHERE k.NOPEN IN (${nopens.map(() => "?").join(", ")}) AND k.STATUS <> 0

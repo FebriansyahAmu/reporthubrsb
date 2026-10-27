@@ -5,11 +5,11 @@ import { getAppDb } from "@/server/db/app.client";
 import { isSimgosConfigured } from "@/server/lib/env";
 import { BusinessRuleError, ConflictError, ForbiddenError, NotFoundError } from "@/server/lib/errors";
 import { tafsirCari } from "@/features/form-rm/cari";
-import { definisiForm, LABEL_JENIS_KUNJUNGAN, type DefinisiForm } from "@/features/form-rm/registry";
+import { cocokSasaran, definisiForm, pesanBukanSasaran, saringLeg, type DefinisiForm } from "@/features/form-rm/registry";
 import type { IdentitasSementaraNilai } from "@/features/form-rm/sementara";
 import { queryLegPasien, queryLegRentang, queryNormCari } from "./form-rm.dal";
 import { kelompokkanEpisode } from "./form-rm.episode";
-import { jenisEpisode } from "./form-rm.pasien";
+import { legEpisode } from "./form-rm.pasien";
 import { getFormRmHeader } from "./form-rm.service";
 import { auditIsian } from "./isian.audit";
 import { isianAktifPerNopen } from "./isian.cari";
@@ -133,9 +133,10 @@ export async function kandidatTautan(id: string, q: string | undefined, aktor: A
   const kunci = q ? tafsirCari(q) : null;
   if (!isSimgosConfigured() || (q && !kunci)) return { mode, acuan, data: [] };
 
+  const sasaran = [saringLeg(row.def.sasaran)];
   const legs = kunci
-    ? await queryLegPasien({ jenis: row.def.sasaran.jenis, norm: await queryNormCari(kunci) })
-    : await queryLegRentang({ jenis: row.def.sasaran.jenis, ...jendelaKandidat(acuan) });
+    ? await queryLegPasien({ sasaran, norm: await queryNormCari(kunci) })
+    : await queryLegRentang({ sasaran, ...jendelaKandidat(acuan) });
   const episode = kelompokkanEpisode(legs, new Date());
   const aktif = await isianAktifPerNopen(
     episode.map((e) => e.nopen),
@@ -162,9 +163,9 @@ export async function tautkanIsian(id: string, input: TautkanInput, aktor: Aktor
   const { def } = row;
   const db = getAppDb();
 
-  const [header, jenis, revisi, lain, lama] = await Promise.all([
+  const [header, legs, revisi, lain, lama] = await Promise.all([
     getFormRmHeader(input.nopen),
-    jenisEpisode(input.nopen),
+    legEpisode(input.nopen),
     db.formRmRevisi.count({ where: { isianId: id } }),
     db.formRmIsian.findFirst({
       where: { formKode: def.kode, subjek: input.nopen },
@@ -176,10 +177,7 @@ export async function tautkanIsian(id: string, input: TautkanInput, aktor: Aktor
       : null,
   ]);
   if (!header) throw new NotFoundError("Pendaftaran tidak ditemukan atau tidak aktif di SIMRS");
-  if (!def.sasaran.jenis.some((j) => jenis.has(j))) {
-    const sasaran = def.sasaran.jenis.map((j) => LABEL_JENIS_KUNJUNGAN[j]).join(" / ");
-    throw new BusinessRuleError(`Pendaftaran ini tidak punya kunjungan ${sasaran}`);
-  }
+  if (!cocokSasaran(def.sasaran, legs)) throw new BusinessRuleError(pesanBukanSasaran(def.sasaran));
   // Segel revisi memuat subjek: isian bersegel tak boleh berpindah subjek.
   if (revisi > 0) throw new BusinessRuleError("Isian yang sudah punya riwayat revisi tidak dapat ditautkan");
   // Isian tabel lama yang belum dipindahkan tak boleh terlewati (dipindahkan saat formulir pasien itu dibuka).

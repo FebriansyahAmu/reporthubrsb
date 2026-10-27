@@ -255,7 +255,7 @@ flowchart LR
 | Rawat Jalan                | asesmen awal rawat jalan                                                                                                | kunjungan klinik                      | baru      |
 | Rawat Inap                 | asesmen awal medis & keperawatan; lembar transfer; perencanaan pulang; rekonsiliasi obat                                | episode / **berulang** (transfer)     | baru      |
 | Kamar Operasi & Anestesi   | Surgical Safety Checklist; asesmen pra-anestesi/sedasi                                                                  | kunjungan OK / berulang               | baru      |
-| Kebidanan & Neonatus       | asesmen obstetri; riwayat kehamilan                                                                                     | episode                               | baru      |
+| Kebidanan & Neonatus       | RM.70 Partograf & Catatan Persalinan; asesmen obstetri; riwayat kehamilan                                               | episode (IRDO & Perawatan OBGYN)      | RM.70 ada (F4.5) |
 | Edukasi                    | RM.21 Edukasi Pasien & Keluarga Terintegrasi                                                                            | episode                               | RM.21 ada |
 | Ringkasan & Pemulangan     | RM.01 Ringkasan Masuk & Keluar                                                                                          | episode                               | RM.01 ada |
 
@@ -325,7 +325,7 @@ Registri divalidasi oleh unit test:
 ### 8.3. Pustaka isi otomatis (SIMGOS, read-only)
 
 - **Sumber.** Satu sumber = satu fungsi DAL berisi satu query berparameter, berkunci NOPEN/KUNJUNGAN yang terindeks dan dibatasi `MAX_EXECUTION_TIME`. Hasilnya bertipe dan boleh `null`.
-- **Sumber awal:** `identitas`, `sosial`, `episode`, `diagnosa`, `tandaVital`, `keluhan`, `alergi`, `nyeri`, `risikoJatuh`, `edukasi`, `triase`, `statusFungsional`, `anamnesis`, `episodeIgdAsal`. Ditambah `rujukan` (rujukan keluar, RM.33 — F4.2) dan `alergi` (`medicalrecord.riwayat_alergi` seluruh kunjungan episode, cadangan episode IGD asal — RM.50, F4.4); sumber `pulang` kini juga memuat waktu pulang & petugas pencatat (RM.41 — F4.3).
+- **Sumber awal:** `identitas`, `sosial`, `episode`, `diagnosa`, `tandaVital`, `keluhan`, `alergi`, `nyeri`, `risikoJatuh`, `edukasi`, `triase`, `statusFungsional`, `anamnesis`, `episodeIgdAsal`. Ditambah `rujukan` (rujukan keluar, RM.33 — F4.2) dan `alergi` (`medicalrecord.riwayat_alergi` seluruh kunjungan episode, cadangan episode IGD asal — RM.50, F4.4); sumber `pulang` kini juga memuat waktu pulang & petugas pencatat (RM.41 — F4.3); `obstetri` (G/P/A pertama di teks CPPT episode, cadangan episode IGD asal — RM.70, F4.5).
 - **Pemakaian oleh form.** Form hanya _menyebut_ sumber yang dipakainya. Service mengambil setiap sumber unik sekali, paralel terbatas (maks 4 sekaligus), lewat client SIMGOS singleton yang sudah ada.
 - **Penormal bersama.** Penormal nilai referensi SIMGOS ke opsi form (mis. `matchAgama`, `matchPekerjaan`) dipindah ke pustaka bersama.
 - **Uji silang.** Setiap pemetaan diuji silang dengan SQL independen pada data nyata (pola Verifikasi Klaim).
@@ -733,7 +733,7 @@ _Diputuskan 8 Okt 2026:_ pemilik meminta jendela desktop Tauri sekarang (F5b, §
 
 - RM.21 `KESEDIAAN = 0` dibiarkan kosong (525 dari 535 baris bernilai 0 tetap berisi kebutuhan edukasi → kemungkinan nilai bawaan, bukan penolakan).
 - RM.01 "keluarga terdekat" diambil dari pasangan/kepala keluarga/anak, bukan dari orang tua (orang tua → kolom "nama orang tua"); cara masuk tidak diisi untuk episode rawat inap saja (rujukannya milik pendaftaran RI).
-- Jenis pelayanan dari nama ruang (IRDA = anak, IRDO = kebidanan — mohon dikonfirmasi).
+- Jenis pelayanan dari nama ruang (IRDA = anak, IRDO = kebidanan — dikonfirmasi data SIMGOS 27 Okt 2026, lihat F4.5).
 
 **Episode IGD asal:** untuk episode rawat inap tanpa leg IGD, sumber asesmen (triase, edukasi, Morse) yang kosong diambil dari episode IGD asal — lewat SPRI (`perencanaan_rawat_inap.PENDAFTARAN_RI_NOMOR`, NORM sama) atau pendaftaran IGD pasien yang sama ≤ 24 jam sebelumnya (pola fungsi SIMGOS `getNopenIRD`). 424/566 episode RI 90 hari tertaut lewat SPRI.
 
@@ -820,6 +820,27 @@ Formulir resmi `RM. 50 (Monitoring Pemberian Transfusi Darah - Produk Darah).pdf
 - **Paraf** (`cekParafRm50`): referensi paraf tersimpan hanya sah bila ada baris tersimpan dengan paraf & nama petugas yang sama — pakai ulang paraf petugas yang sama antar-kantong boleh; memindah paraf ke petugas lain atau mengganti nama ditolak (409).
 - **Cetak 1:1** (`Rm50Document`): selalu 2 halaman seperti kertas, kop lanskap (alamat 2 baris), kotak pilihan dicentang, 23 baris (kosong tetap tercetak); lebar cetak = area cetak F4 lanskap (314 mm) agar dicetak 100%; isi penuh (23 kantong, teks panjang) tetap muat bingkai 198 mm.
 - **Uji:** unit 402 (baru `rm50.test.ts`, pemetaan alergi & RM.50, registri); E2E `rm50-e2e.mjs` 58/58, UI `rm50-ui.mjs` 40/40 (build produksi); regresi E2E RM.41 60/60, RM.33 72/72, RM.22 66/66, F1 83/83, F2 56/56, F3 103/103, F6 113/113; regresi UI RM.41 31/31, RM.33 44/44, RM.22 41/41, F2 29/29, F6 29/29; `tsc` & ESLint bersih; /security-review tanpa temuan.
+
+#### F4.5 — RM.70 Proses Pemantauan Persalinan (Partograf) & Catatan Persalinan (27 Okt 2026)
+
+Formulir resmi RM 70 (foto kertas dari RS), **F4 potret, 2 halaman bolak-balik**: depan "PROSES PEMANTAUAN PERSALINAN (PARTOGRAF)", belakang "CATATAN PERSALINAN". Form KHUSUS, kategori baru **Kebidanan** → modul RBAC `form-rm.kebidanan` (dibangkitkan otomatis; grant lama `form-rm` & superadmin ikut mencakup); satu isian per episode (tidak berulang); tidak wajib per episode.
+
+- **Sasaran berbatas ruangan** (atribut registri baru `sasaran.ruangan`, prefiks ID `master.ruangan`): hanya episode yang pernah di **IRDO** (`101010104`, IGD kebidanan) atau bangsal **Perawatan OBGYN** (`1010204` → `101020401` Kelas 3). Ditelusuri dari `master.ruangan` + kunjungan: IRDO 134 dari 135 pasien perempuan, 100 episode ber-G/P/A di CPPT, dan 94 dari 112 pasien Perawatan OBGYN masuk lewat IRDO; **IRDA (`101010103`) = IGD anak** (618 dari 862 episode < 12 tahun) sehingga bukan sasaran.
+  - Batas berlaku di: pemilih pasien (daftar aktif, pencarian, pilihan ruang), daftar per pasien (klausa OR per sasaran form yang terlihat), profil pasien (kartu disembunyikan kecuali sudah ada isian), tautan isian sementara, dan **pembuatan isian di server** (409 "Formulir ini hanya untuk pasien IRDO & Perawatan OBGYN; …").
+  - Prefiks divalidasi angka 5–9 digit dan dikirim sebagai parameter `LIKE`. Form tanpa `ruangan` tidak berubah perilakunya (pesan & aturan lama tetap).
+- **Isi otomatis:** sumber baru `obstetri` = cocokan pertama `G…P…A…` di teks CPPT episode (SUBYEKTIF/OBYEKTIF/ASSESMENT, `REGEXP_SUBSTR` ≤ 20 karakter, pola konstanta; cadangan episode IGD asal); tabel obstetri & kelahiran SIMGOS kosong. Tanggal & jam masuk dari identitas. Bawaan isian baru: jam mulai grafik = jam masuk dibulatkan ke bawah ½ jam; tempat persalinan "Lainnya: RSUD Boltim".
+- **Data** (`rm70.constants.ts`, `rm70FormSchema` strict):
+  - Halaman 1: G/P/A, masuk, ketuban pecah & mules sejak; grafik 15 jam (30 kolom ½ jam) berisi DJJ, ketuban, penyusupan, pembukaan (X) & penurunan (O), kontraksi (jumlah per 10 menit + durasi), oksitosin & tetes, obat & cairan, nadi & TD, suhu, urine (protein/aseton/volume), makan/minum, paraf + nama per kolom, catatan.
+  - Halaman 2: data persalinan, Kala I–IV, bayi baru lahir (APGAR), tabel pemantauan Kala IV 6 baris, KIE 7 butir.
+- **Grafik interaktif** (`Rm70Partograf`; geometri SVG satu sumber dengan cetak di `rm70.geometri.ts`): klik untuk menaruh atau menghapus nilai (snap), TD dua klik, kontraksi dari baris, panel pemeriksaan per jam di samping, pratinjau & tooltip, garis "Sekarang", urungkan per lajur, keyboard (panah, Ctrl+Z), lebar penuh. Ringkasan: posisi kemajuan terhadap garis Waspada/Bertindak, tanda bahaya (DJJ di luar 120–160, nadi, TD, suhu, ketuban M/D, penyusupan 3, protein/aseton), jadwal pemantauan berikutnya (APN).
+- **Paraf** (`cekParafRm70`): referensi paraf tersimpan sah hanya untuk nama petugas yang sama (pola RM.50).
+- **Cetak 1:1** (`Rm70Document`): 2 halaman F4 potret; teks kertas disalin apa adanya termasuk ejaan kertas ("Oksilosin", "Masage", "Eoisiotomi", …). Bacaan "Semua nifas" & "KL" pada tabel KIE belum pasti dari foto — **mohon dikonfirmasi**.
+- **Uji:**
+  - Unit 515.
+  - E2E `rm70-e2e.mjs` 65/65 (build produksi). Termasuk 14 kasus batas ruangan: IRDA & Interna 409 tanpa isian tercipta, pemilih & daftar per pasien sama dengan SQL independen, pilihan ruang, dan profil pasien.
+  - UI `rm70-ui.mjs` 22/22.
+  - Regresi: `ttd-saya` 38/38; tautan Triase `tautan-e2e.mjs` 7/7 (pesan & perilaku lama tetap).
+  - `/security-review`: tanpa temuan.
 
 ### F5 — PWA + penyelesaian non-form (7 Okt 2026)
 

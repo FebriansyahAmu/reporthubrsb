@@ -11,6 +11,7 @@ import { Rm22FormView } from "@/features/form-rm/Rm22FormView";
 import { Rm33FormView } from "@/features/form-rm/Rm33FormView";
 import { Rm41FormView } from "@/features/form-rm/Rm41FormView";
 import { Rm50FormView } from "@/features/form-rm/Rm50FormView";
+import { Rm70FormView } from "@/features/form-rm/Rm70FormView";
 import { TriaseFormView } from "@/features/form-rm/TriaseFormView";
 import { KATEGORI_FORM, MODUL_AKSES_FORM_RM } from "@/features/form-rm/kategori";
 import { NotFoundError } from "@/server/lib/errors";
@@ -137,6 +138,8 @@ function TampilanForm({
       return <Rm41FormView key={key} isian={isian} header={header} izin={izin} />;
     case "RM.50":
       return <Rm50FormView key={key} isian={isian} header={header} izin={izin} />;
+    case "RM.70":
+      return <Rm70FormView key={key} isian={isian} header={header} izin={izin} />;
     default:
       // Form deklaratif: renderer generik dari struktur registri.
       return <FormDeklaratifView key={key} isian={isian} header={header} izin={izin} />;

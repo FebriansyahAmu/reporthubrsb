@@ -308,6 +308,31 @@ export async function queryMorse(nopen: string): Promise<MorseRow | null> {
   return rows[0] ?? null;
 }
 
+/* --------------------------------------------------------------- obstetri */
+
+/**
+ * Status obstetri "G…P…A…" PERTAMA yang ditulis di CPPT episode. Tabel obstetri
+ * SIMGOS (`medicalrecord.obstetri`, `riwayat_obstetri`) kosong; bidan/dokter
+ * menulisnya di teks CPPT (mis. "G2P1A0 hamil aterm inpartu kala I"). Hanya
+ * potongan cocokannya yang dikembalikan, bukan teks CPPT.
+ */
+export type ObstetriRow = { GPA: string | null };
+
+const POLA_GPA = "G[[:space:]]*[0-9]{1,2}[[:space:]]*P[[:space:]]*[0-9]{1,2}[[:space:]]*A[[:space:]]*[0-9]{1,2}";
+
+export async function queryObstetri(nopen: string): Promise<ObstetriRow | null> {
+  const teks = "CONCAT_WS(' ', c.SUBYEKTIF, c.OBYEKTIF, c.ASSESMENT)";
+  const sql = `
+    SELECT ${CAP} LEFT(REGEXP_SUBSTR(${teks}, '${POLA_GPA}'), 20) AS GPA
+    FROM ${MR}.cppt c
+    JOIN ${P}.kunjungan k ON k.NOMOR = c.KUNJUNGAN
+    WHERE k.NOPEN = ? AND k.STATUS <> 0 AND c.STATUS = 1 AND ${teks} REGEXP '${POLA_GPA}'
+    ORDER BY c.TANGGAL ASC, c.ID ASC
+    LIMIT 1`;
+  const rows = await getSimgos().$queryRawUnsafe<ObstetriRow[]>(sql, nopen);
+  return rows[0] ?? null;
+}
+
 /* -------------------------------------------------------- episode IGD asal */
 
 /** Episode IGD asal pasien rawat inap: lewat SPRI, atau (cadangan) pendaftaran IGD ≤ 24 jam sebelumnya. */

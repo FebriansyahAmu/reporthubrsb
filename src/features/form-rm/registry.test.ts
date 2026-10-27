@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { ambilPath, PATH_RE, SUMBER_SIMRS } from "./asal";
 import { DAFTAR_KATEGORI } from "./kategori";
-import { DEFINISI_FORM, definisiDariJenisLama, definisiForm, JENIS_KUNJUNGAN, KATEGORI_FORM, KODE_FORM, labelSasaran } from "./registry";
+import {
+  cocokSasaran,
+  DEFINISI_FORM,
+  definisiDariJenisLama,
+  definisiForm,
+  JENIS_KUNJUNGAN,
+  KATEGORI_FORM,
+  KODE_FORM,
+  labelSasaran,
+  pesanBukanSasaran,
+  saringLeg,
+} from "./registry";
 import { TAMPILAN_FORM } from "./tampilan";
 
 describe("registri form RM", () => {
@@ -77,6 +88,7 @@ describe("registri form RM", () => {
     expect(slot("RM.33")).toEqual(["pemberiTtd", "penerimaTtd", "pernyataTtd", "dokterTtd", "saksi1Ttd", "saksi2Ttd"]);
     expect(slot("RM.41")).toEqual(["petugasTtd", "saksiTtd", "pernyataTtd"]);
     expect(slot("RM.50")).toEqual([]);
+    expect(slot("RM.70")).toEqual([]);
     const rm50 = definisiForm("RM.50")!;
     const hasil: string[] = [];
     rm50.petaTtd({ ...(rm50.kosong() as object), kantong: [{ paraf: "" }, { paraf: "" }] }, (v, s) => (hasil.push(s), v));
@@ -107,6 +119,48 @@ describe("registri form RM", () => {
     expect(labelSasaran({ jenis: [2], jendelaJam: 24 })).toBe("Pasien IGD");
     expect(labelSasaran({ jenis: [2, 3], jendelaJam: 24 })).toBe("Pasien IGD & Rawat Inap");
     expect(labelSasaran({ jenis: [1, 2, 3], jendelaJam: 24 })).toBe("Pasien Rawat Jalan, IGD & Rawat Inap");
+    expect(labelSasaran(definisiForm("RM.70")!.sasaran)).toBe("Pasien IRDO & Perawatan OBGYN");
+  });
+
+  it.each(DEFINISI_FORM.filter((d) => d.sasaran.ruangan).map((d) => [d.kode, d] as const))(
+    "%s: batas ruangan sah (prefiks ID master.ruangan, bernama, tidak wajib)",
+    (_k, d) => {
+      const ruang = d.sasaran.ruangan!;
+      expect(ruang.length).toBeGreaterThan(0);
+      for (const r of ruang) {
+        expect(r.id).toMatch(/^\d{5,9}$/);
+        expect(r.nama.trim()).not.toBe("");
+      }
+      expect(new Set(ruang.map((r) => r.id)).size).toBe(ruang.length);
+      // Kelengkapan (`wajibUntuk`) dihitung per jenis kunjungan saja, tak mengenal ruangan.
+      expect(d.wajibUntuk).toEqual([]);
+      expect(saringLeg(d.sasaran)).toEqual({ jenis: d.sasaran.jenis, ruangan: ruang.map((r) => r.id) });
+    },
+  );
+
+  it("RM.70 hanya untuk IRDO (IGD) & bangsal Perawatan OBGYN (rawat inap)", () => {
+    const s = definisiForm("RM.70")!.sasaran;
+    expect(s.jenis).toEqual([2, 3]);
+    expect(s.ruangan?.map((r) => r.id)).toEqual(["101010104", "1010204"]);
+    const leg = (jenis: number, ruanganId: string) => ({ jenis, ruanganId });
+    expect(cocokSasaran(s, [leg(2, "101010104")])).toBe(true); // IRDO
+    expect(cocokSasaran(s, [leg(3, "101020401")])).toBe(true); // Perawatan OBGYN Kelas 3
+    expect(cocokSasaran(s, [leg(2, "101010102"), leg(3, "101020401")])).toBe(true); // Non Bedah → OBGYN
+    expect(cocokSasaran(s, [leg(2, "101010103")])).toBe(false); // IRDA (IGD anak)
+    expect(cocokSasaran(s, [leg(2, "101010102"), leg(3, "101020203")])).toBe(false); // Non Bedah → Interna
+    expect(cocokSasaran(s, [leg(1, "101030104")])).toBe(false); // Klinik OBGYN (rawat jalan)
+    expect(cocokSasaran(s, [])).toBe(false);
+    expect(pesanBukanSasaran(s)).toBe(
+      "Formulir ini hanya untuk pasien IRDO & Perawatan OBGYN; pendaftaran ini tidak punya kunjungan di ruang tersebut",
+    );
+  });
+
+  it("form tanpa batas ruangan: cocok per jenis kunjungan saja, pesan lama tetap", () => {
+    const s = { jenis: [2, 3] as const, jendelaJam: 24 };
+    expect(saringLeg(s)).toEqual({ jenis: [2, 3] });
+    expect(cocokSasaran(s, [{ jenis: 2, ruanganId: "101010103" }])).toBe(true);
+    expect(cocokSasaran(s, [{ jenis: 1, ruanganId: "101030104" }])).toBe(false);
+    expect(pesanBukanSasaran(s)).toBe("Pendaftaran ini tidak punya kunjungan IGD / Rawat Inap");
   });
 
   it("petaTtd mengganti nilai tanpa mengubah kolom lain", () => {

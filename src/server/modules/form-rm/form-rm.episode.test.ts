@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { halamanDari, kelompokkanEpisode, petaJenisEpisode } from "./form-rm.episode";
+import { halamanDari, jenisDariLeg, kelompokkanEpisode, legDariBaris, petaJenisEpisode } from "./form-rm.episode";
 import type { LegSasaranRow } from "./form-rm.dal";
 
 const leg = (o: Partial<LegSasaranRow>): LegSasaranRow => ({
@@ -55,6 +55,22 @@ describe("petaJenisEpisode", () => {
     ]);
     expect([...(p.get("1") ?? [])].sort()).toEqual([2, 3]);
     expect(p.has("2")).toBe(false);
+  });
+});
+
+describe("legDariBaris & jenisDariLeg", () => {
+  it("leg episode (jenis & ruangan) dari baris SIMGOS, membuang jenis asing", () => {
+    const legs = legDariBaris([
+      { NOPEN: "1", JENIS_KUNJUNGAN: "2", RUANGAN_ID: "101010104" },
+      { NOPEN: "1", JENIS_KUNJUNGAN: 3, RUANGAN_ID: "101020401" },
+      { NOPEN: "1", JENIS_KUNJUNGAN: 5, RUANGAN_ID: "101050101" },
+    ]);
+    expect(legs).toEqual([
+      { jenis: 2, ruanganId: "101010104" },
+      { jenis: 3, ruanganId: "101020401" },
+    ]);
+    expect([...jenisDariLeg(legs)].sort()).toEqual([2, 3]);
+    expect(jenisDariLeg([]).size).toBe(0);
   });
 });
 
