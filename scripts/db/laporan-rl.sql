@@ -34,3 +34,19 @@ CREATE TABLE IF NOT EXISTS rl32_smf_peta (
   created_at        DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at        DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Pemetaan poliklinik & ruang IGD SIMGOS (master.ruangan.ID, JENIS 5,
+-- JENIS_KUNJUNGAN 1/2) → jenis kegiatan RL 3.5 SIRS 6 "Kunjungan"
+-- (master.refrl.ID). Pengganti master.rl35_ruangan_revisi di SIMGOS yang KOSONG
+-- sehingga SP LaporanRL35Revisi tak pernah menghitung rawat jalan
+-- (docs/laporan-rl35.md). rl_id NULL = ruangan sengaja tidak dilaporkan; tanpa
+-- baris = pemetaan bawaan dari nama ruangan (bila ada). Perubahan tercatat di audit_log.
+CREATE TABLE IF NOT EXISTS rl35_ruangan_peta (
+  ruangan_id        VARCHAR(10)  NOT NULL PRIMARY KEY,
+  rl_id             INT          NULL,
+  ruangan_nama      VARCHAR(191) NOT NULL,
+  diubah_oleh_id    VARCHAR(191) NULL,
+  diubah_oleh_nama  VARCHAR(191) NULL,
+  created_at        DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at        DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

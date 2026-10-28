@@ -24,6 +24,9 @@ describe("katalog modul RBAC", () => {
     expect(moduleKeyForApiPath("/api/laporan/rl32/pemetaan")).toBe("laporan.pemetaan-rl");
     expect(moduleKeyForApiPath("/api/laporan/rl32")).toBe("laporan");
     expect(moduleKeyForApiPath("/api/laporan/rl32/export")).toBe("laporan");
+    expect(moduleKeyForApiPath("/api/laporan/rl35/pemetaan")).toBe("laporan.pemetaan-rl");
+    expect(moduleKeyForApiPath("/api/laporan/rl35")).toBe("laporan");
+    expect(moduleKeyForApiPath("/api/laporan/rl35/export")).toBe("laporan");
     expect(isValidModuleAction("laporan.pemetaan-rl", "update")).toBe(true);
     expect(isValidModuleAction("laporan.pemetaan-rl", "delete")).toBe(false);
   });

@@ -1,5 +1,5 @@
 // ============================================================================
-// Migrasi LAPORAN RL (pemetaan RL 3.2) → DB APLIKASI `reporthub` (RW). BUKAN SIMGOS.
+// Migrasi LAPORAN RL (pemetaan RL 3.2 & RL 3.5) → DB APLIKASI `reporthub` (RW). BUKAN SIMGOS.
 // Idempoten: hanya CREATE TABLE IF NOT EXISTS (tanpa DROP → AMAN diulang).
 // DDL dibaca dari scripts/db/laporan-rl.sql (SUMBER TUNGGAL, tak diduplikasi).
 // Portabel + env-first (process.env.DATABASE_URL_APP dulu, fallback file .env).
@@ -18,7 +18,7 @@ const require = createRequire(import.meta.url);
 const mariadb = require("mariadb");
 
 /** Tabel yang WAJIB ada setelah migrasi. */
-const TABLES = ["rl32_ruangan_peta", "rl32_smf_peta"];
+const TABLES = ["rl32_ruangan_peta", "rl32_smf_peta", "rl35_ruangan_peta"];
 
 /**
  * Kolom yang ditambahkan setelah tabel sempat dibuat versi sebelumnya — ADITIF

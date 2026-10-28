@@ -8,6 +8,7 @@ import {
   FileBarChart,
   FileText,
   FlaskConical,
+  Footprints,
   HandCoins,
   Hospital,
   MapPinned,
@@ -125,6 +126,14 @@ export const LAPORAN_CATALOG: ReportGroup[] = [
         icon: Hospital,
         status: "tersedia",
         href: "/laporan/rl32",
+      },
+      {
+        title: "RL 3.5 — Kunjungan",
+        description:
+          "Rekap kunjungan poliklinik per jenis kegiatan & rawat darurat (SIRS 6) per bulan, triwulan, atau rentang tanggal: laki-laki/perempuan, domisili dalam/luar kabupaten, rata-rata hari poliklinik buka & kunjungan per hari. Ekspor Excel/PDF.",
+        icon: Footprints,
+        status: "tersedia",
+        href: "/laporan/rl35",
       },
       {
         title: "RL 4.1 — Morbiditas Rawat Inap",

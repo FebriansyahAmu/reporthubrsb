@@ -234,9 +234,10 @@ export const MODULES: readonly AppModule[] = [
     key: "laporan.pemetaan-rl",
     group: "Laporan",
     label: "Pemetaan Laporan RL",
-    description: "Lihat & ubah pemetaan ruang rawat inap → jenis pelayanan RL 3.2 (memengaruhi angka laporan resmi)",
+    description:
+      "Lihat & ubah pemetaan ruang rawat inap → jenis pelayanan RL 3.2 dan poliklinik/IGD → jenis kegiatan RL 3.5 (memengaruhi angka laporan resmi)",
     icon: SlidersHorizontal,
-    apiPrefixes: ["/api/laporan/rl32/pemetaan"],
+    apiPrefixes: ["/api/laporan/rl32/pemetaan", "/api/laporan/rl35/pemetaan"],
     actions: ["view", "update"],
     order: 62,
   },

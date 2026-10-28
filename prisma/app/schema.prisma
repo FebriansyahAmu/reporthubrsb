@@ -330,6 +330,24 @@ model Rl32SmfPeta {
   @@map("rl32_smf_peta")
 }
 
+/// Pemetaan poliklinik & ruang IGD SIMGOS → jenis kegiatan RL 3.5 (SIRS 6)
+/// "Kunjungan" = `master.refrl.ID`. Pengganti `master.rl35_ruangan_revisi` SIMGOS
+/// yang kosong (SP LaporanRL35Revisi tak pernah menghitung rawat jalan); SIMGOS
+/// tetap READ-ONLY. `rlId` null = tidak dilaporkan; tanpa baris = pemetaan bawaan
+/// dari nama ruangan. DDL: scripts/db/laporan-rl.sql.
+model Rl35RuanganPeta {
+  ruanganId      String   @id @map("ruangan_id") @db.VarChar(10)
+  rlId           Int?     @map("rl_id")
+  /// Snapshot nama ruangan saat dipetakan (jejak tetap terbaca).
+  ruanganNama    String   @map("ruangan_nama") @db.VarChar(191)
+  diubahOlehId   String?  @map("diubah_oleh_id") @db.VarChar(191)
+  diubahOlehNama String?  @map("diubah_oleh_nama") @db.VarChar(191)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("rl35_ruangan_peta")
+}
+
 // ============================================================================
 // MODUL INVENTARISASI BARANG — data aset RSUD (READ-WRITE). Tabel `inv_*`.
 // DDL manual: scripts/db/inventaris.sql + migrate-inventaris.mjs. Model di sini
