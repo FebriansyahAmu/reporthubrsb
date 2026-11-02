@@ -15,6 +15,8 @@ describe("halamanAwal (tujuan setelah masuk)", () => {
     expect(halamanAwal(izin("audit-rme.surat-kontrol"))).toBe("/audit-rme/surat-kontrol");
     expect(halamanAwal(izin("inventaris.kir", "rekap-klaim.data"))).toBe("/inventaris/kir");
     expect(halamanAwal(izin("monitoring.pelayanan"))).toBe("/monitoring/pelayanan/kunjungan");
+    expect(halamanAwal(izin("bckh"))).toBe("/bckh");
+    expect(halamanAwal(izin("bckh.tim"))).toBe("/bckh/tim");
   });
 
   it("modul alternatif (anyOf) & kategori Form RM ikut dihitung", () => {

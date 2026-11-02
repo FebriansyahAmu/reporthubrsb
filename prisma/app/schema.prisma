@@ -349,6 +349,101 @@ model Rl35RuanganPeta {
 }
 
 // ============================================================================
+// MODUL BCKH (Buku Catatan Kegiatan Harian) — catatan kinerja harian pegawai
+// (READ-WRITE). Tabel `bckh_*`, tanpa FK ke `users` (catatan tetap ada walau
+// akun dihapus). DDL manual: scripts/db/bckh.sql + migrate-bckh.mjs — model di
+// sini HARUS sinkron. Lihat docs/PRD_Modul_BCKH.md.
+// ============================================================================
+
+/// Profil laporan per pengguna (opsional; tanpa baris → bawaan dari `users`).
+model BckhProfil {
+  userId      String   @id @map("user_id") @db.VarChar(191)
+  /// Nama di sampul laporan (mis. "Nama Lengkap, S.Kom").
+  namaLengkap String   @map("nama_lengkap") @db.VarChar(191)
+  /// Nama di blok tanda tangan (huruf besar / singkatan).
+  namaTtd     String   @map("nama_ttd") @db.VarChar(191)
+  jabatan     String   @default("") @db.VarChar(191)
+  nip         String   @default("") @db.VarChar(40)
+  unit        String   @default("") @db.VarChar(191)
+  atasanNama  String   @default("") @map("atasan_nama") @db.VarChar(191)
+  atasanNip   String   @default("") @map("atasan_nip") @db.VarChar(40)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("bckh_profil")
+}
+
+/// Satu catatan per pengguna per tanggal (status hari + kegiatan).
+model BckhHari {
+  id         String   @id @default(cuid()) @db.VarChar(30)
+  userId     String   @map("user_id") @db.VarChar(191)
+  tanggal    DateTime @db.Date
+  /// MASUK | TUGAS_LUAR | OFF | CUTI | SAKIT | IZIN | LIBUR
+  status     String   @default("MASUK") @db.VarChar(16)
+  /// Kolom KET laporan.
+  keterangan String   @default("") @db.VarChar(191)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  kegiatan BckhKegiatan[]
+
+  @@unique([userId, tanggal], map: "uq_bckh_hari_user_tanggal")
+  @@map("bckh_hari")
+}
+
+/// Kegiatan dalam satu catatan hari (urut tampil).
+model BckhKegiatan {
+  id        String   @id @default(cuid()) @db.VarChar(30)
+  hariId    String   @map("hari_id") @db.VarChar(30)
+  urutan    Int      @default(0) @db.SmallInt
+  uraian    String   @db.VarChar(300)
+  kategori  String   @default("tugas-pokok") @db.VarChar(24)
+  /// SELESAI | PROSES
+  target    String   @default("SELESAI") @db.VarChar(8)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  hari BckhHari @relation(fields: [hariId], references: [id], onDelete: Cascade, map: "fk_bckh_kegiatan_hari")
+
+  @@index([hariId, urutan], map: "idx_bckh_kegiatan_hari")
+  @@map("bckh_kegiatan")
+}
+
+/// Log pengisian (hanya-tambah). `userId` = pemilik catatan, `aktor*` = pelaku.
+/// aksi: BUAT | UBAH | HAPUS | EKSPOR. `tanggal` = hari yang disentuh.
+model BckhLog {
+  id        Int      @id @default(autoincrement())
+  userId    String   @map("user_id") @db.VarChar(191)
+  aktorId   String   @map("aktor_id") @db.VarChar(191)
+  aktorNama String   @map("aktor_nama") @db.VarChar(191)
+  aksi      String   @db.VarChar(8)
+  tanggal   DateTime @db.Date
+  rincian   Json?
+  ip        String?  @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, id], map: "idx_bckh_log_user")
+  @@map("bckh_log")
+}
+
+/// Pengaturan laporan global (satu baris, id = 1): kop sampul & "Mengetahui".
+model BckhPengaturan {
+  id                Int      @id @db.TinyInt
+  kop1              String   @map("kop_1") @db.VarChar(120)
+  kop2              String   @map("kop_2") @db.VarChar(120)
+  instansi1         String   @map("instansi_1") @db.VarChar(120)
+  instansi2         String   @map("instansi_2") @db.VarChar(120)
+  mengetahuiJabatan String   @map("mengetahui_jabatan") @db.VarChar(191)
+  mengetahuiNama    String   @map("mengetahui_nama") @db.VarChar(191)
+  mengetahuiNip     String   @map("mengetahui_nip") @db.VarChar(40)
+  diubahOlehId      String?  @map("diubah_oleh_id") @db.VarChar(191)
+  diubahOlehNama    String?  @map("diubah_oleh_nama") @db.VarChar(191)
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("bckh_pengaturan")
+}
+
+// ============================================================================
 // MODUL INVENTARISASI BARANG — data aset RSUD (READ-WRITE). Tabel `inv_*`.
 // DDL manual: scripts/db/inventaris.sql + migrate-inventaris.mjs. Model di sini
 // HARUS sinkron dengan DDL tersebut. Lihat docs/inventarisasi-barang/BLUEPRINT.md.

@@ -2,6 +2,8 @@
 
 # dependencies
 /node_modules
+# cache npm/npx lokal (diarahkan ke sini oleh `cache=` di ~/.npmrc) — bukan kode
+/.codenpm
 /.pnp
 .pnp.*
 .yarn/*

@@ -52,6 +52,15 @@
   --chart-axis: #688dac;
   --chart-track: #e6f1fa;
 
+  /* Grafik kegiatan BCKH (ala grafik kontribusi GitHub) — satu hue teal,
+     terang→gelap, tingkat 1..4 tervalidasi ordinal (ujung terang ≥ 2:1 di putih).
+     Tingkat 0 = hari tanpa kegiatan (netral, sel tetap bertepi). */
+  --heat-0: #edf2f6;
+  --heat-1: #74c2b6;
+  --heat-2: #3a9f90;
+  --heat-3: #1a7b6e;
+  --heat-4: #0c534a;
+
   --radius-sm: 8px;
   --radius-md: 14px;
   --radius-lg: 20px; /* kartu — sesuai bahasa Cord (20px) */
@@ -98,6 +107,11 @@
   --color-chart-grid: var(--chart-grid);
   --color-chart-axis: var(--chart-axis);
   --color-chart-track: var(--chart-track);
+  --color-heat-0: var(--heat-0);
+  --color-heat-1: var(--heat-1);
+  --color-heat-2: var(--heat-2);
+  --color-heat-3: var(--heat-3);
+  --color-heat-4: var(--heat-4);
 
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
@@ -114,6 +128,18 @@
   @keyframes tumbuh {
     from {
       transform: scaleX(0);
+    }
+  }
+  /* Sel grafik BCKH yang baru disimpan berdenyut SEKALI (umpan balik aksi). */
+  --animate-denyut: denyut 1.1s cubic-bezier(0.16, 1, 0.3, 1) 1;
+  @keyframes denyut {
+    0% {
+      transform: scale(1.6);
+      box-shadow: 0 0 0 0 rgba(26, 123, 110, 0.55);
+    }
+    100% {
+      transform: scale(1);
+      box-shadow: 0 0 0 7px rgba(26, 123, 110, 0);
     }
   }
 }

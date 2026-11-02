@@ -39,6 +39,17 @@ describe("katalog modul RBAC", () => {
     expect(isValidModuleAction("audit-rme.surat-kontrol", "update")).toBe(false);
   });
 
+  it("BCKH: catatan sendiri, tim (hanya-lihat) & pengaturan terpisah", () => {
+    expect(moduleKeyForApiPath("/api/bckh/hari/2026-11-02")).toBe("bckh");
+    expect(moduleKeyForApiPath("/api/bckh/laporan/pdf")).toBe("bckh");
+    expect(moduleKeyForApiPath("/api/bckh/tim")).toBe("bckh.tim");
+    expect(moduleKeyForApiPath("/api/bckh/pengaturan")).toBe("bckh.pengaturan");
+    expect(isValidModuleAction("bckh", "update")).toBe(true);
+    expect(isValidModuleAction("bckh.tim", "view")).toBe(true);
+    expect(isValidModuleAction("bckh.tim", "update")).toBe(false);
+    expect(isValidModuleAction("bckh.pengaturan", "update")).toBe(true);
+  });
+
   it("API Form RM tetap dipetakan ke modul form-rm (kontrak)", () => {
     expect(moduleKeyForApiPath("/api/form-rm/f/RM.04/pasien")).toBe("form-rm");
     expect(moduleKeyForApiPath("/api/form-rm/isian/abc")).toBe("form-rm");

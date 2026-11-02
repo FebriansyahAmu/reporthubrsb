@@ -78,6 +78,9 @@ Diturunkan dari `src/components/layout/nav.ts` + folder `src/app/api/**` saat in
 | `laporan` | Laporan | `/laporan` | `/api/laporan` | view, print | Pusat Laporan (katalog) |
 | `laporan.pemetaan-rl` | Laporan | — (panel di `/laporan/rl32` & `/laporan/rl35`) | `/api/laporan/rl32/pemetaan`, `/api/laporan/rl35/pemetaan` | view, update | Pemetaan ruang rawat inap → jenis pelayanan RL 3.2 (pengganti `master.rl32_ruangan_revisi` SIMGOS yang salah isi) dan poliklinik/IGD → jenis kegiatan RL 3.5 (pengganti `master.rl35_ruangan_revisi` yang kosong); perubahan tercatat di `audit_log` |
 | `audit-rme.surat-kontrol` | Audit Trail RME | `/audit-rme/surat-kontrol` | `/api/audit-rme/surat-kontrol` | view, print | Audit Surat Kontrol & SPRI BPJS vs jadwal SIMRS (read-only); terpisah dari `audit-rme`; ekspor Excel tercatat di `audit_log` (docs/audit-surat-kontrol.md) |
+| `bckh` | BCKH | `/bckh` | `/api/bckh` | view, update, print | Buku Catatan Kegiatan Harian **sendiri**: isi/ubah/hapus catatan (update), log, dasbor, unduh Laporan Kinerja Harian (print). Catatan hanya bisa diubah pemiliknya. API GET menerima `?u=<id>`; untuk pengguna lain service mewajibkan `bckh.tim` (docs/PRD_Modul_BCKH.md §3) |
+| `bckh.tim` | BCKH | `/bckh/tim` | `/api/bckh/tim` | view, print | Atasan: daftar Tim + profil pegawai `/bckh/tim/<username>` **hanya-lihat**; print = unduh laporan pegawai (tercatat di log pemilik) |
+| `bckh.pengaturan` | BCKH | — (tombol di tab Laporan) | `/api/bckh/pengaturan` | view, update | Kop sampul & penandatangan "Mengetahui" global; perubahan tercatat di `audit_log` (`bckh.pengaturan`) |
 | **`master.pengguna`** | **Master** | `/master/pengguna` | `/api/master/pengguna` | view, create, update, delete | **Baru** — kelola akun |
 | **`master.peran`** | **Master** | `/master/peran` | `/api/master/peran` | view, create, update, delete | **Baru** — peran & hak akses |
 
