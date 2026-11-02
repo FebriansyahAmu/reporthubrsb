@@ -270,7 +270,8 @@ export function CatatDrawer({
           }
         }}
       >
-        <fieldset disabled={muat || simpan} className="flex-1 space-y-6 px-5 py-5">
+        {/* min-w-0: bawaan fieldset `min-inline-size: min-content` → chip rutin panjang melebarkan laci. */}
+        <fieldset disabled={muat || simpan} className="min-w-0 flex-1 space-y-6 px-5 py-5">
           <div>
             <Label htmlFor="bckh-tanggal">Tanggal</Label>
             <DatePicker id="bckh-tanggal" value={tanggal} onChange={gantiTanggal} min={batasAwal} max={hariIni} clearable={false} />
@@ -417,6 +418,7 @@ export function CatatDrawer({
                           key={r.uraian}
                           type="button"
                           disabled={ada}
+                          title={r.uraian}
                           onClick={() => tambah(r)}
                           className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-medium text-fg transition-colors hover:border-border-strong hover:bg-surface-2 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
                         >
