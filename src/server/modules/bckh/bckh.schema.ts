@@ -8,6 +8,7 @@ import {
   MAKS_URAIAN,
   STATUS_BEKERJA,
   STATUS_HARI,
+  STATUS_WAJIB_KEGIATAN,
   TARGET,
 } from "./bckh.constants";
 
@@ -49,8 +50,8 @@ export const simpanHariSchema = z
     /** `versi` catatan yang dibaca (ISO updated_at); null = membuat catatan baru. */
     versi: z.iso.datetime().nullable(),
   })
-  .refine((v) => v.status !== "MASUK" || v.kegiatan.length > 0, {
-    message: "Hari masuk wajib berisi minimal satu kegiatan",
+  .refine((v) => !STATUS_WAJIB_KEGIATAN.has(v.status) || v.kegiatan.length > 0, {
+    message: "Hari masuk / remote wajib berisi minimal satu kegiatan",
     path: ["kegiatan"],
   })
   .refine((v) => STATUS_BEKERJA.has(v.status) || v.kegiatan.length === 0, {

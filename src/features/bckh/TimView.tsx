@@ -12,7 +12,7 @@ import { formatRelatif } from "@/lib/format";
 import { useAsyncData } from "@/lib/useAsyncData";
 import { ambangTingkat, hariDalamMinggu, persen, tambahHari, tanggalPanjang, tingkat } from "@/server/modules/bckh/bckh.aturan";
 import type { AnggotaTim, TimResult } from "@/server/modules/bckh/bckh.types";
-import { Identicon, PemilihBulan, bulanBawaan } from "./ui";
+import { AvatarBckh, PemilihBulan, bulanBawaan } from "./ui";
 
 const WARNA = ["bg-heat-0", "bg-heat-1", "bg-heat-2", "bg-heat-3", "bg-heat-4"] as const;
 
@@ -30,9 +30,9 @@ export function TimView({ hariIni, bolehCetak }: { hariIni: string; bolehCetak: 
   const ambang = useMemo(() => ambangTingkat((result?.anggota ?? []).flatMap((a) => a.mini)), [result]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <PemilihBulan bulan={bulan} onChange={setBulan} maks={hariIni.slice(0, 7)} />
+    <div className="@container space-y-4">
+      <div className="flex flex-col gap-3 @lg:flex-row @lg:items-center">
+        <PemilihBulan bulan={bulan} onChange={setBulan} maks={hariIni.slice(0, 7)} className="self-start" />
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle" aria-hidden />
           <Input value={cari} onChange={(e) => setCari(e.target.value)} placeholder="Cari nama, jabatan, unit…" className="pl-9" aria-label="Cari pegawai" />
@@ -74,9 +74,10 @@ function BarisAnggota({
   const p = persen(a.hariKerjaTerisi, a.hariKerja);
   const awalMini = tambahHari(hariIni, -(a.mini.length - 1));
   return (
-    <li className="grid gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center lg:grid-cols-[minmax(0,1.4fr)_auto_minmax(0,1fr)_auto]">
-      <Link href={`/bckh/tim/${encodeURIComponent(a.username)}`} className="group flex min-w-0 items-center gap-3 focus-visible:outline-none">
-        <Identicon seed={a.userId} className="size-10 shrink-0 border border-border" label="" />
+    // Sempit: [nama ……… Laporan] lalu [grafik mini | kepatuhan]; lebar (@4xl): satu baris empat kolom.
+    <li className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 px-3 py-4 @md:px-4 @4xl:grid-cols-[minmax(0,1.4fr)_auto_minmax(0,1fr)_auto]">
+      <Link href={`/bckh/tim/${encodeURIComponent(a.username)}`} className="group col-span-2 flex min-w-0 items-center gap-3 focus-visible:outline-none @4xl:col-span-1">
+        <AvatarBckh userId={a.userId} versi={a.avatar} className="size-10 shrink-0 border border-border" label="" />
         <span className="min-w-0">
           <span className="block truncate text-sm font-semibold text-fg group-hover:text-brand group-hover:underline group-focus-visible:underline">{a.nama}</span>
           <span className="block truncate text-xs text-fg-muted">
@@ -85,7 +86,7 @@ function BarisAnggota({
         </span>
       </Link>
 
-      <div className="grid w-fit grid-flow-col grid-rows-7 gap-[2px]" role="img" aria-label={`Kegiatan 5 minggu terakhir: ${a.mini.reduce((s, n) => s + n, 0)} kegiatan`}>
+      <div className="col-start-1 grid w-fit grid-flow-col grid-rows-7 gap-[2px] @4xl:col-start-auto" role="img" aria-label={`Kegiatan 5 minggu terakhir: ${a.mini.reduce((s, n) => s + n, 0)} kegiatan`}>
         {/* Sel kosong agar kolom pertama mulai hari Senin. */}
         {Array.from({ length: (hariDalamMinggu(awalMini) + 6) % 7 }, (_, i) => (
           <span key={`k${i}`} className="size-[9px]" />
@@ -95,7 +96,7 @@ function BarisAnggota({
         ))}
       </div>
 
-      <div className="min-w-0">
+      <div className="col-span-2 min-w-0 @4xl:col-span-1">
         <div className="flex items-baseline justify-between gap-2 text-xs">
           <span className="text-fg-muted">Kepatuhan</span>
           <span className="font-semibold tabular text-fg">{p === null ? "—" : `${p}%`}</span>
@@ -114,7 +115,7 @@ function BarisAnggota({
           target="_blank"
           rel="noopener"
           aria-label={`Laporan ${a.nama}`}
-          className="inline-flex h-8 w-fit items-center gap-1.5 rounded-[var(--radius-md)] border border-border px-3 text-xs font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+          className="col-start-3 row-start-1 inline-flex h-8 w-fit items-center gap-1.5 rounded-[var(--radius-md)] border border-border px-3 text-xs font-medium text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring @4xl:col-start-auto @4xl:row-start-auto"
         >
           <Download className="size-3.5" aria-hidden />
           Laporan

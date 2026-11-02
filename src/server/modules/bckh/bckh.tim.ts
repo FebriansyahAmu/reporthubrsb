@@ -2,6 +2,7 @@ import "server-only";
 import { tanggalHariIniWita } from "@/lib/format";
 import { getAppDb } from "@/server/db/app.client";
 import { PILIH_PENGGUNA } from "./bckh.akses";
+import { versiAvatar } from "./bckh.avatar";
 import { daftarTanggal, hariKerjaDalam, rentangBulanIni, tambahHari } from "./bckh.aturan";
 import { STATUS_BEKERJA, type StatusHari } from "./bckh.constants";
 import { dariDate, keDate } from "./bckh.dal";
@@ -52,8 +53,9 @@ export async function daftarTim(bulan: string): Promise<TimResult> {
   const kerja = hariKerjaDalam(dari, sampai, hariIni);
   const bulanIni = daftarTanggal(dari, sampai);
   const mini = daftarTanggal(awalMini, hariIni);
+  const avatar = await Promise.all(users.map((u) => versiAvatar(u.id)));
 
-  const anggota: AnggotaTim[] = users.map((u) => {
+  const anggota: AnggotaTim[] = users.map((u, i) => {
     const peta = perUser.get(u.id) ?? new Map<string, number>();
     const p = profilBy.get(u.id);
     const tercatatBulan = bulanIni.filter((t) => peta.has(t));
@@ -68,6 +70,7 @@ export async function daftarTim(bulan: string): Promise<TimResult> {
       hariKerja: kerja.length,
       hariKerjaTerisi: kerja.filter((t) => peta.has(t)).length,
       terakhirMengisi: terakhirBy.get(u.id)?.toISOString() ?? null,
+      avatar: avatar[i],
       mini: mini.map((t) => peta.get(t) ?? 0),
     };
   });

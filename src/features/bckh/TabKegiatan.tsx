@@ -58,8 +58,8 @@ export function TabKegiatan({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <PemilihBulan bulan={bulan} onChange={setBulan} maks={hariIni.slice(0, 7)} />
+      <div className="flex flex-col gap-3 @lg:flex-row @lg:items-center">
+        <PemilihBulan bulan={bulan} onChange={setBulan} maks={hariIni.slice(0, 7)} className="self-start" />
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-subtle" aria-hidden />
           <Input value={cari} onChange={(e) => setCari(e.target.value)} placeholder="Cari uraian atau keterangan…" className="pl-9" aria-label="Cari kegiatan" />
@@ -123,13 +123,13 @@ function TanggalBlok({ tanggal }: { tanggal: string }) {
 
 function KartuHari({ h, onUbah }: { h: HariDto; onUbah?: (t: string) => void }) {
   return (
-    <li className="flex gap-4 rounded-[var(--radius-md)] border border-border bg-surface p-4">
+    <li className="flex gap-3 rounded-[var(--radius-md)] border border-border bg-surface p-3 @md:gap-4 @md:p-4">
       <TanggalBlok tanggal={h.tanggal} />
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <BadgeStatus status={h.status} />
-            {h.keterangan && <span className="text-xs text-fg-muted">KET: {h.keterangan}</span>}
+            {h.keterangan && <span className="min-w-0 text-xs text-fg-muted [overflow-wrap:anywhere]">KET: {h.keterangan}</span>}
           </div>
           {onUbah && (
             <button
@@ -147,7 +147,7 @@ function KartuHari({ h, onUbah }: { h: HariDto; onUbah?: (t: string) => void }) 
             {h.kegiatan.map((k) => (
               <li key={k.id} className="flex items-start gap-2 text-sm text-fg">
                 <TitikKategori kategori={k.kategori} className="mt-1.5" />
-                <span className="min-w-0 flex-1">{k.uraian}</span>
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{k.uraian}</span>
                 {k.target === "PROSES" && <span className="shrink-0 rounded-full bg-warning-soft px-2 py-0.5 text-[11px] font-semibold text-warning">Proses</span>}
               </li>
             ))}
@@ -160,7 +160,7 @@ function KartuHari({ h, onUbah }: { h: HariDto; onUbah?: (t: string) => void }) 
 
 function KartuKosong({ tanggal, onIsi }: { tanggal: string; onIsi?: (t: string) => void }) {
   return (
-    <li className="flex items-center gap-4 rounded-[var(--radius-md)] border border-dashed border-border-strong bg-surface-2/40 p-4">
+    <li className="flex items-center gap-3 rounded-[var(--radius-md)] border border-dashed border-border-strong bg-surface-2/40 p-3 @md:gap-4 @md:p-4">
       <TanggalBlok tanggal={tanggal} />
       <p className="min-w-0 flex-1 text-sm text-fg-muted">Hari kerja belum diisi</p>
       {onIsi && (

@@ -10,6 +10,7 @@ import {
   JENDELA_RUTIN_HARI,
   JUMLAH_RUTIN,
   KATEGORI,
+  KET_LAPORAN_BEKERJA,
   NAMA_BULAN,
   NAMA_HARI,
   STATUS_BEKERJA,
@@ -113,14 +114,17 @@ export function targetHari(status: StatusHari, kegiatan: { target: Target }[]): 
   return kegiatan.some((k) => k.target === "PROSES") ? "PROSES" : "SELESAI";
 }
 
+/** Isi kolom KET bila keterangan dikosongkan: tidak bekerja → teks status; Remote → "REMOTE"; lainnya kosong. */
+export const ketBawaan = (status: StatusHari): string =>
+  STATUS_BEKERJA.has(status) ? (KET_LAPORAN_BEKERJA[status] ?? "") : TEKS_LAPORAN_STATUS[status];
+
 /** Baris tabel Laporan Kinerja Harian — urut tanggal, bernomor 1..n tanpa celah (PRD §6.1). */
 export function barisLaporan(hari: Pick<HariRingkas, "tanggal" | "status" | "keterangan" | "kegiatan">[]): BarisLaporan[] {
   return [...hari]
     .sort((a, b) => a.tanggal.localeCompare(b.tanggal))
     .map((h, i) => {
       const teksStatus = TEKS_LAPORAN_STATUS[h.status];
-      const bekerja = STATUS_BEKERJA.has(h.status);
-      const catatan = bekerja
+      const catatan = STATUS_BEKERJA.has(h.status)
         ? [...(teksStatus ? [teksStatus] : []), ...h.kegiatan.map((k) => k.uraian)]
         : [teksStatus];
       return {
@@ -129,7 +133,7 @@ export function barisLaporan(hari: Pick<HariRingkas, "tanggal" | "status" | "ket
         hariTanggal: hariTanggal(h.tanggal),
         catatan,
         target: targetHari(h.status, h.kegiatan),
-        ket: h.keterangan || (bekerja ? "" : teksStatus),
+        ket: h.keterangan || ketBawaan(h.status),
       };
     });
 }

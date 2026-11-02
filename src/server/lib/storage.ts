@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, readFile, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
+import type { Dirent } from "node:fs";
+import { mkdir, readdir, readFile, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ServiceUnavailableError } from "./errors";
 
@@ -71,6 +72,30 @@ export async function bacaBerkas(rel: string): Promise<Uint8Array | null> {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw e;
   }
+}
+
+/** Berkas biasa langsung di dalam folder (tanpa subfolder); folder tak ada → []. */
+export async function daftarBerkas(relFolder: string): Promise<{ nama: string; diubahMs: number }[]> {
+  const abs = resolveAman(relFolder);
+  let isi: Dirent[];
+  try {
+    isi = await readdir(abs, { withFileTypes: true });
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw e;
+  }
+  const hasil = await Promise.all(
+    isi
+      .filter((d) => d.isFile())
+      .map(async (d) => {
+        try {
+          return { nama: d.name, diubahMs: (await stat(path.join(abs, d.name))).mtimeMs };
+        } catch {
+          return null; // dihapus di antara readdir & stat
+        }
+      }),
+  );
+  return hasil.filter((x): x is { nama: string; diubahMs: number } => x !== null);
 }
 
 export async function hapusBerkas(rel: string): Promise<void> {

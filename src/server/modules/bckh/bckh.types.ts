@@ -63,6 +63,8 @@ export type RingkasBulan = {
 
 export type ProfilResult = {
   profil: ProfilDto;
+  /** Versi foto profil (`?v=` URL avatar); null = identicon. */
+  avatar: string | null;
   /** Rentang grafik: tahun kalender, atau setahun terakhir bila `tahun` null. */
   rentang: { dari: string; sampai: string; tahun: number | null };
   sel: SelGrafik[];
@@ -173,6 +175,8 @@ export type AnggotaTim = {
   hariKerja: number;
   hariKerjaTerisi: number;
   terakhirMengisi: string | null;
+  /** Versi foto profil; null = identicon. */
+  avatar: string | null;
   /** Jumlah kegiatan 35 hari terakhir (lama → baru) untuk grafik mini. */
   mini: number[];
 };

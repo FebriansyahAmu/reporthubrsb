@@ -9,7 +9,7 @@ import { Input, Label } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/cn";
 import { ApiError, apiDelete, apiGet, apiPut, pesanGalat } from "@/lib/api-client";
-import { kunciUraian, tambahHari, tanggalPanjang, tanggalPalingAwal } from "@/server/modules/bckh/bckh.aturan";
+import { ketBawaan, kunciUraian, tambahHari, tanggalPanjang, tanggalPalingAwal } from "@/server/modules/bckh/bckh.aturan";
 import {
   INFO_KATEGORI,
   KATEGORI,
@@ -19,6 +19,7 @@ import {
   MAKS_URAIAN,
   STATUS_BEKERJA,
   STATUS_HARI,
+  STATUS_WAJIB_KEGIATAN,
   TEKS_LAPORAN_STATUS,
   saranKategori,
   type Kategori,
@@ -202,8 +203,8 @@ export function CatatDrawer({
 
   const kirim = async () => {
     if (simpan || muat) return;
-    if (isian.status === "MASUK" && terisi.length === 0) {
-      toast.warning("Tambahkan minimal satu kegiatan", "Hari masuk wajib berisi kegiatan. Pilih status lain bila tidak bekerja.");
+    if (STATUS_WAJIB_KEGIATAN.has(isian.status) && terisi.length === 0) {
+      toast.warning("Tambahkan minimal satu kegiatan", `Hari ${LABEL_STATUS[isian.status].toLowerCase()} wajib berisi kegiatan. Pilih status lain bila tidak bekerja.`);
       return;
     }
     setSimpan(true);
@@ -299,6 +300,11 @@ export function CatatDrawer({
                 );
               })}
             </div>
+            {isian.status === "REMOTE" && (
+              <p className="mt-2 text-xs text-fg-muted">
+                Bekerja jarak jauh — kegiatan tetap dicatat seperti biasa. Di laporan, kolom KET bertanda &quot;REMOTE&quot; bila keterangan dikosongkan.
+              </p>
+            )}
           </div>
 
           {bekerja ? (
@@ -438,7 +444,7 @@ export function CatatDrawer({
               id="bckh-ket"
               value={isian.keterangan}
               maxLength={MAKS_KETERANGAN}
-              placeholder={bekerja ? "Kosongkan bila tidak ada" : `Bawaan: ${LABEL_STATUS[isian.status].toUpperCase()}`}
+              placeholder={ketBawaan(isian.status) ? `Bawaan: ${ketBawaan(isian.status)}` : "Kosongkan bila tidak ada"}
               onChange={(e) => setIsian((s) => ({ ...s, keterangan: e.target.value }))}
             />
           </div>

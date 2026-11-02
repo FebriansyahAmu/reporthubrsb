@@ -5,15 +5,19 @@
 
 /* ------------------------------------------------------------ status hari */
 
-export const STATUS_HARI = ["MASUK", "TUGAS_LUAR", "OFF", "CUTI", "SAKIT", "IZIN", "LIBUR"] as const;
+export const STATUS_HARI = ["MASUK", "TUGAS_LUAR", "REMOTE", "OFF", "CUTI", "SAKIT", "IZIN", "LIBUR"] as const;
 export type StatusHari = (typeof STATUS_HARI)[number];
 
 /** Status yang berisi kegiatan (bekerja). Status lain = tidak bekerja, tanpa kegiatan. */
-export const STATUS_BEKERJA: ReadonlySet<StatusHari> = new Set(["MASUK", "TUGAS_LUAR"]);
+export const STATUS_BEKERJA: ReadonlySet<StatusHari> = new Set(["MASUK", "TUGAS_LUAR", "REMOTE"]);
+
+/** Status bekerja yang wajib berisi minimal satu kegiatan (Tugas Luar boleh tanpa uraian). */
+export const STATUS_WAJIB_KEGIATAN: ReadonlySet<StatusHari> = new Set(["MASUK", "REMOTE"]);
 
 export const LABEL_STATUS: Record<StatusHari, string> = {
   MASUK: "Masuk",
   TUGAS_LUAR: "Tugas Luar",
+  REMOTE: "Remote",
   OFF: "Off",
   CUTI: "Cuti",
   SAKIT: "Sakit",
@@ -21,16 +25,24 @@ export const LABEL_STATUS: Record<StatusHari, string> = {
   LIBUR: "Libur",
 };
 
-/** Teks di kolom CATATAN KINERJA / KET laporan untuk status ini (huruf besar, seperti contoh). */
+/**
+ * Teks di kolom CATATAN KINERJA laporan untuk status ini (huruf besar, seperti
+ * contoh): status bekerja → baris pertama sebelum kegiatan (kosong = tanpa
+ * baris); tidak bekerja → satu-satunya isi, juga KET bawaan.
+ */
 export const TEKS_LAPORAN_STATUS: Record<StatusHari, string> = {
   MASUK: "",
   TUGAS_LUAR: "TUGAS LUAR",
+  REMOTE: "",
   OFF: "OFF",
   CUTI: "CUTI",
   SAKIT: "SAKIT",
   IZIN: "IZIN",
   LIBUR: "LIBUR",
 };
+
+/** KET bawaan status bekerja bila keterangan kosong — Remote ditandai di kolom KET, kegiatannya tetap utuh. */
+export const KET_LAPORAN_BEKERJA: Partial<Record<StatusHari, string>> = { REMOTE: "REMOTE" };
 
 /* -------------------------------------------------------------- kategori */
 
@@ -93,6 +105,13 @@ export const JENDELA_RUTIN_HARI = 90;
 /** Catatan dianggap tepat waktu bila dibuat paling lambat H+BATAS_TEPAT_WAKTU (WITA). */
 export const BATAS_TEPAT_WAKTU_HARI = 1;
 export const LOG_PER_HALAMAN = 30;
+
+/**
+ * Foto profil: dipotong persegi & dikompres di browser (keluaran `sisi` px,
+ * WebP/JPEG ± puluhan KB); server menolak > `maksByte` atau sisi > `maksSisi`.
+ * `masukanMaks` = batas berkas asli yang boleh dipilih (foto HP).
+ */
+export const AVATAR = { sisi: 400, maksByte: 512 * 1024, maksSisi: 1024, masukanMaks: 25 * 1024 * 1024 } as const;
 
 /** Aksi log pengisian. */
 export const AKSI_LOG = ["BUAT", "UBAH", "HAPUS", "EKSPOR"] as const;

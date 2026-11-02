@@ -23,8 +23,9 @@ CREATE TABLE IF NOT EXISTS bckh_profil (
   updated_at    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Satu catatan per pengguna per tanggal. status: MASUK | TUGAS_LUAR | OFF | CUTI
--- | SAKIT | IZIN | LIBUR. keterangan = kolom KET laporan.
+-- Satu catatan per pengguna per tanggal. status: MASUK | TUGAS_LUAR | REMOTE | OFF
+-- | CUTI | SAKIT | IZIN | LIBUR (divalidasi Zod; VARCHAR(16) cukup → tanpa ALTER).
+-- keterangan = kolom KET laporan. Foto profil BUKAN di tabel: STORAGE_DIR/bckh/avatar/.
 CREATE TABLE IF NOT EXISTS bckh_hari (
   id          VARCHAR(30)  NOT NULL PRIMARY KEY,
   user_id     VARCHAR(191) NOT NULL,

@@ -86,7 +86,7 @@ export function TabIkhtisar({
 function KegiatanRutinBlok({ rutin, onPakai }: { rutin: KegiatanRutin[]; onPakai?: (r: KegiatanRutin) => void }) {
   return (
     <section aria-labelledby="judul-rutin">
-      <div className="mb-2 flex items-baseline justify-between gap-3">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
         <h2 id="judul-rutin" className="text-base font-normal text-fg">
           Kegiatan rutin
         </h2>
@@ -97,16 +97,16 @@ function KegiatanRutinBlok({ rutin, onPakai }: { rutin: KegiatanRutin[]; onPakai
           Kegiatan yang sering Anda catat akan muncul di sini — sekali klik untuk menambahkannya ke catatan hari ini.
         </p>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2">
+        <ul className="grid gap-3 @lg:grid-cols-2">
           {rutin.map((r) => {
             const isi = (
               <>
                 <span className="flex items-start gap-2">
                   <NotebookPen className="mt-0.5 size-4 shrink-0 text-fg-subtle" aria-hidden />
-                  <span className="min-w-0 flex-1 text-sm font-semibold text-brand group-hover:underline">{r.uraian}</span>
+                  <span className="min-w-0 flex-1 text-sm font-semibold text-brand [overflow-wrap:anywhere] group-hover:underline">{r.uraian}</span>
                   {onPakai && <Plus className="size-4 shrink-0 text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden />}
                 </span>
-                <span className="mt-3 flex items-center gap-4 text-xs text-fg-muted">
+                <span className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-fg-muted">
                   <span className="inline-flex items-center gap-1.5">
                     <TitikKategori kategori={r.kategori} />
                     {INFO_KATEGORI[r.kategori].label}
@@ -143,7 +143,7 @@ function KegiatanRutinBlok({ rutin, onPakai }: { rutin: KegiatanRutin[]; onPakai
 function PemilihTahun({ tahun, tersedia, onTahun }: { tahun: number | null; tersedia: number[]; onTahun: (t: number | null) => void }) {
   const pilihan: { nilai: number | null; label: string }[] = [{ nilai: null, label: "Setahun terakhir" }, ...tersedia.map((t) => ({ nilai: t, label: String(t) }))];
   return (
-    <nav aria-label="Rentang grafik" className="flex max-w-full gap-1 overflow-x-auto">
+    <nav aria-label="Rentang grafik" className="flex max-w-full flex-wrap gap-1">
       {pilihan.map((p) => {
         const aktif = p.nilai === tahun;
         return (
@@ -190,12 +190,12 @@ function RingkasanAktivitas({ bulanan }: { bulanan: RingkasBulan[] }) {
       <h2 id="judul-ringkasan" className="mb-2 text-base font-normal text-fg">
         Ringkasan aktivitas
       </h2>
-      <div className={cn(KOTAK, "grid gap-6 p-4 sm:p-5 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]")}>
+      <div className={cn(KOTAK, "grid gap-6 p-4 @lg:p-5 @2xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]")}>
         <div className="min-w-0">
           <p className="mb-3 text-xs font-medium text-fg-muted">Komposisi kategori kegiatan</p>
           <BilahKomposisi bagian={bagianKategori(r.perKategori)} />
         </div>
-        <dl className="grid grid-cols-3 gap-3 border-t border-border pt-4 md:grid-cols-1 md:border-l md:border-t-0 md:pl-6 md:pt-0">
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-4 border-t border-border pt-4 @md:grid-cols-3 @2xl:grid-cols-1 @2xl:border-l @2xl:border-t-0 @2xl:pl-6 @2xl:pt-0">
           <Angka label="Kegiatan selesai" nilai={persen(r.selesai, r.kegiatan)} satuan="%" rinci={`${formatNumber(r.selesai)} dari ${formatNumber(r.kegiatan)}`} />
           <Angka label="Hari bekerja" nilai={r.bekerja} rinci={`dari ${formatNumber(r.hari)} hari tercatat`} />
           <Angka label="Rata-rata per hari" nilai={r.bekerja ? Math.round((r.kegiatan / r.bekerja) * 10) / 10 : null} rinci="kegiatan per hari bekerja" />
@@ -212,7 +212,7 @@ function Angka({ label, nilai, satuan = "", rinci }: { label: string; nilai: num
       <dd className="mt-0.5 text-2xl font-semibold tracking-tight text-fg">
         {nilai === null ? "—" : `${String(nilai).replace(".", ",")}${satuan}`}
       </dd>
-      <dd className="truncate text-[11px] text-fg-subtle">{rinci}</dd>
+      <dd className="text-[11px] leading-snug text-fg-subtle">{rinci}</dd>
     </div>
   );
 }
@@ -251,7 +251,9 @@ function AktivitasBulanan({ bulanan, judulRentang, onLihatBulan }: { bulanan: Ri
 function BulanTimeline({ b, onLihat }: { b: RingkasBulan; onLihat: () => void }) {
   const kategori = bagianKategori(b.perKategori).sort((x, y) => y.n - x.n);
   const maks = Math.max(1, ...kategori.map((k) => k.n));
-  const tidakBekerja = STATUS_HARI.filter((s) => s !== "MASUK" && b.perStatus[s]);
+  const statusLain = STATUS_HARI.filter((s) => s !== "MASUK" && b.perStatus[s]);
+  const bekerjaLain = statusLain.filter((s) => STATUS_BEKERJA.has(s));
+  const tidakBekerja = statusLain.filter((s) => !STATUS_BEKERJA.has(s));
   return (
     <li>
       <div className="mb-3 flex items-center gap-3">
@@ -274,7 +276,7 @@ function BulanTimeline({ b, onLihat }: { b: RingkasBulan; onLihat: () => void })
           {kategori.length > 0 && (
             <ul className="mt-2.5 space-y-1.5">
               {kategori.map((k) => (
-                <li key={k.kunci} className="grid grid-cols-[minmax(0,1fr)_auto_6rem] items-center gap-3 text-[13px] sm:grid-cols-[minmax(0,1fr)_auto_10rem]">
+                <li key={k.kunci} className="grid grid-cols-[minmax(0,1fr)_auto_4.5rem] items-center gap-3 text-[13px] @md:grid-cols-[minmax(0,1fr)_auto_7rem] @xl:grid-cols-[minmax(0,1fr)_auto_10rem]">
                   <span className="flex min-w-0 items-center gap-2">
                     <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: k.warna }} />
                     <span className="truncate text-fg">{k.label}</span>
@@ -289,6 +291,7 @@ function BulanTimeline({ b, onLihat }: { b: RingkasBulan; onLihat: () => void })
           )}
           <p className="mt-2 text-[11px] text-fg-subtle tabular">
             {persen(b.selesai, b.kegiatan) ?? 0}% kegiatan selesai
+            {bekerjaLain.map((s) => ` · ${b.perStatus[s]} hari ${LABEL_STATUS[s].toLowerCase()}`).join("")}
           </p>
         </div>
         {tidakBekerja.length > 0 && (

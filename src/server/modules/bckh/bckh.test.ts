@@ -9,6 +9,7 @@ import {
   hitungDasbor,
   hitungStreak,
   kegiatanRutin,
+  ketBawaan,
   ringkasPerubahan,
   tanggalSah,
   tingkat,
@@ -64,13 +65,24 @@ describe("baris Laporan Kinerja Harian", () => {
     H("2025-11-27", "TUGAS_LUAR"),
     H("2025-11-05", "MASUK", [K("Fix Bug SIMRS", "PROSES")]),
     { ...H("2025-11-06", "CUTI"), keterangan: "Cuti tahunan" },
+    H("2025-11-10", "REMOTE", [K("Fix Bug SIMRS"), K("Rapat zoom vendor", "PROSES")]),
+    { ...H("2025-11-11", "REMOTE", [K("Monitoring Status Server")]), keterangan: "WFH" },
   ];
   const baris = barisLaporan(hari);
 
   it("urut tanggal, bernomor 1..n tanpa celah", () => {
     expect(baris.map((b) => [b.no, b.tanggal])).toEqual([
-      [1, "2025-11-03"], [2, "2025-11-04"], [3, "2025-11-05"], [4, "2025-11-06"], [5, "2025-11-27"],
+      [1, "2025-11-03"], [2, "2025-11-04"], [3, "2025-11-05"], [4, "2025-11-06"], [5, "2025-11-10"], [6, "2025-11-11"], [7, "2025-11-27"],
     ]);
+  });
+
+  it("remote: kegiatan utuh (tanpa baris status), KET bawaan 'REMOTE'; keterangan menggantikan KET", () => {
+    expect(baris[4]).toMatchObject({ catatan: ["Fix Bug SIMRS", "Rapat zoom vendor"], target: "PROSES", ket: "REMOTE" });
+    expect(baris[5]).toMatchObject({ catatan: ["Monitoring Status Server"], target: "SELESAI", ket: "WFH" });
+    expect(ketBawaan("REMOTE")).toBe("REMOTE");
+    expect(ketBawaan("MASUK")).toBe("");
+    expect(ketBawaan("TUGAS_LUAR")).toBe("");
+    expect(ketBawaan("SAKIT")).toBe("SAKIT");
   });
 
   it("hari masuk: kegiatan berpoin, ✓ SELESAI; ada proses → ✓ PROSES", () => {
@@ -84,7 +96,7 @@ describe("baris Laporan Kinerja Harian", () => {
   });
 
   it("tugas luar tanpa kegiatan: 'TUGAS LUAR' ✓ SELESAI, KET kosong", () => {
-    expect(baris[4]).toMatchObject({ catatan: ["TUGAS LUAR"], target: "SELESAI", ket: "" });
+    expect(baris[6]).toMatchObject({ catatan: ["TUGAS LUAR"], target: "SELESAI", ket: "" });
   });
 });
 
@@ -217,6 +229,9 @@ describe("skema input", () => {
     expect(simpanHariSchema.safeParse({ ...dasar, status: "OFF" }).success).toBe(false);
     expect(simpanHariSchema.safeParse({ ...dasar, status: "OFF", kegiatan: [] }).success).toBe(true);
     expect(simpanHariSchema.safeParse({ ...dasar, status: "TUGAS_LUAR", kegiatan: [] }).success).toBe(true);
+    // Remote = bekerja dari jauh: wajib berkegiatan seperti Masuk.
+    expect(simpanHariSchema.safeParse({ ...dasar, status: "REMOTE" }).success).toBe(true);
+    expect(simpanHariSchema.safeParse({ ...dasar, status: "REMOTE", kegiatan: [] }).success).toBe(false);
   });
 
   it("menolak field asing, kategori/status tak dikenal, uraian kosong, id ganda", () => {

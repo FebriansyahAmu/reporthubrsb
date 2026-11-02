@@ -15,14 +15,19 @@ import { INFO_KATEGORI, LABEL_STATUS, NAMA_BULAN_PENDEK, NAMA_HARI, type StatusH
 import type { DasborResult } from "@/server/modules/bckh/bckh.types";
 import { BilahKomposisi, PemilihBulan, bagianKategori, bulanBawaan, type Bagian } from "./ui";
 
-/** Warna status hari (entitas berbeda dari kategori; legenda selalu berlabel). */
+/**
+ * Warna status hari (entitas berbeda dari kategori; legenda selalu berlabel).
+ * Urutan = STATUS_HARI; pasangan bersebelahan lolos validator CVD & normal
+ * (Off/Libur sengaja netral = tidak bekerja).
+ */
 const WARNA_STATUS: Record<StatusHari, string> = {
   MASUK: "#1a7b6e",
   TUGAS_LUAR: "#2a78d6",
+  REMOTE: "#008300",
   OFF: "#8a9bab",
   CUTI: "#eda100",
   SAKIT: "#e34948",
-  IZIN: "#e87ba4",
+  IZIN: "#7d5bd0",
   LIBUR: "#c3d0db",
 };
 
@@ -85,14 +90,14 @@ export function TabDasbor({ u, hariIni, segar }: { u: string | null; hariIni: st
       {error && !d ? (
         <ErrorState onRetry={reload} />
       ) : !d ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 @4xl:grid-cols-4">
           {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-28" />
           ))}
         </div>
       ) : (
         <div className={cn("space-y-5 transition-opacity", loading && "opacity-60")}>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 @4xl:grid-cols-4">
             <Tile ikon={ListChecks} label="Kegiatan tercatat" nilai={formatNumber(d.kegiatan)} rinci={`${d.hariTercatat} hari tercatat`} />
             <Tile
               ikon={CalendarCheck}
@@ -117,7 +122,7 @@ export function TabDasbor({ u, hariIni, segar }: { u: string | null; hariIni: st
             />
           </div>
 
-          <div className="grid gap-5 lg:grid-cols-2">
+          <div className="grid gap-5 @3xl:grid-cols-2">
             <Panel judul="Komposisi kategori" sub="Persentase kegiatan per kategori">
               <BilahKomposisi bagian={bagianKategori(d.perKategori)} kolom={1} />
             </Panel>
@@ -130,7 +135,7 @@ export function TabDasbor({ u, hariIni, segar }: { u: string | null; hariIni: st
             </Panel>
           </div>
 
-          <div className="grid gap-5 lg:grid-cols-2">
+          <div className="grid gap-5 @3xl:grid-cols-2">
             <Panel judul="Kegiatan teratas" sub="Uraian yang paling sering dicatat">
               <HBarList
                 items={d.teratas.map((t) => ({
@@ -172,25 +177,25 @@ const fmtPersen = (p: number | null) => (p === null ? "—" : `${p}%`);
 
 function Tile({ ikon: Ikon, label, nilai, rinci, meter }: { ikon: typeof ListChecks; label: string; nilai: string; rinci: string; meter?: number | null }) {
   return (
-    <div className={cn(KOTAK, "p-4")}>
-      <p className="flex items-center gap-2 text-xs font-medium text-fg-muted">
-        <Ikon className="size-4 text-fg-subtle" aria-hidden />
+    <div className={cn(KOTAK, "min-w-0 p-3 @md:p-4")}>
+      <p className="flex items-start gap-2 text-xs font-medium text-fg-muted">
+        <Ikon className="size-4 shrink-0 text-fg-subtle" aria-hidden />
         {label}
       </p>
-      <p className="mt-2 text-[1.75rem] font-semibold leading-none tracking-tight tabular text-fg">{nilai}</p>
+      <p className="mt-2 text-2xl font-semibold leading-none tracking-tight tabular text-fg @md:text-[1.75rem]">{nilai}</p>
       {meter !== undefined && (
         <span className="mt-3 block h-1.5 overflow-hidden rounded-full bg-chart-track" aria-hidden>
           <span className="block h-full rounded-full bg-heat-3 motion-safe:animate-tumbuh origin-left" style={{ width: `${meter ?? 0}%` }} />
         </span>
       )}
-      <p className="mt-2 text-[11px] text-fg-subtle">{rinci}</p>
+      <p className="mt-2 text-[11px] leading-snug text-fg-subtle">{rinci}</p>
     </div>
   );
 }
 
 function Panel({ judul, sub, children }: { judul: string; sub: string; children: React.ReactNode }) {
   return (
-    <section className={cn(KOTAK, "p-4 sm:p-5")}>
+    <section className={cn(KOTAK, "min-w-0 p-4 @lg:p-5")}>
       <h3 className="text-sm font-semibold text-fg">{judul}</h3>
       <p className="mb-4 text-xs text-fg-muted">{sub}</p>
       {children}

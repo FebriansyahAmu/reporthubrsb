@@ -60,10 +60,11 @@ export function TabLaporan({
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
         <PemilihBulan bulan={bulan} onChange={setBulan} maks={hariIni.slice(0, 7)} />
-        <div className="ml-auto flex flex-wrap gap-2">
+        {/* Sempit: tombol mengisi selebar kolom (rapi dua/tiga sejajar); lebar: rata kanan. */}
+        <div className="flex w-full flex-wrap gap-2 @2xl:ml-auto @2xl:w-auto">
           {hak.atur && (
-            <Button variant="ghost" size="sm" icon={<Settings2 className="size-4" />} onClick={() => setAtur(true)}>
-              Pengaturan laporan
+            <Button variant="ghost" size="sm" className="flex-1 @2xl:flex-none" icon={<Settings2 className="size-4" />} onClick={() => setAtur(true)}>
+              Pengaturan<span className="hidden @md:inline"> laporan</span>
             </Button>
           )}
           {hak.cetak && (
@@ -72,12 +73,13 @@ export function TabLaporan({
                 href={urlPdf}
                 target="_blank"
                 rel="noopener"
-                className="inline-flex h-8 items-center gap-2 rounded-[var(--radius-md)] border border-border bg-surface px-3 text-[13px] font-medium text-fg transition-colors hover:border-border-strong hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+                className="inline-flex h-8 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-md)] border border-border bg-surface px-3 text-[13px] font-medium text-fg transition-colors hover:border-border-strong hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring @2xl:flex-none"
               >
                 <ExternalLink className="size-4" aria-hidden />
-                Buka untuk cetak
+                <span className="@md:hidden">Cetak</span>
+                <span className="hidden @md:inline">Buka untuk cetak</span>
               </a>
-              <Button size="sm" icon={<Download className="size-4" />} loading={unduh} onClick={() => void unduhPdf()} disabled={!lap}>
+              <Button size="sm" className="flex-1 @2xl:flex-none" icon={<Download className="size-4" />} loading={unduh} onClick={() => void unduhPdf()} disabled={!lap}>
                 Unduh PDF
               </Button>
             </>
@@ -90,9 +92,9 @@ export function TabLaporan({
       ) : !lap ? (
         <Skeleton className="h-96 w-full" />
       ) : (
-        <div className={cn("grid gap-5 2xl:grid-cols-[minmax(0,1fr)_17rem]", loading && "opacity-60")}>
+        <div className={cn("grid gap-5 @5xl:grid-cols-[minmax(0,1fr)_17rem]", loading && "opacity-60")}>
           <Kertas lap={lap} />
-          <aside className="order-first grid content-start gap-4 sm:grid-cols-2 2xl:order-none 2xl:grid-cols-1">
+          <aside className="order-first grid content-start gap-4 @xl:grid-cols-2 @5xl:order-none @5xl:grid-cols-1">
             <section className="rounded-[var(--radius-md)] border border-border bg-surface p-4">
               <h3 className="text-sm font-semibold text-fg">Kelengkapan</h3>
               {lap.kurang.length === 0 ? (
@@ -180,19 +182,49 @@ function Ttd({ label, nama, nip }: { label: string; nama: string; nip?: string }
   );
 }
 
-/** Pratinjau tabel bergaya kertas (Times, seperti PDF) — isi sama dengan PDF. */
+/**
+ * Pratinjau bergaya kertas (Times, seperti PDF) — isi sama dengan PDF. Kertas
+ * sempit (ponsel) → tiap baris tabel jadi blok bertumpuk (NO · HARI/TANGGAL,
+ * catatan, target, KET) agar tak perlu digulir menyamping.
+ */
 function Kertas({ lap }: { lap: LaporanResult }) {
   const th = "border border-black px-1.5 py-1 font-bold";
-  const td = "border border-black px-1.5 py-1 align-top";
+  // overflow-wrap:anywhere → kata/URL panjang tak melebarkan tabel melewati kertas.
+  const td = "border border-black px-1.5 py-1 align-top [overflow-wrap:anywhere]";
   return (
-    <div className="min-w-0 rounded-[var(--radius-md)] border border-border bg-[#e9eef2] p-3 sm:p-5">
-      <div className="mx-auto max-w-[46rem] bg-white p-4 text-black shadow-sm sm:p-8">
+    <div className="min-w-0 rounded-[var(--radius-md)] border border-border bg-[#e9eef2] p-2 @md:p-5">
+      <div className="@container mx-auto max-w-[46rem] bg-white p-3 text-black shadow-sm @md:p-8">
         <p className="mb-1 text-center font-[Arial,Helvetica,sans-serif] text-sm font-bold">LAPORAN KINERJA HARIAN</p>
         <p className="mb-4 text-center font-[Arial,Helvetica,sans-serif] text-xs font-bold">
           TAHUN {lap.tahun} · ( BULAN {lap.namaBulan.toUpperCase()} ) · {lap.profil.namaLengkap}
         </p>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[34rem] border-collapse font-[Times_New_Roman,Times,serif] text-[13px] leading-snug">
+        <ol data-pratinjau="ringkas" className="border border-black font-[Times_New_Roman,Times,serif] text-[13px] leading-snug @[32rem]:hidden">
+          {lap.baris.length === 0 ? (
+            <li className="px-3 py-6 text-center italic text-neutral-500">Belum ada catatan pada {labelBulan(lap.bulan)}.</li>
+          ) : (
+            lap.baris.map((b) => (
+              <li key={b.tanggal} className="border-t border-black px-2.5 py-2 first:border-t-0">
+                <p className="flex items-baseline justify-between gap-2 font-bold">
+                  <span>
+                    {b.no}. {b.hariTanggal}
+                  </span>
+                  {b.target && <span className="shrink-0 text-[11px]">✓ {b.target}</span>}
+                </p>
+                <ul className="mt-1">
+                  {b.catatan.map((c, i) => (
+                    <li key={i} className="grid grid-cols-[0.9rem_1fr] pl-1">
+                      <span>-</span>
+                      <span className="min-w-0 [overflow-wrap:anywhere]">{c}</span>
+                    </li>
+                  ))}
+                </ul>
+                {b.ket && <p className="mt-1 text-[12px] [overflow-wrap:anywhere]">KET: {b.ket}</p>}
+              </li>
+            ))
+          )}
+        </ol>
+        <div className="hidden @[32rem]:block">
+          <table data-pratinjau="tabel" className="w-full border-collapse font-[Times_New_Roman,Times,serif] text-[13px] leading-snug">
             <thead>
               <tr>
                 <th rowSpan={2} className={cn(th, "w-8")}>NO</th>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
@@ -27,8 +28,8 @@ function hash(s: string): number {
 const HUE = [205, 188, 172, 222, 196, 240];
 
 /**
- * Identicon 5×5 simetris dari ID pengguna (ala avatar bawaan GitHub) — tanpa
- * unggah foto, konsisten di semua perangkat.
+ * Identicon 5×5 simetris dari ID pengguna (ala avatar bawaan GitHub) — avatar
+ * bawaan selama belum ada foto profil, konsisten di semua perangkat.
  */
 export function Identicon({ seed, className, label }: { seed: string; className?: string; label?: string }) {
   const h = hash(seed);
@@ -52,6 +53,28 @@ export function Identicon({ seed, className, label }: { seed: string; className?
   );
 }
 
+export const urlAvatar = (userId: string, versi: string) => `/api/bckh/avatar?${new URLSearchParams({ u: userId, v: versi })}`;
+
+/**
+ * Foto profil bila ada (`versi` = isi berkas → URL ter-cache permanen), selain
+ * itu identicon. Gagal dimuat (berkas hilang/izin) → jatuh ke identicon.
+ */
+export function AvatarBckh({ userId, versi, className, label }: { userId: string; versi: string | null; className?: string; label?: string }) {
+  const [gagal, setGagal] = useState<string | null>(null);
+  if (!versi || gagal === versi) return <Identicon seed={userId} className={className} label={label} />;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- berkas berizin dari API, bukan aset statis
+    <img
+      src={urlAvatar(userId, versi)}
+      alt={label ?? "Avatar"}
+      decoding="async"
+      draggable={false}
+      onError={() => setGagal(versi)}
+      className={cn("aspect-square rounded-full bg-[#eef3f7] object-cover", className)}
+    />
+  );
+}
+
 /* ------------------------------------------------------- kategori & status */
 
 export function TitikKategori({ kategori, className }: { kategori: Kategori; className?: string }) {
@@ -67,6 +90,7 @@ export function TitikKategori({ kategori, className }: { kategori: Kategori; cla
 const NADA_STATUS: Record<StatusHari, string> = {
   MASUK: "bg-success-soft text-success ring-success/20",
   TUGAS_LUAR: "bg-brand-soft text-brand-soft-fg ring-brand/20",
+  REMOTE: "bg-[#e8f4e8] text-[#0b5e0b] ring-[#008300]/20",
   OFF: "bg-surface-2 text-fg-muted ring-border",
   CUTI: "bg-warning-soft text-warning ring-warning/20",
   SAKIT: "bg-danger-soft text-danger ring-danger/20",

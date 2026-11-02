@@ -9,6 +9,7 @@ import {
   kegiatanRutin,
   tambahHari,
 } from "./bckh.aturan";
+import { versiAvatar } from "./bckh.avatar";
 import { JENDELA_RUTIN_HARI, STATUS_BEKERJA } from "./bckh.constants";
 import { hariRingkas, semuaTanggal } from "./bckh.dal";
 import type { SimpanProfilInput } from "./bckh.schema";
@@ -79,10 +80,11 @@ export async function profilResult(target: PenggunaBckh, tahun: number | null, m
   const hariIni = tanggalHariIniWita();
   const rentang = rentangGrafik(tahun, hariIni);
   const awalRutin = tambahHari(hariIni, -JENDELA_RUTIN_HARI);
-  const [profil, hari, tanggal] = await Promise.all([
+  const [profil, hari, tanggal, avatar] = await Promise.all([
     bacaProfil(target),
     hariRingkas(target.id, rentang.dari < awalRutin ? rentang.dari : awalRutin, rentang.sampai > hariIni ? rentang.sampai : hariIni),
     semuaTanggal(target.id),
+    versiAvatar(target.id),
   ]);
 
   const dalam = hari.filter((h) => h.tanggal >= rentang.dari && h.tanggal <= rentang.sampai);
@@ -106,6 +108,7 @@ export async function profilResult(target: PenggunaBckh, tahun: number | null, m
 
   return {
     profil,
+    avatar,
     rentang,
     sel,
     totalKegiatan: sel.reduce((s, x) => s + x.n, 0),

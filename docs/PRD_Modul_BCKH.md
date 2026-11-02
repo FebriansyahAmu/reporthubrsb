@@ -4,7 +4,7 @@
 
 **Project:** ReportHub (`reporthubrsb`) · Workspace baru **BCKH** (`/bckh`)
 **Organisasi:** UPTD RSUD Bolaang Mongondow Timur
-**Versi:** 1.0 · **Tanggal:** 2 November 2026 · **Status:** B0–B6 selesai (§13)
+**Versi:** 1.1 · **Tanggal:** 2 November 2026 · **Status:** B0–B6 selesai (§13); v1.1 = status Remote, foto profil, responsif tanpa gulir menyamping (§14)
 **Sifat data:** Modul ini **tidak membaca maupun menulis SIMGOS**. Semua data disimpan di DB aplikasi `reporthub` (tabel baru `bckh_*`, dibuat dengan `CREATE TABLE IF NOT EXISTS`, tanpa mengubah tabel lain).
 
 ---
@@ -77,7 +77,7 @@ Yang diminta:
 
 | GitHub | BCKH |
 | --- | --- |
-| Avatar *identicon* + nama + username | *Identicon* 5×5 dari ID pengguna (tanpa unggah foto) + nama lengkap + username + jabatan |
+| Avatar (foto / *identicon*) + nama + username | **Foto profil** yang bisa diganti (unggah, potong persegi, hapus) — tanpa foto → *identicon* 5×5 dari ID pengguna — + nama lengkap + username + jabatan |
 | Sidebar profil (bio, organisasi, lokasi) | Jabatan, unit, NIP, atasan langsung |
 | Popular / pinned repositories | **Kegiatan rutin**: 6 uraian tersering dalam 90 hari, sekali klik menambahkan ke catatan |
 | *Contribution graph* (53 minggu × 7 hari, 5 tingkat warna) | **Grafik kegiatan**: jumlah kegiatan per hari. Hari Off/Cuti/Sakit/Izin/Libur bertanda khusus. Klik sel = buka catatan hari itu |
@@ -105,6 +105,8 @@ Warna grafik memakai **ramp teal** dari palet aplikasi ("Active Teal"), bukan hi
 | `bckh_log` | `id` PK, `user_id` (pemilik catatan), `aktor_id`, `aktor_nama`, `aksi` (`BUAT`/`UBAH`/`HAPUS`/`EKSPOR`), `tanggal` (hari yang disentuh; bulan untuk ekspor), `rincian` JSON, `ip`, `created_at`; INDEX (`user_id`, `created_at`) | Log pengisian. Tanpa data pasien. Hanya bertambah (*append-only*) |
 | `bckh_pengaturan` | `id` = 1, `kop_1`, `kop_2`, `instansi_1`, `instansi_2`, `mengetahui_jabatan`, `mengetahui_nama`, `mengetahui_nip`, `diubah_oleh_*`, `updated_at` | Satu baris global. Tanpa baris → bawaan kop dari dokumen contoh |
 
+**Foto profil** tidak disimpan di tabel (tabel `bckh_*` tidak diubah): berkas di folder penyimpanan aplikasi (`STORAGE_DIR`, di produksi bind mount `./storage`) `bckh/avatar/<userId>/<versi>.<webp|jpg|png>`, `versi` = 16 heks pertama SHA-256 isi. Berkas terbaru = foto aktif; berkas lama dihapus saat foto diganti. Tanpa berkas → identicon.
+
 ---
 
 ## 6. Aturan Bisnis
@@ -115,7 +117,10 @@ Warna grafik memakai **ramp teal** dari palet aplikasi ("Active Teal"), bukan hi
 | --- | --- | --- | --- | --- |
 | `MASUK` | wajib ≥ 1 | daftar kegiatan (bullet "-") | ✓ PROSES bila ada kegiatan berstatus proses, selain itu ✓ SELESAI | keterangan (opsional) |
 | `TUGAS_LUAR` | opsional | "TUGAS LUAR" + kegiatan (bila ada) | seperti MASUK (tanpa kegiatan → ✓ SELESAI) | keterangan |
+| `REMOTE` (v1.1) | wajib ≥ 1 | daftar kegiatan, tanpa baris status | seperti MASUK | keterangan, atau **"REMOTE"** bila kosong |
 | `OFF`, `CUTI`, `SAKIT`, `IZIN`, `LIBUR` | tidak ada | "OFF" / "CUTI" / … | kosong | keterangan atau label status ("OFF") |
+
+Remote = bekerja jarak jauh: dihitung **hari bekerja** di semua metrik (grafik, rata-rata per hari, pola mingguan, Tim), sama seperti Masuk dan Tugas Luar. Kolom `status` (`VARCHAR(16)`) sudah memuat nilai baru, sehingga tidak ada perubahan tabel.
 
 ### 6.2. Kegiatan
 - **Kategori** (warna mengikuti kategori, urutan tetap):
@@ -174,6 +179,9 @@ Periode yang tersedia: bulan atau tahun.
 | `GET /api/bckh/laporan/pdf?bulan=&u=&unduh=1` | `bckh:print` / `bckh.tim:print` | PDF 1:1. Menulis log `EKSPOR` |
 | `GET /api/bckh/tim?bulan=` | `bckh.tim:view` | Ringkasan per pegawai: kegiatan, hari terisi, kepatuhan, terakhir mengisi |
 | `GET/PUT /api/bckh/pengaturan` | `bckh.pengaturan:view/update` | Kop & penandatangan "Mengetahui". Diaudit |
+| `GET /api/bckh/avatar?u=&v=` (v1.1) | `bckh:view` / `bckh.tim:view` | Foto profil (`?v=` cocok → cache permanen). 404 = belum berfoto. `nosniff` + CSP `sandbox` |
+| `POST /api/bckh/avatar` (v1.1) | `bckh:update` | Pasang/ganti foto SENDIRI (multipart `avatar`; JPG/PNG/WebP dari isi berkas, ≤ 512 KB, ≤ 1024×1024 px) |
+| `DELETE /api/bckh/avatar` (v1.1) | `bckh:update` | Hapus foto sendiri → identicon |
 
 **Pengaman tulis** (PUT/DELETE), sama dengan pola pemetaan RL:
 - tolak permintaan lintas situs (CSRF);
@@ -190,11 +198,11 @@ Workspace baru **BCKH** (ikon buku catatan) dengan item:
 - **Profil Saya** → `/bckh`;
 - **Tim** → `/bckh/tim`, hanya untuk pemegang `bckh.tim`.
 
-Profil pegawai lain: `/bckh/u/<username>` (hanya-lihat).
+Profil pegawai lain: `/bckh/tim/<username>` (hanya-lihat).
 
 ### 8.2. Halaman profil (`/bckh`), tata letak dua kolom ala GitHub
-- **Kolom kiri** (≥ 1024 px; di ponsel menjadi kepala ringkas):
-  - identicon besar, nama, username, jabatan;
+- **Kolom kiri** (≥ 1280 px; di bawahnya menjadi kepala profil di atas tab — §14.3):
+  - foto profil besar (atau identicon), dengan lencana kamera untuk menggantinya; nama, username, jabatan;
   - tombol "Ubah profil";
   - unit, NIP, atasan;
   - rangkaian hari kerja.
@@ -228,10 +236,7 @@ Profil pegawai lain: `/bckh/u/<username>` (hanya-lihat).
 - Kontrol keyboard penuh: grafik bisa dinavigasi dengan panah dan Enter membuka catatan.
 - Fokus terlihat; `prefers-reduced-motion` dihormati.
 - Warna tidak pernah menjadi satu-satunya pembeda: grafik punya tooltip + label aria, kategori punya legenda.
-- **Responsif:**
-  - grafik di ponsel menggulir horizontal (minggu terbaru terlihat lebih dulu);
-  - tabel laporan pratinjau bisa digeser;
-  - tanpa luapan halaman di 390 px.
+- **Responsif tanpa gulir menyamping** di semua lebar (v1.1, menggantikan rancangan awal "grafik menggulir horizontal") — rincian §14.3.
 
 ---
 
@@ -340,7 +345,7 @@ Semua stage B0–B6 selesai dan divalidasi di build produksi.
 | DDL & migrasi | `scripts/db/bckh.sql`, `scripts/db/migrate-bckh.mjs` (hanya `CREATE TABLE IF NOT EXISTS bckh_*`), model `Bckh*` di `prisma/app/schema.prisma` |
 | Aturan murni (aman untuk klien) | `src/server/modules/bckh/bckh.constants.ts`, `bckh.aturan.ts`, `bckh.schema.ts`, `bckh.types.ts`. Diuji `bckh.test.ts` |
 | Server | `bckh.akses.ts` (pemilik vs tim, CSRF, batas laju), `bckh.dal.ts`, `bckh.catatan.ts` (simpan/hapus + log, konkurensi), `bckh.profil.ts`, `bckh.laporan.ts` (laporan, dasbor, pengaturan), `bckh.tim.ts`, `bckh.pdf.ts` |
-| API | `src/app/api/bckh/{profil,hari,hari/[tanggal],log,dasbor,laporan,laporan/pdf,tim,pengaturan}` |
+| API | `src/app/api/bckh/{profil,hari,hari/[tanggal],log,dasbor,laporan,laporan/pdf,tim,pengaturan,avatar}` (avatar: v1.1, `bckh.avatar.ts` + `src/server/lib/info-gambar.ts`) |
 | Halaman & UI | `/bckh`, `/bckh/tim`, `/bckh/tim/[username]`. Komponen di `src/features/bckh/*` (`GrafikKegiatan`, `CatatDrawer`, `Tab*`, `TimView`, `ui.tsx`). Token `--heat-0..4` & animasi `denyut` di `globals.css` |
 
 ### 13.2. Catatan rancangan yang ditetapkan saat implementasi
@@ -393,3 +398,42 @@ Setelah deploy, Admin memberi hak lewat **Master › Peran & Hak Akses**:
 - `Pengaturan Laporan BCKH` untuk kepegawaian.
 
 Penandatangan "Mengetahui" memakai nilai bawaan dokumen contoh sampai diubah di tab Laporan › **Pengaturan laporan**.
+
+---
+
+## 14. v1.1 — Status Remote, Foto Profil, Responsif (2 November 2026)
+
+Permintaan pengguna: tampilan menyesuaikan semua ukuran layar, avatar profil BCKH bisa diganti, bagian profil/tab tidak perlu digulir kanan-kiri, dan status hari **Remote**. Tetap tanpa SIMGOS dan **tanpa perubahan tabel** (tidak ada `ALTER`/tabel baru).
+
+### 14.1. Status Remote
+- Aturan & laporan: §6.1. `STATUS_WAJIB_KEGIATAN` = Masuk + Remote (skema & panel Catat menolak Remote tanpa kegiatan).
+- KET laporan bawaan `KET_LAPORAN_BEKERJA.REMOTE` = "REMOTE" (`ketBawaan()` dipakai laporan, PDF, dan placeholder Keterangan di panel Catat).
+- UI: chip status "Remote" di panel Catat (+ petunjuk), lencana hijau, tooltip grafik "n kegiatan (remote)", linimasa bulanan "· n hari remote".
+- Palet status dasbor divalidasi ulang (validator CVD & normal, pasangan bersebelahan): Remote `#008300`; **Izin diganti `#7d5bd0`** (merah muda lama terlalu mirip Sakit, ΔE normal 13,2 < 15). Off/Libur tetap netral.
+
+### 14.2. Foto profil
+- **Ganti:** klik foto di profil sendiri (lencana kamera) → modal **Foto profil**: unggah / seret / tempel → bingkai persegi bermasker lingkaran (seret, gulir/cubit, slider, papan ketik: panah, `+`/`−`, `0`) → **Simpan foto**. **Hapus foto** → identicon.
+- **Di browser:** orientasi EXIF diterapkan, dipotong & diperkecil ke ≤ 400×400 px, dienkode ulang WebP (JPEG bila tak didukung) → ± 3–60 KB; metadata/lokasi GPS ikut terbuang. Berkas asli maks 25 MB.
+- **Di server** (`bckh.avatar.ts`, `server/lib/info-gambar.ts`): jenis dari isi berkas (JPEG SOFn / PNG IHDR / WebP VP8·VP8L·VP8X), ≤ 512 KB, sisi ≤ 1024 px (cegah bom dekompresi di browser atasan); hanya folder milik sendiri; penulisan atomik; berkas lama (lebih tua) dihapus sehingga unggahan bersamaan tak saling menghapus.
+- **Tampil:** sidebar/kepala profil, profil hanya-lihat (atasan), daftar Tim. URL berversi → cache permanen; gagal muat → identicon.
+
+### 14.3. Responsif tanpa gulir menyamping
+- **Tata letak:** dua kolom ala GitHub hanya mulai **xl (≥ 1280 px)**. Di bawahnya kepala profil: ponsel = foto + nama sebaris, tombol selebar layar; `sm`–`xl` = foto kiri merentang tiga baris, tombol "Ubah profil laporan" di kanan nama, meta & streak di bawah nama.
+- **Kolom isi = container** (`@container`): bar tab & isi tab menyesuaikan lebar kolom, bukan lebar layar.
+  - **Bar tab:** kolom ≥ 48rem → tab sebaris ala GitHub + tombol "Catat kegiatan"; lebih sempit → 5 kolom sama lebar (ikon di atas label, "Log Pengisian" → "Log", penghitung jadi lencana), tombol jadi ikon "+" (ponsel: tombol mengambang). Tidak pernah menggulir.
+  - **Grafik kegiatan:** sel 9–15 px (layar sentuh min. 13 px agar mudah diketuk). Bila 53 minggu tak muat, minggu dibagi ke **pita bertumpuk** (2–4 pita, batas digeser ke awal bulan); navigasi panah lintas pita (±1 hari / ±1 minggu); tooltip dijepit di dalam kartu & dibungkus; label bulan yang tak muat dilewati.
+  - **Pemilih tahun** membungkus; **ringkasan** 2/3/1 kolom; kartu rutin, Dasbor (tile 2/4 kolom, panel 1/2), Kegiatan, Laporan (tombol aksi selebar kolom di layar sempit), dan Tim (baris dua tingkat di layar sempit) mengikuti lebar kolom.
+  - **Pratinjau laporan:** kertas sempit (< 32rem) → tiap baris jadi blok bertumpuk (NO · HARI/TANGGAL, ✓ target, catatan, KET); lebar → tabel seperti PDF. Teks panjang (`overflow-wrap:anywhere`) tak pernah melebarkan tabel.
+- **Perbaikan sampingan:** isi tooltip grafik kini dihitung dari data terbaru (sebelumnya bisa basi "Belum ada catatan" setelah grafik dimuat ulang saat fokus dipulihkan drawer).
+
+### 14.4. Verifikasi v1.1 (build produksi :3100)
+
+| Uji | Hasil |
+| --- | --- |
+| `tsc`, ESLint (seluruh repo) | bersih |
+| Unit (Vitest) | **556/556** (+ Remote di laporan/skema, `info-gambar` JPEG/PNG/WebP/penolakan) |
+| E2E API `bckh-e2e.mjs` | **138/138** — + [Remote] (laporan/KET, dasbor, log Remote→Off, PDF "REMOTE") + [Avatar] 21 cek (401/403 izin, CSRF, HTML/SVG berkedok, 3000×3000 → 422, > 512 KB → 413, versi & cache, `nosniff` + CSP `sandbox`, tim 200 / pengisi lain 403, ganti → 1 berkas, hapus → folder hilang) |
+| UI `bckh-ui.mjs` | **35/35** — + Remote lewat panel Catat (wajib kegiatan, petunjuk KET, tooltip), foto profil (unggah → bingkai keyboard → simpan WebP 400×400 → hapus), ponsel 390 px tanpa luapan/gulir samping dengan grafik berpita |
+| Audit responsif `bckh-responsif.mjs` | **90/90** (15 lebar 320–2560 px × 6 halaman; layar sentuh & mouse): luapan halaman 0, elemen bergulir samping 0, elemen keluar layar 0, bar tab pas, label grafik tak terpotong, tanpa galat JS |
+
+Deploy: tanpa migrasi baru (cukup `docker compose build && docker compose up -d`). Foto tersimpan di bind mount `./storage` yang sudah ada (pemilik UID 1001).
