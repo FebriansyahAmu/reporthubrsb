@@ -10,12 +10,29 @@ import {
   hitungStreak,
   kegiatanRutin,
   ketBawaan,
+  bolehDibatalkan,
+  bolehDitarik,
+  kodeVerifikasi,
+  namaBergelar,
+  ringkasBaris,
   ringkasPerubahan,
+  statusSetelahSetuju,
+  tahapPengajuan,
   tanggalSah,
   tingkat,
 } from "./bckh.aturan";
 import { saranKategori } from "./bckh.constants";
-import { rentangQuerySchema, simpanHariSchema, simpanProfilSchema } from "./bckh.schema";
+import {
+  ajukanSchema,
+  alasanSchema,
+  idPengajuanSchema,
+  logQuerySchema,
+  rentangQuerySchema,
+  setujuiSchema,
+  simpanHariSchema,
+  simpanProfilSchema,
+  tokenVerifikasiSchema,
+} from "./bckh.schema";
 import type { HariRingkas } from "./bckh.types";
 
 const K = (uraian: string, target: "SELESAI" | "PROSES" = "SELESAI") => ({ uraian, kategori: saranKategori(uraian), target });
@@ -251,5 +268,83 @@ describe("skema input", () => {
     const p = { namaLengkap: "A", namaTtd: "A", jabatan: "", nip: "19810606 200501 2 023", unit: "", atasanNama: "", atasanNip: "" };
     expect(simpanProfilSchema.safeParse(p).success).toBe(true);
     expect(simpanProfilSchema.safeParse({ ...p, nip: "<script>" }).success).toBe(false);
+  });
+});
+
+describe("persetujuan & tanda tangan (PRD §15)", () => {
+  it("alur berurutan: atasan → (Mengetahui) → disetujui", () => {
+    expect(tahapPengajuan("MENUNGGU_ATASAN")).toBe("ATASAN");
+    expect(tahapPengajuan("MENUNGGU_MENGETAHUI")).toBe("MENGETAHUI");
+    for (const s of ["DISETUJUI", "DITOLAK", "DITARIK", "DIBATALKAN"] as const) expect(tahapPengajuan(s)).toBeNull();
+    expect(statusSetelahSetuju("MENUNGGU_ATASAN", false)).toBe("DISETUJUI");
+    expect(statusSetelahSetuju("MENUNGGU_ATASAN", true)).toBe("MENUNGGU_MENGETAHUI");
+    expect(statusSetelahSetuju("MENUNGGU_MENGETAHUI", true)).toBe("DISETUJUI");
+    expect(statusSetelahSetuju("DISETUJUI", true)).toBeNull();
+    expect(statusSetelahSetuju("DITOLAK", false)).toBeNull();
+  });
+
+  it("tarik hanya sebelum disahkan; batal hanya setelah disahkan", () => {
+    expect(bolehDitarik("MENUNGGU_ATASAN")).toBe(true);
+    expect(bolehDitarik("MENUNGGU_MENGETAHUI")).toBe(true);
+    expect(bolehDitarik("DISETUJUI")).toBe(false);
+    expect(bolehDitarik("DITOLAK")).toBe(false);
+    expect(bolehDibatalkan("DISETUJUI")).toBe(true);
+    expect(bolehDibatalkan("MENUNGGU_ATASAN")).toBe(false);
+    expect(bolehDibatalkan("DIBATALKAN")).toBe(false);
+  });
+
+  it("kode verifikasi & ringkasan baris laporan", () => {
+    expect(kodeVerifikasi("a1b2c3d4e5f60718")).toBe("A1B2C3D4");
+    const baris = barisLaporan([
+      H("2025-11-03", "MASUK", [K("Apel pagi"), K("Monitoring server")]),
+      H("2025-11-04", "TUGAS_LUAR", [K("Rapat dinas di Kotamobagu")]),
+      H("2025-11-05", "CUTI"),
+    ]);
+    // "TUGAS LUAR" di depan kegiatan & hari cuti bukan kegiatan.
+    expect(ringkasBaris(baris)).toEqual({ hari: 3, kegiatan: 3 });
+    expect(ringkasBaris([])).toEqual({ hari: 0, kegiatan: 0 });
+  });
+
+  it("nama bergelar akun", () => {
+    expect(namaBergelar({ name: "Randya Permadi", gelarDepan: "dr.", gelarBelakang: null })).toBe("dr. Randya Permadi");
+    expect(namaBergelar({ name: "Ferawati Massie", gelarDepan: null, gelarBelakang: "S.ST" })).toBe("Ferawati Massie, S.ST");
+  });
+
+  const TTD = "data:image/png;base64,iVBORw0KGgo=";
+
+  it("skema ajukan / setujui / alasan", () => {
+    const a = { bulan: "2026-10", sampaiMengetahui: true, catatan: "  ok  ", ttd: TTD };
+    const r = ajukanSchema.safeParse(a);
+    expect(r.success && r.data.catatan).toBe("ok");
+    expect(ajukanSchema.safeParse({ ...a, catatan: undefined }).success).toBe(true);
+    expect(ajukanSchema.safeParse({ ...a, bulan: "2026-13" }).success).toBe(false);
+    expect(ajukanSchema.safeParse({ ...a, ttd: "data:image/svg+xml;base64,PHN2Zz4=" }).success).toBe(false);
+    expect(ajukanSchema.safeParse({ ...a, ttd: "javascript:alert(1)" }).success).toBe(false);
+    expect(ajukanSchema.safeParse({ ...a, userId: "lain" }).success).toBe(false);
+    expect(ajukanSchema.safeParse({ ...a, catatan: "x".repeat(501) }).success).toBe(false);
+    expect(setujuiSchema.safeParse({ ttd: TTD }).success).toBe(true);
+    expect(setujuiSchema.safeParse({ ttd: TTD, status: "DISETUJUI" }).success).toBe(false);
+    expect(alasanSchema.safeParse({ alasan: "   " }).success).toBe(false);
+    expect(alasanSchema.safeParse({ alasan: "Kegiatan tgl 12 belum sesuai" }).success).toBe(true);
+    expect(idPengajuanSchema.safeParse("cmh9x0abc0000xyz").success).toBe(true);
+    expect(idPengajuanSchema.safeParse("../etc").success).toBe(false);
+    expect(tokenVerifikasiSchema.safeParse("a".repeat(32)).success).toBe(true);
+    expect(tokenVerifikasiSchema.safeParse("A".repeat(32)).success).toBe(false);
+  });
+
+  it("akun atasan di profil & direktur di pengaturan: opsional / null / id sah", () => {
+    const p = { namaLengkap: "A", namaTtd: "A", jabatan: "", nip: "", unit: "", atasanNama: "", atasanNip: "" };
+    expect(simpanProfilSchema.parse(p).atasanId).toBeUndefined();
+    expect(simpanProfilSchema.parse({ ...p, atasanId: null }).atasanId).toBeNull();
+    expect(simpanProfilSchema.safeParse({ ...p, atasanId: "cmh9x0abc" }).success).toBe(true);
+    expect(simpanProfilSchema.safeParse({ ...p, atasanId: "a b" }).success).toBe(false);
+  });
+
+  it("log berhalaman: bawaan halaman 1 & semua; jenis tak dikenal ditolak", () => {
+    expect(logQuerySchema.parse({})).toMatchObject({ halaman: 1, jenis: "semua" });
+    expect(logQuerySchema.parse({ halaman: "3", jenis: "persetujuan" })).toMatchObject({ halaman: 3, jenis: "persetujuan" });
+    expect(logQuerySchema.safeParse({ halaman: "0" }).success).toBe(false);
+    expect(logQuerySchema.safeParse({ jenis: "rahasia" }).success).toBe(false);
+    expect(logQuerySchema.safeParse({ sebelum: "10" }).success).toBe(false);
   });
 });

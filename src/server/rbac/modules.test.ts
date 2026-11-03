@@ -44,6 +44,11 @@ describe("katalog modul RBAC", () => {
     expect(moduleKeyForApiPath("/api/bckh/laporan/pdf")).toBe("bckh");
     expect(moduleKeyForApiPath("/api/bckh/tim")).toBe("bckh.tim");
     expect(moduleKeyForApiPath("/api/bckh/pengaturan")).toBe("bckh.pengaturan");
+    expect(moduleKeyForApiPath("/api/bckh/persetujuan")).toBe("bckh.persetujuan");
+    expect(moduleKeyForApiPath("/api/bckh/persetujuan/abc/setujui")).toBe("bckh.persetujuan");
+    expect(moduleKeyForApiPath("/api/bckh/pengajuan")).toBe("bckh");
+    expect(isValidModuleAction("bckh.persetujuan", "update")).toBe(true);
+    expect(isValidModuleAction("bckh.persetujuan", "delete")).toBe(false);
     expect(isValidModuleAction("bckh", "update")).toBe(true);
     expect(isValidModuleAction("bckh.tim", "view")).toBe(true);
     expect(isValidModuleAction("bckh.tim", "update")).toBe(false);

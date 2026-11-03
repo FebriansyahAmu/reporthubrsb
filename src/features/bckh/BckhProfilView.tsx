@@ -23,7 +23,7 @@ import { AvatarBckh, Penghitung } from "./ui";
 
 /** `lanjutan` = sambungan label yang hanya tampil bila bar tab lebar ("Log" → "Log Pengisian"). */
 const INFO_TAB: Record<TabBckh, { label: string; lanjutan?: string; ikon: typeof BookOpenText }> = {
-  ikhtisar: { label: "Ikhtisar", ikon: BookOpenText },
+  ikhtisar: { label: "Summary", ikon: BookOpenText },
   kegiatan: { label: "Kegiatan", ikon: LayoutList },
   log: { label: "Log", lanjutan: " Pengisian", ikon: History },
   dasbor: { label: "Dasbor", ikon: BarChart3 },
@@ -31,7 +31,7 @@ const INFO_TAB: Record<TabBckh, { label: string; lanjutan?: string; ikon: typeof
 };
 
 /**
- * Halaman profil BCKH ala profil GitHub: sidebar identitas + tab (Ikhtisar,
+ * Halaman profil BCKH ala profil GitHub: sidebar identitas + tab (Summary,
  * Kegiatan, Log Pengisian, Dasbor, Laporan). `targetId` null = profil sendiri;
  * selain itu hanya-lihat (pemegang `bckh.tim`). Tab disimpan di `?tab=`.
  *

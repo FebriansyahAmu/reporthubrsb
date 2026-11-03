@@ -104,7 +104,7 @@ export const JUMLAH_RUTIN = 6;
 export const JENDELA_RUTIN_HARI = 90;
 /** Catatan dianggap tepat waktu bila dibuat paling lambat H+BATAS_TEPAT_WAKTU (WITA). */
 export const BATAS_TEPAT_WAKTU_HARI = 1;
-export const LOG_PER_HALAMAN = 30;
+export const LOG_PER_HALAMAN = 20;
 
 /**
  * Foto profil: dipotong persegi & dikompres di browser (keluaran `sisi` px,
@@ -113,9 +113,52 @@ export const LOG_PER_HALAMAN = 30;
  */
 export const AVATAR = { sisi: 400, maksByte: 512 * 1024, maksSisi: 1024, masukanMaks: 25 * 1024 * 1024 } as const;
 
-/** Aksi log pengisian. */
-export const AKSI_LOG = ["BUAT", "UBAH", "HAPUS", "EKSPOR"] as const;
+/** Aksi log pengisian (≤ 8 karakter, kolom `bckh_log.aksi`). */
+export const AKSI_LOG = ["BUAT", "UBAH", "HAPUS", "EKSPOR", "AJUKAN", "TARIK", "SETUJU", "TOLAK", "BATAL"] as const;
 export type AksiLog = (typeof AKSI_LOG)[number];
+
+/** Filter tab Log Pengisian → aksi yang ditampilkan. */
+export const JENIS_LOG = {
+  semua: null,
+  catatan: ["BUAT", "UBAH", "HAPUS"],
+  laporan: ["EKSPOR"],
+  persetujuan: ["AJUKAN", "TARIK", "SETUJU", "TOLAK", "BATAL"],
+} as const satisfies Record<string, readonly AksiLog[] | null>;
+export type JenisLog = keyof typeof JENIS_LOG;
+
+/* ------------------------------------------- persetujuan & tanda tangan */
+
+/** Status pengajuan persetujuan laporan bulanan (PRD §15.2). */
+export const STATUS_PENGAJUAN = ["MENUNGGU_ATASAN", "MENUNGGU_MENGETAHUI", "DISETUJUI", "DITOLAK", "DITARIK", "DIBATALKAN"] as const;
+export type StatusPengajuan = (typeof STATUS_PENGAJUAN)[number];
+
+/** Status yang mengunci catatan bulan itu (pengajuan masih "aktif"). */
+export const STATUS_AKTIF: ReadonlySet<StatusPengajuan> = new Set(["MENUNGGU_ATASAN", "MENUNGGU_MENGETAHUI", "DISETUJUI"]);
+
+export const LABEL_STATUS_PENGAJUAN: Record<StatusPengajuan, string> = {
+  MENUNGGU_ATASAN: "Menunggu atasan",
+  MENUNGGU_MENGETAHUI: "Menunggu Mengetahui",
+  DISETUJUI: "Disetujui",
+  DITOLAK: "Ditolak",
+  DITARIK: "Ditarik",
+  DIBATALKAN: "Dibatalkan",
+};
+
+/** Peran penanda tangan laporan (blok TTD PDF). */
+export const PERAN_TTD = ["PEGAWAI", "ATASAN", "MENGETAHUI"] as const;
+export type PeranTtd = (typeof PERAN_TTD)[number];
+export const LABEL_PERAN_TTD: Record<PeranTtd, string> = {
+  PEGAWAI: "Yang melaporkan",
+  ATASAN: "Atasan langsung",
+  MENGETAHUI: "Mengetahui",
+};
+
+/** Kunci `bckh_setelan`. */
+export const SETELAN = { mengetahuiId: "mengetahui_id" } as const;
+
+export const MAKS_CATATAN_PENGAJUAN = 500;
+export const MAKS_ALASAN = 500;
+export const PENGAJUAN_PER_HALAMAN = 20;
 
 /** Aksi audit_log untuk perubahan pengaturan laporan. */
 export const AKSI_AUDIT_PENGATURAN = "bckh.pengaturan";

@@ -1,27 +1,28 @@
 import "server-only";
 import { tanggalHariIniWita } from "@/lib/format";
 import { getAppDb } from "@/server/db/app.client";
+import { ValidationError } from "@/server/lib/errors";
 import type { PenggunaBckh } from "./bckh.akses";
 import {
   ambangTingkat,
   hariDalamMinggu,
   hitungStreak,
   kegiatanRutin,
+  namaBergelar,
   tambahHari,
 } from "./bckh.aturan";
 import { versiAvatar } from "./bckh.avatar";
+import { bacaAtasanId, penyetujuSah } from "./bckh.relasi";
 import { JENDELA_RUTIN_HARI, STATUS_BEKERJA } from "./bckh.constants";
 import { hariRingkas, semuaTanggal } from "./bckh.dal";
 import type { SimpanProfilInput } from "./bckh.schema";
 import type { ProfilDto, ProfilResult, RingkasBulan } from "./bckh.types";
 
-/** "dr. Nama, S.Kom" dari kolom gelar akun. */
-export const namaBergelar = (p: PenggunaBckh) =>
-  `${p.gelarDepan ? `${p.gelarDepan} ` : ""}${p.name}${p.gelarBelakang ? `, ${p.gelarBelakang}` : ""}`.trim();
+export { namaBergelar };
 
-type BarisProfil = Omit<ProfilDto, "userId" | "username" | "namaAkun" | "tersimpan">;
+type BarisProfil = Omit<ProfilDto, "userId" | "username" | "namaAkun" | "tersimpan" | "atasanId">;
 
-export function susunProfil(p: PenggunaBckh, row: BarisProfil | null): ProfilDto {
+export function susunProfil(p: PenggunaBckh, row: BarisProfil | null, atasanId: string | null = null): ProfilDto {
   const nama = namaBergelar(p);
   return {
     userId: p.id,
@@ -34,6 +35,7 @@ export function susunProfil(p: PenggunaBckh, row: BarisProfil | null): ProfilDto
     unit: row?.unit ?? "",
     atasanNama: row?.atasanNama ?? "",
     atasanNip: row?.atasanNip ?? "",
+    atasanId,
     tersimpan: !!row,
   };
 }
@@ -49,19 +51,33 @@ const PILIH_PROFIL = {
 } as const;
 
 export async function bacaProfil(p: PenggunaBckh): Promise<ProfilDto> {
-  const row = await getAppDb().bckhProfil.findUnique({ where: { userId: p.id }, select: PILIH_PROFIL });
-  return susunProfil(p, row);
+  const [row, atasanId] = await Promise.all([
+    getAppDb().bckhProfil.findUnique({ where: { userId: p.id }, select: PILIH_PROFIL }),
+    bacaAtasanId(p.id),
+  ]);
+  return susunProfil(p, row, atasanId);
 }
 
-/** Simpan profil laporan SENDIRI. */
+/**
+ * Simpan profil laporan SENDIRI. `atasanId` (bila dikirim) = akun atasan tujuan
+ * pengajuan tanda tangan: wajib akun penyetuju yang sah dan bukan diri sendiri.
+ */
 export async function simpanProfil(p: PenggunaBckh, input: SimpanProfilInput): Promise<ProfilDto> {
-  const row = await getAppDb().bckhProfil.upsert({
-    where: { userId: p.id },
-    create: { userId: p.id, ...input },
-    update: input,
-    select: PILIH_PROFIL,
+  const { atasanId, ...isi } = input;
+  if (atasanId) {
+    if (atasanId === p.id) throw new ValidationError({ formErrors: [], fieldErrors: { atasanId: ["Atasan langsung tidak boleh akun sendiri"] } });
+    if (!(await penyetujuSah(atasanId))) {
+      throw new ValidationError({ formErrors: [], fieldErrors: { atasanId: ["Akun ini tidak berwenang menyetujui laporan BCKH"] } });
+    }
+  }
+  const db = getAppDb();
+  const row = await db.$transaction(async (tx) => {
+    const r = await tx.bckhProfil.upsert({ where: { userId: p.id }, create: { userId: p.id, ...isi }, update: isi, select: PILIH_PROFIL });
+    if (atasanId) await tx.bckhAtasan.upsert({ where: { userId: p.id }, create: { userId: p.id, atasanId }, update: { atasanId } });
+    else if (atasanId === null) await tx.bckhAtasan.deleteMany({ where: { userId: p.id } });
+    return r;
   });
-  return susunProfil(p, row);
+  return susunProfil(p, row, atasanId === undefined ? await bacaAtasanId(p.id) : atasanId);
 }
 
 /**

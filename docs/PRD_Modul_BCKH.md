@@ -4,7 +4,7 @@
 
 **Project:** ReportHub (`reporthubrsb`) · Workspace baru **BCKH** (`/bckh`)
 **Organisasi:** UPTD RSUD Bolaang Mongondow Timur
-**Versi:** 1.1 · **Tanggal:** 2 November 2026 · **Status:** B0–B6 selesai (§13); v1.1 = status Remote, foto profil, responsif tanpa gulir menyamping (§14)
+**Versi:** 1.2 · **Tanggal:** 3 November 2026 · **Status:** B0–B6 selesai (§13); v1.1 = status Remote, foto profil, responsif tanpa gulir menyamping (§14); v1.2 = persetujuan & tanda tangan atasan → direktur, Pegawai saya, log berhalaman, pengaturan didesain ulang, tab Summary (§15)
 **Sifat data:** Modul ini **tidak membaca maupun menulis SIMGOS**. Semua data disimpan di DB aplikasi `reporthub` (tabel baru `bckh_*`, dibuat dengan `CREATE TABLE IF NOT EXISTS`, tanpa mengubah tabel lain).
 
 ---
@@ -437,3 +437,174 @@ Permintaan pengguna: tampilan menyesuaikan semua ukuran layar, avatar profil BCK
 | Audit responsif `bckh-responsif.mjs` | **90/90** (15 lebar 320–2560 px × 6 halaman; layar sentuh & mouse): luapan halaman 0, elemen bergulir samping 0, elemen keluar layar 0, bar tab pas, label grafik tak terpotong, tanpa galat JS |
 
 Deploy: tanpa migrasi baru (cukup `docker compose build && docker compose up -d`). Foto tersimpan di bind mount `./storage` yang sudah ada (pemilik UID 1001).
+
+---
+
+## 15. v1.2 — Persetujuan & Tanda Tangan, Pegawai Saya, Log Berhalaman (3 November 2026)
+
+Permintaan pengguna:
+- kartu pengaturan laporan lebih interaktif dan elegan;
+- log pengisian berhalaman;
+- tab "Ikhtisar" diganti "Summary";
+- menu bagi atasan untuk melihat pegawainya beserta profil BCKH-nya;
+- pegawai mengajukan laporan bulanan untuk disetujui dan **ditandatangani** atasan langsung, lalu diketahui direktur.
+
+**Keputusan pengguna (3 Nov):**
+- Boleh menambah **tabel baru** di DB `reporthub`. Tabel `bckh_*` lama tidak diubah dan SIMGOS tidak disentuh.
+- Atasan dipilih pegawai sendiri di profil, sebagai **akun**. Akun direktur ("Mengetahui") dipilih admin di Pengaturan laporan.
+- Alur **berurutan**: atasan dulu, lalu direktur. Pegawai boleh memilih cukup sampai atasan.
+- PDF memuat **gambar TTD dan QR verifikasi**. Halaman verifikasinya perlu login.
+
+### 15.1. Model data (tabel baru, DDL di `scripts/db/bckh.sql`, idempoten)
+
+| Tabel | Isi |
+| --- | --- |
+| `bckh_atasan` | Pegawai → **akun** atasan langsung, satu baris per pegawai (`user_id` PK, `atasan_id` terindeks). Nama/NIP atasan untuk cetak tetap di `bckh_profil` dan terisi otomatis saat akun dipilih. |
+| `bckh_setelan` | Setelan global kunci–nilai. Kunci `mengetahui_id` = akun direktur penanda tangan "Mengetahui". Dibuat kunci–nilai agar setelan berikutnya tak perlu `ALTER`. |
+| `bckh_pengajuan` | Satu pengajuan per (pegawai, bulan, percobaan); lihat kolom di bawah tabel ini. |
+| `bckh_ttd` | Gambar TTD per pengajuan × peran (PEGAWAI / ATASAN / MENGETAHUI): PNG yang dinormalkan server, SHA-256, penanda tangan, IP, waktu. Sekali tulis. |
+
+Kolom utama `bckh_pengajuan`:
+- `status`;
+- `aktif` = `'1'` selama berjalan atau disetujui, NULL bila berakhir. `UNIQUE(user_id, bulan, aktif)` menjamin hanya satu pengajuan aktif per bulan, juga saat dua klik terjadi bersamaan;
+- `sampai_mengetahui`;
+- akun penanda tangan yang dibekukan saat pengajuan: `atasan_id`, `mengetahui_id`;
+- `isi` = **snapshot laporan** (profil, pengaturan, baris) beserta segelnya di `isi_sha256`. Segel itu **HMAC-SHA256 berkunci server**, bukan SHA-256 polos. Kuncinya diturunkan dari `FORM_RM_KUNCI_INTEGRITAS` dengan label `bckh.pengajuan.isi.v1`, jadi isi yang diubah langsung di DB tidak bisa disegel ulang. Tanpa kunci, pengajuan ditolak 503;
+- `token` 128-bit untuk URL verifikasi;
+- catatan pegawai, alasan tolak/batal, dan pelaku pengakhiran.
+
+### 15.2. Alur & aturan
+
+```
+            ajukan (+TTD pegawai)
+ (tidak ada) ─────────────────────▶ MENUNGGU_ATASAN ──setujui (+TTD atasan)──▶ MENUNGGU_MENGETAHUI ──setujui (+TTD direktur)──▶ DISETUJUI
+                                       │      └─ bila tidak sampai Mengetahui ───────────────────────────────────────────────▶ DISETUJUI
+                                       ├─ tolak (alasan) ▶ DITOLAK         (juga dari MENUNGGU_MENGETAHUI)
+                                       └─ tarik (pegawai) ▶ DITARIK        (juga dari MENUNGGU_MENGETAHUI)
+ DISETUJUI ── batalkan (atasan/direktur pengajuan itu, alasan) ▶ DIBATALKAN
+```
+
+**Mengajukan.** Syarat:
+- bulan ≤ bulan berjalan dan sudah ada catatan;
+- jabatan terisi;
+- akun atasan sudah dipilih dan bukan diri sendiri;
+- bila sampai Mengetahui, akun direktur sudah diatur.
+
+Pegawai menandatangani sebagai "Yang melaporkan". Snapshot laporan dibekukan saat itu, dan PDF yang disahkan selalu dibangun dari snapshot, sehingga perubahan profil/pengaturan sesudahnya tidak mengubah dokumen bertanda tangan. Bila bulan yang diajukan belum berakhir, UI memberi peringatan.
+
+**Kunci.** Selama pengajuan aktif (menunggu atau disetujui), catatan bulan itu tak bisa dibuat, diubah, atau dihapus (409). Untuk mengubah: pengajuan ditarik, ditolak, atau dibatalkan.
+
+**Penanda tangan.** Hanya akun yang dituju pada tahap berjalan yang bisa menyetujui atau menolak; superadmin pun tidak bisa menandatangani atas nama orang lain. Ia juga harus memegang `bckh.persetujuan:update`. Setiap transisi berupa update bersyarat status (atomik), jadi persetujuan ganda bersamaan ditolak 409.
+
+**TTD.** Bisa digambar, diunggah, lewat kamera, atau via HP (komponen `SignaturePad` Form RM). Bisa juga memakai **TTD tersimpan** milik sendiri, yaitu tabel Form RM `form_rm_ttd_petugas` yang sama, sehingga satu TTD berlaku di dua modul. Server menormalkan PNG (`normalkanPng`).
+
+**Log pengisian** mendapat aksi `AJUKAN` / `TARIK` / `SETUJU` / `TOLAK` / `BATAL` (rincian: bulan, peran, alasan ≤ 200 karakter).
+
+### 15.3. Hak akses
+
+Modul baru **`bckh.persetujuan`** "Pegawai & Persetujuan (Atasan)":
+- `view` = menu, kotak masuk, pegawai saya, profil bawahan (hanya-lihat);
+- `update` = setujui/tolak/batalkan & TTD;
+- `print` = unduh laporan bawahan.
+
+**Bawahan** seorang penampil adalah pegawai yang memilih akunnya sebagai atasan, atau semua pegawai bila ia direktur "Mengetahui". Pegawai yang pernah mengajukan kepadanya juga ikut, untuk riwayat.
+
+`aksesBaca` kini mengizinkan pegawai lain bila penampil memegang `bckh.tim`, atau memegang `bckh.persetujuan` dan target adalah bawahannya.
+
+Daftar akun yang bisa dipilih sebagai atasan/direktur: pengguna aktif yang perannya memegang `bckh.persetujuan:update`, atau superadmin.
+
+### 15.4. UI
+
+- **Tab "Summary"** (dulu Ikhtisar; kunci URL tetap `ikhtisar`).
+- **Laporan › kartu "Persetujuan & tanda tangan"**:
+  - stepper Diajukan → Atasan → Mengetahui → Disetujui, berisi nama, waktu, dan gambar TTD;
+  - tombol **Ajukan tanda tangan** membuka dialog: ringkasan kelengkapan, tujuan (atasan saja / sampai Mengetahui), catatan, dan TTD pegawai;
+  - **Tarik pengajuan**;
+  - alasan tolak/batal ditampilkan;
+  - pratinjau memakai snapshot saat pengajuan aktif.
+- **Pengaturan laporan** (modal didesain ulang):
+  - dua bagian, Kop sampul dan Penandatangan "Mengetahui";
+  - **pratinjau langsung** sampul dan blok TTD;
+  - pemilih **akun direktur** yang mengisi nama/NIP;
+  - penanda "diubah", kembalikan bawaan per bidang, info terakhir diubah.
+- **Ubah profil laporan:** pemilih **akun atasan** (cari nama) yang mengisi nama/NIP atasan; tetap bisa diubah manual untuk cetak.
+- **Menu "Pegawai & Persetujuan"** (`/bckh/persetujuan`), tiga tab:
+  - **Perlu tanda tangan** (lencana jumlah): kartu pengajuan → panel tinjau berisi pratinjau kertas snapshot, tahapan, dan aksi **Setujui & tanda tangani** / **Tolak**;
+  - **Riwayat**: semua pengajuan yang pernah dituju, termasuk tombol batalkan bila disetujui;
+  - **Pegawai saya**: master–detail, yaitu daftar (cari, filter status laporan bulan) dan panel detail (identitas, kepatuhan, grafik 5 minggu, status laporan bulan, kegiatan terakhir, tautan profil lengkap). Di ponsel detailnya tampil di drawer.
+- Profil bawahan hanya-lihat di `/bckh/persetujuan/pegawai/<username>`.
+- **Log berhalaman:**
+  - 20 entri per halaman dengan nomor halaman;
+  - filter Semua / Catatan / Laporan / Persetujuan;
+  - "Menampilkan a–b dari n";
+  - ganti filter kembali ke halaman 1; halaman di luar jangkauan dijepit server ke halaman terakhir. API lama `?sebelum=` (cursor) dihapus dan kini ditolak 422.
+- **Verifikasi** `/bckh/verifikasi/<token>` (perlu login, pemegang salah satu izin BCKH):
+  - status keaslian, identitas, bulan, penanda tangan dan waktunya;
+  - kode SHA-256 snapshot;
+  - tautan PDF bila penampil berhak.
+
+### 15.5. PDF
+
+Bila bulan punya pengajuan **aktif**, PDF dibangun dari snapshot:
+- gambar TTD yang sudah ada dibubuhkan di atas nama tiap blok (Yang melaporkan, Atasan langsung, Mengetahui);
+- bila **DISETUJUI**, QR verifikasi 56 pt ditambahkan di kanan blok "Mengetahui", dengan keterangan "Disahkan elektronik" dan kode 8 heksa.
+
+Tanpa `PUBLIC_APP_ORIGIN`, QR tidak dicetak (hanya kode). Tata letak 1:1 lainnya tidak berubah.
+
+Bila isi snapshot tidak cocok dengan segelnya, sistem gagal tertutup (fail-closed):
+- PDF tidak diterbitkan (409);
+- pengajuan tidak bisa disetujui (409), tetapi masih bisa ditolak;
+- halaman verifikasi menampilkan "Isi dokumen tidak cocok".
+
+### 15.6. API baru
+
+| Endpoint | Izin | Keterangan |
+| --- | --- | --- |
+| `GET /api/bckh/penyetuju` | `bckh:update` atau `bckh.pengaturan:update` | Akun yang bisa dipilih sebagai atasan / direktur |
+| `GET /api/bckh/pengajuan?bulan=&u=` | `bckh:view` (sendiri), `bckh.tim:view`, atau `bckh.persetujuan:view` + bawahan | Status bulan: pengajuan aktif (snapshot + TTD), atau yang terakhir berakhir, plus kesiapan mengajukan |
+| `POST /api/bckh/pengajuan` `{bulan, sampaiMengetahui, catatan, ttd}` | `bckh:update`, CSRF, laju | Ajukan laporan SENDIRI + TTD pegawai |
+| `POST /api/bckh/pengajuan/<id>/tarik` | `bckh:update` | Hanya pemilik, sebelum disahkan |
+| `GET /api/bckh/persetujuan?tab=menunggu\|riwayat&halaman=` | `bckh.persetujuan:view` | Kotak masuk penanda tangan (20 per halaman) + jumlah menunggu |
+| `GET /api/bckh/persetujuan/<id>` | `bckh.persetujuan:view` + berhak atas pemilik | Detail + snapshot + gambar TTD + status segel |
+| `POST /api/bckh/persetujuan/<id>/setujui\|tolak\|batalkan` | `bckh.persetujuan:update`, CSRF, laju | Setujui `{ttd}`, tolak / batalkan `{alasan}`. Hanya akun yang dituju; klik ganda → 409 |
+| `GET /api/bckh/persetujuan/pegawai?bulan=` | `bckh.persetujuan:view` | Pegawai saya + kepatuhan + status laporan bulan |
+| `GET/PUT/DELETE /api/bckh/ttd-saya` | `bckh` atau `bckh.persetujuan` | TTD tersimpan milik sendiri (tabel Form RM `form_rm_ttd_petugas`) |
+| `GET /api/bckh/log?halaman=&jenis=` | seperti sebelumnya | Berhalaman nomor; `jenis` = semua / catatan / laporan / persetujuan |
+
+Halaman baru:
+- `/bckh/persetujuan` (`?tab=`, `?buka=<id>`);
+- `/bckh/persetujuan/pegawai/<username>` (bukan bawahan → 404);
+- `/bckh/verifikasi/<token>` (login + salah satu izin BCKH; tanpa login diarahkan ke login dengan `callbackUrl`).
+
+`PUT /api/bckh/profil` menerima `atasanId` dan `PUT /api/bckh/pengaturan` menerima `mengetahuiId` (opsional). Keduanya wajib akun penyetuju yang sah; atasan tidak boleh diri sendiri. Perubahan akun direktur diaudit.
+
+### 15.7. Peta kode
+
+| Lapisan | Berkas |
+| --- | --- |
+| DB | `scripts/db/bckh.sql` (+4 tabel), `migrate-bckh.mjs`, model Prisma `BckhAtasan`/`BckhSetelan`/`BckhPengajuan`/`BckhTtd` |
+| Server | `bckh.relasi.ts` (bawahan, daftar penyetuju, setelan), `bckh.persetujuan.ts` (alur, segel, kotak masuk, pegawai saya, verifikasi, bahan PDF), `bckh.catatan.ts` (kunci bulan + log berhalaman), `bckh.akses.ts` (relasi atasan), `bckh.pdf.ts` (TTD + QR), `server/lib/pdf-qr.ts` (QR vektor bersama, juga dipakai label inventaris) |
+| UI | `KartuPersetujuan.tsx` (stepper, dialog ajukan, tarik), `TinjauPengajuan.tsx` (panel tinjau & tanda tangan), `PersetujuanView.tsx`, `PegawaiSaya.tsx`, `PemilihAkun.tsx`, `TtdBckh.tsx` (SignaturePad Form RM + TTD tersimpan), `KertasLaporan.tsx` (pratinjau kertas + blok TTD), `PengaturanModal.tsx` (didesain ulang), `ProfilModal.tsx` (akun atasan), `TabLog.tsx` (berhalaman) |
+
+### 15.8. Verifikasi v1.2 (build produksi :3100)
+
+| Uji | Hasil |
+| --- | --- |
+| `tsc`, ESLint (seluruh `src`) | bersih |
+| Unit (Vitest) | **563/563** (+ alur status, tarik/batal, kode, ringkasan baris, skema ajukan/setujui/alasan, log berhalaman, `modules.test` modul baru) |
+| E2E persetujuan `bckh-aju-e2e.mjs` | **108/108**. Mencakup: penyetuju sah, relasi akses (atasan / direktur / bukan bawahan / akun tak ada → 403), halaman bawahan 404, syarat & validasi TTD (SVG/HTML/PNG rusak → 422), CSRF, ganda → 409, kunci catatan, giliran tahap, klik ganda → 409, PDF 2→3 TTD, verifikasi (sah / tanpa tautan PDF / token tak dikenal / tanpa login → login / tanpa izin → 403), batal → terbuka lagi, tolak, tarik, setujui bersamaan (tepat satu sukses), satu pengajuan aktif per bulan di DB, segel HMAC (isi diubah di DB → setujui & PDF 409, verifikasi "tidak cocok"), log persetujuan & halaman, TTD tersimpan hanya milik sendiri |
+| UI `bckh-aju-ui.mjs` | **42/42**. Mencakup: label Summary, log halaman 2 + filter, ajukan dengan TTD digambar di kanvas, tinjau & tanda tangan atasan → direktur (`?buka=`), kartu "Disahkan" → verifikasi, pegawai saya master–detail + profil bawahan, pratinjau langsung pengaturan + kembalikan bawaan, ponsel 390 px (tab 3 kolom, detail & tinjau di drawer, tanpa luapan), tanpa galat JS |
+| Regresi | E2E BCKH 138/138 (uji log disesuaikan ke halaman nomor), UI 35/35, laci 8/8, audit responsif 14 lebar × 6 halaman bersih, label QR inventaris tetap terbangun |
+| Data | data uji 0 tersisa; `bckh_setelan` & `bckh_pengaturan` dipulihkan persis; data nyata tak berubah |
+
+### 15.9. Deploy v1.2
+
+1. `docker compose build`
+2. `docker compose run --rm migrate scripts/db/migrate-bckh.mjs`. Idempoten: hanya `CREATE TABLE IF NOT EXISTS`, menambah 4 tabel baru, tanpa `ALTER`/`DROP`.
+3. `docker compose up -d`
+4. Pastikan `FORM_RM_KUNCI_INTEGRITAS` sudah ada di `.env` produksi. Kunci ini sudah dipakai Form RM dan **jangan diganti**.
+5. Master › Peran: beri peran atasan dan direktur hak **Pegawai & Persetujuan** (lihat, ubah, cetak).
+6. Admin memilih akun direktur di Laporan › Pengaturan laporan.
+7. Pegawai memilih akun atasan di "Ubah profil laporan".
+
+QR verifikasi memakai `PUBLIC_APP_ORIGIN` / `SIGN_PUBLIC_ORIGIN`. Tanpa salah satunya, PDF hanya mencetak kode verifikasi.

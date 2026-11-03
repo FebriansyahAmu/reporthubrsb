@@ -2,11 +2,13 @@ import "server-only";
 import { tanggalHariIniWita } from "@/lib/format";
 import { getAppDb } from "@/server/db/app.client";
 import { writeAudit } from "@/server/lib/audit";
+import { ValidationError } from "@/server/lib/errors";
 import type { PenggunaBckh } from "./bckh.akses";
 import { barisLaporan, hariKerjaDalam, hitungDasbor, rentangBulanIni } from "./bckh.aturan";
-import { AKSI_AUDIT_PENGATURAN, NAMA_BULAN, PENGATURAN_BAWAAN, type PengaturanLaporan } from "./bckh.constants";
+import { AKSI_AUDIT_PENGATURAN, NAMA_BULAN, PENGATURAN_BAWAAN, SETELAN, type PengaturanLaporan } from "./bckh.constants";
 import { hariRingkas } from "./bckh.dal";
 import { bacaProfil } from "./bckh.profil";
+import { bacaMengetahuiId, penyetujuSah } from "./bckh.relasi";
 import type { SimpanPengaturanInput } from "./bckh.schema";
 import type { DasborResult, LaporanResult } from "./bckh.types";
 
@@ -22,34 +24,60 @@ const PILIH_PENGATURAN = {
   mengetahuiNip: true,
 } as const;
 
-export type PengaturanDto = PengaturanLaporan & { tersimpan: boolean; diubahOleh: string | null; diubahAt: string | null };
+export type PengaturanDto = PengaturanLaporan & {
+  /** Akun direktur penanda tangan "Mengetahui" (tujuan tahap kedua pengajuan). */
+  mengetahuiId: string | null;
+  tersimpan: boolean;
+  diubahOleh: string | null;
+  diubahAt: string | null;
+};
 
 export async function bacaPengaturan(): Promise<PengaturanDto> {
-  const row = await getAppDb().bckhPengaturan.findUnique({
-    where: { id: 1 },
-    select: { ...PILIH_PENGATURAN, diubahOlehNama: true, updatedAt: true },
-  });
-  if (!row) return { ...PENGATURAN_BAWAAN, tersimpan: false, diubahOleh: null, diubahAt: null };
+  const [row, mengetahuiId] = await Promise.all([
+    getAppDb().bckhPengaturan.findUnique({
+      where: { id: 1 },
+      select: { ...PILIH_PENGATURAN, diubahOlehNama: true, updatedAt: true },
+    }),
+    bacaMengetahuiId(),
+  ]);
+  if (!row) return { ...PENGATURAN_BAWAAN, mengetahuiId, tersimpan: false, diubahOleh: null, diubahAt: null };
   const { diubahOlehNama, updatedAt, ...isi } = row;
-  return { ...isi, tersimpan: true, diubahOleh: diubahOlehNama, diubahAt: updatedAt.toISOString() };
+  return { ...isi, mengetahuiId, tersimpan: true, diubahOleh: diubahOlehNama, diubahAt: updatedAt.toISOString() };
 }
 
-/** Simpan pengaturan laporan global + jejak `audit_log` (dari → ke per field yang berubah). */
+/**
+ * Simpan pengaturan laporan global + jejak `audit_log` (dari → ke per field yang
+ * berubah). `mengetahuiId` (bila dikirim) wajib akun penyetuju yang sah.
+ */
 export async function simpanPengaturan(
   input: SimpanPengaturanInput,
   aktor: { id: string; nama: string; ip: string | null },
 ): Promise<PengaturanDto> {
+  if (input.mengetahuiId && !(await penyetujuSah(input.mengetahuiId))) {
+    throw new ValidationError({ formErrors: [], fieldErrors: { mengetahuiId: ["Akun ini tidak berwenang menyetujui laporan BCKH"] } });
+  }
   const lama = await bacaPengaturan();
-  const berubah = (Object.keys(input) as (keyof SimpanPengaturanInput)[]).filter((k) => lama[k] !== input[k]);
-  if (berubah.length === 0 && lama.tersimpan) return lama;
+  const { mengetahuiId, ...teks } = input;
+  const ubahAkun = mengetahuiId !== undefined && mengetahuiId !== lama.mengetahuiId;
+  const berubah = (Object.keys(teks) as (keyof typeof teks)[]).filter((k) => lama[k] !== teks[k]);
+  if (berubah.length === 0 && !ubahAkun && lama.tersimpan) return lama;
   const oleh = { diubahOlehId: aktor.id, diubahOlehNama: aktor.nama.slice(0, 191) };
-  await getAppDb().bckhPengaturan.upsert({ where: { id: 1 }, create: { id: 1, ...input, ...oleh }, update: { ...input, ...oleh } });
+  await getAppDb().$transaction(async (tx) => {
+    await tx.bckhPengaturan.upsert({ where: { id: 1 }, create: { id: 1, ...teks, ...oleh }, update: { ...teks, ...oleh } });
+    if (ubahAkun) {
+      const kunci = SETELAN.mengetahuiId;
+      if (mengetahuiId) await tx.bckhSetelan.upsert({ where: { kunci }, create: { kunci, nilai: mengetahuiId, ...oleh }, update: { nilai: mengetahuiId, ...oleh } });
+      else await tx.bckhSetelan.deleteMany({ where: { kunci } });
+    }
+  });
+  const perubahan: Record<string, { dari: string | null; ke: string | null }> = Object.fromEntries(berubah.map((k) => [k, { dari: lama[k], ke: teks[k] }]));
+  if (ubahAkun) perubahan.mengetahuiId = { dari: lama.mengetahuiId, ke: mengetahuiId ?? null };
   await writeAudit({
     actorId: aktor.id,
     actorName: aktor.nama,
     action: AKSI_AUDIT_PENGATURAN,
     targetId: "bckh_pengaturan",
-    metadata: { perubahan: Object.fromEntries(berubah.map((k) => [k, { dari: lama[k], ke: input[k] }])) },
+    metadata: { perubahan },
     ip: aktor.ip,
   });
   return bacaPengaturan();

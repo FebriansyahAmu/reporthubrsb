@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { bersihkanTeks, selisihHari, tanggalSah } from "./bckh.aturan";
 import {
+  JENIS_LOG,
   KATEGORI,
+  MAKS_ALASAN,
+  MAKS_CATATAN_PENGAJUAN,
   MAKS_KEGIATAN_PER_HARI,
   MAKS_KETERANGAN,
   MAKS_RENTANG_HARI,
@@ -10,6 +13,7 @@ import {
   STATUS_HARI,
   STATUS_WAJIB_KEGIATAN,
   TARGET,
+  type JenisLog,
 } from "./bckh.constants";
 
 /** Tanggal kalender `YYYY-MM-DD` yang sah (tolak 2026-02-30). */
@@ -85,7 +89,8 @@ export const rentangQuerySchema = z
 export const hariQuerySchema = z.strictObject({ u: targetSchema });
 
 export const logQuerySchema = z.strictObject({
-  sebelum: z.coerce.number().int().positive().optional(),
+  halaman: z.coerce.number().int().min(1).max(100_000).default(1),
+  jenis: z.enum(Object.keys(JENIS_LOG) as [JenisLog, ...JenisLog[]]).default("semua"),
   u: targetSchema,
 });
 
@@ -105,6 +110,9 @@ export const paramObjek = (sp: URLSearchParams) => Object.fromEntries(sp.entries
 const NIP = (label: string) =>
   teks(40, `${label} maksimal 40 karakter`).pipe(z.string().regex(/^[0-9 .\-]*$/, `${label} hanya berisi angka, spasi, titik, atau tanda hubung`));
 
+/** ID akun (users.id) — penanda tangan yang dipilih. */
+const idAkun = z.string().regex(/^[A-Za-z0-9_-]{1,191}$/, "Akun tidak valid");
+
 export const simpanProfilSchema = z.strictObject({
   namaLengkap: teksWajib(191, "Nama lengkap"),
   namaTtd: teksWajib(191, "Nama tanda tangan"),
@@ -113,6 +121,8 @@ export const simpanProfilSchema = z.strictObject({
   unit: teks(191, "Unit maksimal 191 karakter"),
   atasanNama: teks(191, "Nama atasan maksimal 191 karakter"),
   atasanNip: NIP("NIP atasan"),
+  /** Akun atasan langsung (tujuan pengajuan tanda tangan); null = lepas; tak dikirim = tak diubah. */
+  atasanId: idAkun.nullable().optional(),
 });
 export type SimpanProfilInput = z.infer<typeof simpanProfilSchema>;
 
@@ -124,5 +134,44 @@ export const simpanPengaturanSchema = z.strictObject({
   mengetahuiJabatan: teksWajib(191, "Jabatan penandatangan"),
   mengetahuiNama: teksWajib(191, "Nama penandatangan"),
   mengetahuiNip: NIP("NIP penandatangan"),
+  /** Akun direktur penanda tangan "Mengetahui"; null = lepas; tak dikirim = tak diubah. */
+  mengetahuiId: idAkun.nullable().optional(),
 });
 export type SimpanPengaturanInput = z.infer<typeof simpanPengaturanSchema>;
+
+/* ------------------------------------------------------------ persetujuan */
+
+const DATA_URL_PNG = /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/;
+/** ≈ 450 KB PNG setelah base64 (sama dengan TTD Form RM). */
+export const MAKS_TTD_KARAKTER = 600_000;
+/** Body JSON berisi satu TTD + teks pendek. */
+export const BATAS_BODY_TTD = 700 * 1024;
+
+const ttdSchema = z.string().max(MAKS_TTD_KARAKTER, "Gambar tanda tangan terlalu besar").regex(DATA_URL_PNG, "Tanda tangan harus berupa gambar PNG");
+
+export const ajukanSchema = z.strictObject({
+  bulan: bulanSchema,
+  sampaiMengetahui: z.boolean(),
+  catatan: teks(MAKS_CATATAN_PENGAJUAN, `Catatan maksimal ${MAKS_CATATAN_PENGAJUAN} karakter`).default(""),
+  ttd: ttdSchema,
+});
+export type AjukanInput = z.infer<typeof ajukanSchema>;
+
+export const setujuiSchema = z.strictObject({ ttd: ttdSchema });
+
+export const alasanSchema = z.strictObject({
+  alasan: teksWajib(MAKS_ALASAN, "Alasan"),
+});
+
+/** cuid pengajuan (path). */
+export const idPengajuanSchema = z.string().regex(/^[a-z0-9]{1,30}$/, "Pengajuan tidak valid");
+
+/** Token verifikasi 128-bit (32 heksa). */
+export const tokenVerifikasiSchema = z.string().regex(/^[0-9a-f]{32}$/);
+
+export const statusBulanQuerySchema = z.strictObject({ bulan: bulanSchema, u: targetSchema });
+
+export const kotakMasukQuerySchema = z.strictObject({
+  tab: z.enum(["menunggu", "riwayat"]).default("menunggu"),
+  halaman: z.coerce.number().int().min(1).max(100_000).default(1),
+});

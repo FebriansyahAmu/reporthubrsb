@@ -18,6 +18,7 @@ import {
   TEKS_LAPORAN_STATUS,
   type Kategori,
   type StatusHari,
+  type StatusPengajuan,
   type Target,
 } from "./bckh.constants";
 import type { BarisLaporan, DasborResult, HariRingkas, KegiatanRutin, RincianLog, Streak } from "./bckh.types";
@@ -318,3 +319,39 @@ export function hitungDasbor(hari: HariRingkas[], dari: string, sampai: string, 
 
 /** Persen bulat; penyebut 0 → null (tampil "—"). */
 export const persen = (a: number, b: number): number | null => (b > 0 ? Math.round((a / b) * 100) : null);
+
+/** "dr. Nama, S.Kom" dari kolom gelar akun. */
+export const namaBergelar = (p: { name: string; gelarDepan: string | null; gelarBelakang: string | null }) =>
+  `${p.gelarDepan ? `${p.gelarDepan} ` : ""}${p.name}${p.gelarBelakang ? `, ${p.gelarBelakang}` : ""}`.trim();
+
+/* ------------------------------------------------ persetujuan (PRD §15.2) */
+
+/** Penanda tangan yang sedang ditunggu; null = tak menunggu siapa pun (selesai/berakhir). */
+export function tahapPengajuan(status: StatusPengajuan): "ATASAN" | "MENGETAHUI" | null {
+  if (status === "MENUNGGU_ATASAN") return "ATASAN";
+  if (status === "MENUNGGU_MENGETAHUI") return "MENGETAHUI";
+  return null;
+}
+
+/** Status setelah tahap berjalan disetujui (berurutan: atasan → Mengetahui bila diminta). */
+export function statusSetelahSetuju(status: StatusPengajuan, sampaiMengetahui: boolean): StatusPengajuan | null {
+  if (status === "MENUNGGU_ATASAN") return sampaiMengetahui ? "MENUNGGU_MENGETAHUI" : "DISETUJUI";
+  if (status === "MENUNGGU_MENGETAHUI") return "DISETUJUI";
+  return null;
+}
+
+/** Pegawai boleh menarik selama belum disetujui semua pihak. */
+export const bolehDitarik = (status: StatusPengajuan) => tahapPengajuan(status) !== null;
+
+/** Hanya laporan yang sudah disetujui yang bisa dibatalkan (oleh penanda tangannya). */
+export const bolehDibatalkan = (status: StatusPengajuan) => status === "DISETUJUI";
+
+/** Kode verifikasi singkat (8 heksa besar) dari SHA-256 snapshot — tercetak di PDF & halaman verifikasi. */
+export const kodeVerifikasi = (sha256: string) => sha256.slice(0, 8).toUpperCase();
+
+/** Hari & kegiatan dalam baris laporan (ringkasan kartu pengajuan). */
+export function ringkasBaris(baris: readonly Pick<BarisLaporan, "target" | "catatan">[]): { hari: number; kegiatan: number } {
+  // Baris bekerja = punya target; baris status "TUGAS LUAR" di depan kegiatan bukan kegiatan.
+  const kegiatan = baris.filter((b) => b.target).reduce((n, b) => n + b.catatan.filter((c) => c !== TEKS_LAPORAN_STATUS.TUGAS_LUAR).length, 0);
+  return { hari: baris.length, kegiatan };
+}

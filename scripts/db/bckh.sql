@@ -82,3 +82,74 @@ CREATE TABLE IF NOT EXISTS bckh_pengaturan (
   diubah_oleh_nama    VARCHAR(191) NULL,
   updated_at          DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------------
+-- v1.2 — Persetujuan & tanda tangan (PRD §15). Tabel BARU; tabel di atas tidak diubah.
+-- ---------------------------------------------------------------------------
+
+-- Pegawai → AKUN atasan langsung (dipilih pegawai di profil laporan). Nama/NIP atasan
+-- untuk cetak tetap di bckh_profil (atasan_nama/atasan_nip).
+CREATE TABLE IF NOT EXISTS bckh_atasan (
+  user_id     VARCHAR(191) NOT NULL PRIMARY KEY,
+  atasan_id   VARCHAR(191) NOT NULL,
+  created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  KEY idx_bckh_atasan_atasan (atasan_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Setelan global kunci–nilai (setelan baru tanpa ALTER). mengetahui_id = akun direktur
+-- penanda tangan "Mengetahui".
+CREATE TABLE IF NOT EXISTS bckh_setelan (
+  kunci             VARCHAR(40)  NOT NULL PRIMARY KEY,
+  nilai             VARCHAR(191) NOT NULL,
+  diubah_oleh_id    VARCHAR(191) NULL,
+  diubah_oleh_nama  VARCHAR(191) NULL,
+  updated_at        DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Pengajuan persetujuan laporan bulanan. status: MENUNGGU_ATASAN | MENUNGGU_MENGETAHUI |
+-- DISETUJUI | DITOLAK | DITARIK | DIBATALKAN. aktif = '1' selama berjalan/disetujui, NULL
+-- bila berakhir → UNIQUE (user_id, bulan, aktif) = satu pengajuan aktif per bulan (NULL boleh
+-- berulang). isi = snapshot laporan (JSON) yang ditandatangani; token = URL verifikasi (QR).
+CREATE TABLE IF NOT EXISTS bckh_pengajuan (
+  id                 VARCHAR(30)  NOT NULL PRIMARY KEY,
+  user_id            VARCHAR(191) NOT NULL,
+  bulan              CHAR(7)      NOT NULL,
+  status             VARCHAR(20)  NOT NULL,
+  aktif              CHAR(1)      NULL,
+  sampai_mengetahui  TINYINT(1)   NOT NULL DEFAULT 1,
+  atasan_id          VARCHAR(191) NOT NULL,
+  mengetahui_id      VARCHAR(191) NULL,
+  catatan            VARCHAR(500) NOT NULL DEFAULT '',
+  isi                LONGTEXT     NOT NULL,
+  isi_sha256         CHAR(64)     NOT NULL,
+  token              CHAR(32)     NOT NULL,
+  alasan             VARCHAR(500) NULL,
+  diakhiri_oleh_id   VARCHAR(191) NULL,
+  diakhiri_oleh_nama VARCHAR(191) NULL,
+  diakhiri_at        DATETIME(3)  NULL,
+  diajukan_at        DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at         DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uq_bckh_pengajuan_aktif (user_id, bulan, aktif),
+  UNIQUE KEY uq_bckh_pengajuan_token (token),
+  KEY idx_bckh_pengajuan_user (user_id, bulan),
+  KEY idx_bckh_pengajuan_atasan (atasan_id, status),
+  KEY idx_bckh_pengajuan_mengetahui (mengetahui_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Gambar TTD per pengajuan × peran (PEGAWAI | ATASAN | MENGETAHUI). PNG dinormalkan
+-- server; sekali tulis, tak pernah diubah.
+CREATE TABLE IF NOT EXISTS bckh_ttd (
+  id            VARCHAR(30)  NOT NULL PRIMARY KEY,
+  pengajuan_id  VARCHAR(30)  NOT NULL,
+  peran         VARCHAR(12)  NOT NULL,
+  user_id       VARCHAR(191) NOT NULL,
+  nama          VARCHAR(191) NOT NULL,
+  png           MEDIUMBLOB   NOT NULL,
+  sha256        CHAR(64)     NOT NULL,
+  ukuran        INT          NOT NULL,
+  ip            VARCHAR(64)  NULL,
+  created_at    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uq_bckh_ttd_peran (pengajuan_id, peran),
+  CONSTRAINT fk_bckh_ttd_pengajuan FOREIGN KEY (pengajuan_id) REFERENCES bckh_pengajuan(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

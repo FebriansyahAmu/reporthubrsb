@@ -7,6 +7,7 @@ import { ForbiddenError, NotFoundError, TooManyRequestsError, UnauthorizedError 
 import { asalPublik } from "@/server/lib/public-origin";
 import { buatPembatasLaju } from "@/server/lib/rate-limit";
 import { can } from "@/server/rbac/permissions";
+import { adalahBawahan } from "./bckh.relasi";
 
 /** Akun pemilik catatan (kolom `users` yang dipakai BCKH — tanpa sandi/NIK). */
 export type PenggunaBckh = {
@@ -27,14 +28,21 @@ async function pengguna(where: { id: string } | { username: string }): Promise<P
 }
 
 /**
- * Akses BACA catatan (PRD §3): tanpa `u` / `u` = diri sendiri → `bckh:<aksi>`;
- * pengguna lain → `bckh.tim:<aksi>` (hanya-lihat). Pengguna tak dikenal → 404.
+ * Akses BACA catatan (PRD §3, §15.3): tanpa `u` / `u` = diri sendiri → `bckh:<aksi>`;
+ * pengguna lain → `bckh.tim:<aksi>`, ATAU `bckh.persetujuan:<aksi>` bila target
+ * bawahan penampil (hanya-lihat). Izin dicek sebelum keberadaan target (tak
+ * membocorkan akun); pengguna tak dikenal → 404.
  */
 export async function aksesBaca(u: string | undefined, aksi: "view" | "print" = "view"): Promise<Akses> {
   const penampil = await getCurrentUser();
   if (!penampil) throw new UnauthorizedError();
   const milikSendiri = !u || u === penampil.id;
-  if (!(await can(penampil.role, milikSendiri ? "bckh" : "bckh.tim", aksi))) throw new ForbiddenError();
+  if (milikSendiri) {
+    if (!(await can(penampil.role, "bckh", aksi))) throw new ForbiddenError();
+  } else if (!(await can(penampil.role, "bckh.tim", aksi))) {
+    const lewatAtasan = (await can(penampil.role, "bckh.persetujuan", aksi)) && (await adalahBawahan(penampil.id, u!));
+    if (!lewatAtasan) throw new ForbiddenError();
+  }
   const target = await pengguna({ id: milikSendiri ? penampil.id : u! });
   if (!target) throw new NotFoundError("Pengguna tidak ditemukan");
   return { penampil, target, milikSendiri };

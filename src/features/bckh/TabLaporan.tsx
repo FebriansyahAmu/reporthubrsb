@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Check, CheckCircle2, Download, ExternalLink, Plus, Settings2 } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, Download, ExternalLink, Lock, Plus, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
@@ -11,12 +11,18 @@ import { apiGet } from "@/lib/api-client";
 import { downloadFromEndpoint } from "@/lib/download";
 import { useAsyncData } from "@/lib/useAsyncData";
 import { tanggalPanjang } from "@/server/modules/bckh/bckh.aturan";
-import type { LaporanResult } from "@/server/modules/bckh/bckh.types";
+import type { LaporanResult, StatusBulanDto } from "@/server/modules/bckh/bckh.types";
 import type { HakBckh } from "./tab";
+import { KartuPersetujuan } from "./KartuPersetujuan";
+import { KertasLaporan } from "./KertasLaporan";
 import { PengaturanModal } from "./PengaturanModal";
-import { PemilihBulan, bulanBawaan, labelBulan } from "./ui";
+import { PemilihBulan, bulanBawaan } from "./ui";
 
-/** Pratinjau & unduh Laporan Kinerja Harian (PDF 1:1 dokumen contoh). */
+/**
+ * Pratinjau & unduh Laporan Kinerja Harian (PDF 1:1 dokumen contoh) + kartu
+ * persetujuan & tanda tangan bulan terpilih. Pengajuan aktif → pratinjau & PDF =
+ * snapshot yang diajukan (bertanda tangan); catatan bulan itu terkunci.
+ */
 export function TabLaporan({
   u,
   hariIni,
@@ -37,11 +43,18 @@ export function TabLaporan({
   const [unduh, setUnduh] = useState(false);
   const [atur, setAtur] = useState(false);
   const [versiAtur, setVersiAtur] = useState(0);
+  const [versiAju, setVersiAju] = useState(0);
   const q = new URLSearchParams({ bulan, ...(u ? { u } : {}) });
   const { result: lap, loading, error, reload } = useAsyncData<LaporanResult>(
     () => apiGet<LaporanResult>(`/api/bckh/laporan?${q}`),
-    [bulan, u, segar, versiAtur],
+    [bulan, u, segar, versiAtur, versiAju],
   );
+  // Status persetujuan bulan ini: pengajuan aktif → pratinjau = snapshot yang diajukan + TTD.
+  const { result: aju, reload: muatAju } = useAsyncData<StatusBulanDto>(
+    () => apiGet<StatusBulanDto>(`/api/bckh/pengajuan?${q}`),
+    [bulan, u, segar, versiAtur, versiAju],
+  );
+  const aktif = aju?.bulan === bulan ? aju.aktif : null;
   const urlPdf = `/api/bckh/laporan/pdf?${q}`;
 
   const unduhPdf = async () => {
@@ -92,9 +105,27 @@ export function TabLaporan({
       ) : !lap ? (
         <Skeleton className="h-96 w-full" />
       ) : (
-        <div className={cn("grid gap-5 @5xl:grid-cols-[minmax(0,1fr)_17rem]", loading && "opacity-60")}>
-          <Kertas lap={lap} />
+        <div className={cn("grid gap-5 @5xl:grid-cols-[minmax(0,1fr)_18rem]", loading && "opacity-60")}>
+          <div className="min-w-0 space-y-2">
+            {aktif && (
+              <p className="flex items-center gap-2 rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-xs text-fg-muted">
+                <Lock className="size-3.5 shrink-0" aria-hidden />
+                Pratinjau sesuai yang diajukan {new Date(aktif.diajukanAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })} — catatan bulan ini terkunci.
+              </p>
+            )}
+            <KertasLaporan lap={aktif?.isi ?? lap} ttd={aktif?.ttd} />
+          </div>
           <aside className="order-first grid content-start gap-4 @xl:grid-cols-2 @5xl:order-none @5xl:grid-cols-1">
+            <KartuPersetujuan
+              status={aju?.bulan === bulan ? aju : null}
+              lap={lap}
+              bolehAjukan={lap.milikSendiri && hak.ubah}
+              onUbahProfil={onUbahProfil}
+              onBerubah={() => {
+                setVersiAju((n) => n + 1);
+                void muatAju();
+              }}
+            />
             <section className="rounded-[var(--radius-md)] border border-border bg-surface p-4">
               <h3 className="text-sm font-semibold text-fg">Kelengkapan</h3>
               {lap.kurang.length === 0 ? (
@@ -138,7 +169,7 @@ export function TabLaporan({
                     {lap.hariKerjaKosong.map((t) => (
                       <li key={t} className="flex items-center justify-between gap-2 text-sm text-fg">
                         {tanggalPanjang(t).replace(/ \d{4}$/, "")}
-                        {onIsi && (
+                        {onIsi && !aktif && (
                           <button
                             type="button"
                             onClick={() => onIsi(t)}
@@ -178,98 +209,6 @@ function Ttd({ label, nama, nip }: { label: string; nama: string; nip?: string }
       <dt className="text-fg-subtle">{label}</dt>
       <dd className={cn("font-medium", nama ? "text-fg" : "italic text-warning")}>{nama || "Belum diisi"}</dd>
       {nip && <dd className="text-fg-muted tabular">NIP. {nip}</dd>}
-    </div>
-  );
-}
-
-/**
- * Pratinjau bergaya kertas (Times, seperti PDF) — isi sama dengan PDF. Kertas
- * sempit (ponsel) → tiap baris tabel jadi blok bertumpuk (NO · HARI/TANGGAL,
- * catatan, target, KET) agar tak perlu digulir menyamping.
- */
-function Kertas({ lap }: { lap: LaporanResult }) {
-  const th = "border border-black px-1.5 py-1 font-bold";
-  // overflow-wrap:anywhere → kata/URL panjang tak melebarkan tabel melewati kertas.
-  const td = "border border-black px-1.5 py-1 align-top [overflow-wrap:anywhere]";
-  return (
-    <div className="min-w-0 rounded-[var(--radius-md)] border border-border bg-[#e9eef2] p-2 @md:p-5">
-      <div className="@container mx-auto max-w-[46rem] bg-white p-3 text-black shadow-sm @md:p-8">
-        <p className="mb-1 text-center font-[Arial,Helvetica,sans-serif] text-sm font-bold">LAPORAN KINERJA HARIAN</p>
-        <p className="mb-4 text-center font-[Arial,Helvetica,sans-serif] text-xs font-bold">
-          TAHUN {lap.tahun} · ( BULAN {lap.namaBulan.toUpperCase()} ) · {lap.profil.namaLengkap}
-        </p>
-        <ol data-pratinjau="ringkas" className="border border-black font-[Times_New_Roman,Times,serif] text-[13px] leading-snug @[32rem]:hidden">
-          {lap.baris.length === 0 ? (
-            <li className="px-3 py-6 text-center italic text-neutral-500">Belum ada catatan pada {labelBulan(lap.bulan)}.</li>
-          ) : (
-            lap.baris.map((b) => (
-              <li key={b.tanggal} className="border-t border-black px-2.5 py-2 first:border-t-0">
-                <p className="flex items-baseline justify-between gap-2 font-bold">
-                  <span>
-                    {b.no}. {b.hariTanggal}
-                  </span>
-                  {b.target && <span className="shrink-0 text-[11px]">✓ {b.target}</span>}
-                </p>
-                <ul className="mt-1">
-                  {b.catatan.map((c, i) => (
-                    <li key={i} className="grid grid-cols-[0.9rem_1fr] pl-1">
-                      <span>-</span>
-                      <span className="min-w-0 [overflow-wrap:anywhere]">{c}</span>
-                    </li>
-                  ))}
-                </ul>
-                {b.ket && <p className="mt-1 text-[12px] [overflow-wrap:anywhere]">KET: {b.ket}</p>}
-              </li>
-            ))
-          )}
-        </ol>
-        <div className="hidden @[32rem]:block">
-          <table data-pratinjau="tabel" className="w-full border-collapse font-[Times_New_Roman,Times,serif] text-[13px] leading-snug">
-            <thead>
-              <tr>
-                <th rowSpan={2} className={cn(th, "w-8")}>NO</th>
-                <th rowSpan={2} className={cn(th, "w-28 text-left")}>HARI / TANGGAL</th>
-                <th rowSpan={2} className={th}>CATATAN KINERJA</th>
-                <th colSpan={2} className={th}>TARGET</th>
-                <th rowSpan={2} className={cn(th, "w-20")}>KET</th>
-              </tr>
-              <tr>
-                <th className={cn(th, "w-16")}>PROSES</th>
-                <th className={cn(th, "w-16")}>SELESAI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lap.baris.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className={cn(td, "py-6 text-center italic text-neutral-500")}>
-                    Belum ada catatan pada {labelBulan(lap.bulan)}.
-                  </td>
-                </tr>
-              ) : (
-                lap.baris.map((b) => (
-                  <tr key={b.tanggal}>
-                    <td className={cn(td, "text-center")}>{b.no}.</td>
-                    <td className={td}>{b.hariTanggal}</td>
-                    <td className={cn(td, "align-middle")}>
-                      <ul>
-                        {b.catatan.map((c, i) => (
-                          <li key={i} className="grid grid-cols-[1.1rem_1fr] pl-4">
-                            <span>-</span>
-                            <span>{c}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </td>
-                    <td className={cn(td, "text-center align-middle")}>{b.target === "PROSES" ? "✓" : ""}</td>
-                    <td className={cn(td, "text-center align-middle")}>{b.target === "SELESAI" ? "✓" : ""}</td>
-                    <td className={cn(td, "text-center align-middle")}>{b.ket}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 }

@@ -380,6 +380,19 @@ export const MODULES: readonly AppModule[] = [
     actions: ["view", "update", "print"],
     order: 87,
   },
+  // Atasan langsung & direktur "Mengetahui" (PRD §15.3): bawahan = pegawai yang memilih
+  // akunnya (direktur: semua). update = setujui/tolak/batalkan + TTD; print = unduh laporan bawahan.
+  {
+    key: "bckh.persetujuan",
+    group: "BCKH",
+    label: "Pegawai & Persetujuan",
+    description: "Atasan: lihat pegawai bawahan & profil BCKH-nya, setujui & tanda tangani laporan kinerja yang diajukan (atasan langsung / Mengetahui)",
+    icon: FileSignature,
+    navHref: "/bckh/persetujuan",
+    apiPrefixes: ["/api/bckh/persetujuan"],
+    actions: ["view", "update", "print"],
+    order: 87.5,
+  },
   {
     key: "bckh.tim",
     group: "BCKH",

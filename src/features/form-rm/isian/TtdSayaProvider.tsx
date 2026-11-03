@@ -19,25 +19,35 @@ type NilaiTtdSaya = {
 
 const Konteks = createContext<NilaiTtdSaya | null>(null);
 
-export function TtdSayaProvider({ children }: { children: React.ReactNode }) {
+/**
+ * `endpoint` = API "tanda tangan saya" modul pemakai (bawaan Form RM; BCKH memakai
+ * `/api/bckh/ttd-saya` — tabel & aturan pemilik yang sama, izin modulnya sendiri).
+ */
+export function TtdSayaProvider({ children, endpoint = "/api/form-rm/ttd-saya" }: { children: React.ReactNode; endpoint?: string }) {
   const [data, setData] = useState<DataTtdSaya | null>(null);
 
   useEffect(() => {
     const ac = new AbortController();
-    apiGet<DataTtdSaya>("/api/form-rm/ttd-saya", { signal: ac.signal })
+    apiGet<DataTtdSaya>(endpoint, { signal: ac.signal })
       .then(setData)
       .catch(() => {
         /* tanpa data → tombol "TTD saya" tidak tampil; penandatanganan biasa tetap jalan */
       });
     return () => ac.abort();
-  }, []);
+  }, [endpoint]);
 
-  const simpan = useCallback(async (jenis: JenisTtdSaya, png: string) => {
-    setData(await apiPut<DataTtdSaya>("/api/form-rm/ttd-saya", { jenis, png }));
-  }, []);
-  const hapus = useCallback(async (jenis: JenisTtdSaya) => {
-    setData(await apiDelete<DataTtdSaya>(`/api/form-rm/ttd-saya?jenis=${jenis}`));
-  }, []);
+  const simpan = useCallback(
+    async (jenis: JenisTtdSaya, png: string) => {
+      setData(await apiPut<DataTtdSaya>(endpoint, { jenis, png }));
+    },
+    [endpoint],
+  );
+  const hapus = useCallback(
+    async (jenis: JenisTtdSaya) => {
+      setData(await apiDelete<DataTtdSaya>(`${endpoint}?jenis=${jenis}`));
+    },
+    [endpoint],
+  );
 
   const nilai = useMemo(() => ({ data, simpan, hapus }), [data, simpan, hapus]);
   return <Konteks.Provider value={nilai}>{children}</Konteks.Provider>;

@@ -18,7 +18,11 @@ const require = createRequire(import.meta.url);
 const mariadb = require("mariadb");
 
 /** Tabel yang WAJIB ada setelah migrasi (urutan = urutan FK). */
-const TABLES = ["bckh_profil", "bckh_hari", "bckh_kegiatan", "bckh_log", "bckh_pengaturan"];
+const TABLES = [
+  "bckh_profil", "bckh_hari", "bckh_kegiatan", "bckh_log", "bckh_pengaturan",
+  // v1.2 persetujuan & tanda tangan (PRD §15)
+  "bckh_atasan", "bckh_setelan", "bckh_pengajuan", "bckh_ttd",
+];
 
 // Env: utamakan process.env (env_file Docker), fallback baca .env dari root.
 function envUrl(name) {

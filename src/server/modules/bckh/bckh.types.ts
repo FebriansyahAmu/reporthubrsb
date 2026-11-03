@@ -1,4 +1,4 @@
-import type { AksiLog, Kategori, PengaturanLaporan, StatusHari, Target } from "./bckh.constants";
+import type { AksiLog, Kategori, PengaturanLaporan, PeranTtd, StatusHari, StatusPengajuan, Target } from "./bckh.constants";
 
 /* ----------------------------------------------------------- catatan hari */
 
@@ -40,6 +40,8 @@ export type ProfilDto = {
   unit: string;
   atasanNama: string;
   atasanNip: string;
+  /** Akun atasan langsung (tujuan pengajuan tanda tangan); null = belum dipilih. */
+  atasanId: string | null;
   /** false = belum pernah disimpan (nilai bawaan dari akun). */
   tersimpan: boolean;
 };
@@ -94,8 +96,14 @@ export type RincianLog = {
   contoh?: string[];
   /** Jumlah kegiatan setelah perubahan. */
   kegiatan?: number;
-  /** EKSPOR: bulan laporan YYYY-MM. */
+  /** EKSPOR & persetujuan: bulan laporan YYYY-MM. */
   bulan?: string;
+  /** SETUJU/TOLAK/BATAL: peran pelaku pada pengajuan. */
+  peran?: "ATASAN" | "MENGETAHUI";
+  /** AJUKAN: tujuan akhir; SETUJU: status sesudahnya. */
+  ke?: StatusPengajuan;
+  /** TOLAK/BATAL (≤ 200 karakter). */
+  alasan?: string;
 };
 
 export type LogDto = {
@@ -111,7 +119,7 @@ export type LogDto = {
   terlambat: number;
 };
 
-export type LogResult = { log: LogDto[]; berikutnya: number | null };
+export type LogResult = { log: LogDto[]; total: number; halaman: number; jumlahHalaman: number; perHalaman: number };
 
 /* ------------------------------------------------------------------ dasbor */
 
@@ -182,3 +190,118 @@ export type AnggotaTim = {
 };
 
 export type TimResult = { bulan: string; anggota: AnggotaTim[]; hariIni: string };
+
+/* -------------------------------------------- persetujuan (PRD §15) */
+
+/** Akun yang bisa dipilih sebagai atasan / direktur "Mengetahui". */
+export type AkunPenyetuju = {
+  id: string;
+  username: string;
+  /** Nama akun bergelar. */
+  nama: string;
+  /** Nama untuk blok TTD (profil BCKH-nya, atau nama huruf besar). */
+  namaTtd: string;
+  nip: string;
+  jabatan: string;
+  avatar: string | null;
+};
+
+/** Ringkas akun penanda tangan / pegawai di kartu pengajuan. */
+export type AkunRingkas = { id: string; username: string; nama: string; avatar: string | null };
+
+/** Snapshot laporan yang ditandatangani (sumber PDF yang disahkan). */
+export type SnapshotLaporan = Pick<LaporanResult, "bulan" | "tahun" | "namaBulan" | "profil" | "pengaturan" | "baris">;
+
+export type TtdPengajuanDto = {
+  peran: PeranTtd;
+  /** Nama akun penanda tangan saat menandatangani. */
+  nama: string;
+  /** ISO */
+  waktu: string;
+  /** data:image/png (hanya di detail). */
+  gambar?: string;
+};
+
+export type PengajuanDto = {
+  id: string;
+  bulan: string;
+  status: StatusPengajuan;
+  sampaiMengetahui: boolean;
+  catatan: string;
+  alasan: string | null;
+  diakhiriOleh: string | null;
+  diakhiriAt: string | null;
+  diajukanAt: string;
+  diubahAt: string;
+  /** 8 heksa SHA-256 snapshot. */
+  kode: string;
+  /** Token URL verifikasi `/bckh/verifikasi/<token>`. */
+  token: string;
+  pegawai: AkunRingkas & { jabatan: string };
+  atasan: AkunRingkas;
+  mengetahui: AkunRingkas | null;
+  ttd: TtdPengajuanDto[];
+  ringkas: { hari: number; kegiatan: number };
+  /** Aksi yang boleh dilakukan PENAMPIL. */
+  aksi: { setujui: boolean; tolak: boolean; tarik: boolean; batalkan: boolean };
+};
+
+export type PengajuanDetailDto = PengajuanDto & { isi: SnapshotLaporan; isiUtuh: boolean };
+
+/** Status persetujuan satu bulan (kartu di tab Laporan). */
+export type StatusBulanDto = {
+  bulan: string;
+  /** Pengajuan aktif (menunggu / disetujui) — catatan bulan terkunci. */
+  aktif: PengajuanDetailDto | null;
+  /** Pengajuan terakhir yang berakhir (ditolak/ditarik/dibatalkan) bila tak ada yang aktif. */
+  terakhir: PengajuanDto | null;
+  /** Kesiapan mengajukan (hanya milik sendiri). */
+  syarat: {
+    atasan: AkunPenyetuju | null;
+    mengetahui: AkunPenyetuju | null;
+    kurang: string[];
+    bulanBerjalan: boolean;
+  } | null;
+};
+
+export type KotakMasukResult = {
+  item: PengajuanDto[];
+  total: number;
+  halaman: number;
+  jumlahHalaman: number;
+  /** Jumlah menunggu tanda tangan penampil (lencana). */
+  menunggu: number;
+};
+
+export type PegawaiSayaDto = AnggotaTim & {
+  /** Pengajuan bulan terpilih (aktif, atau yang terakhir berakhir). */
+  pengajuan: Pick<PengajuanDto, "id" | "status" | "diubahAt"> | null;
+  /** Pegawai ini memilih penampil sebagai atasan langsung. */
+  bawahanLangsung: boolean;
+};
+
+export type PegawaiSayaResult = {
+  bulan: string;
+  hariIni: string;
+  /** Penampil = direktur "Mengetahui" (melihat semua pegawai). */
+  mengetahui: boolean;
+  pegawai: PegawaiSayaDto[];
+};
+
+export type VerifikasiDto = {
+  status: StatusPengajuan;
+  bulan: string;
+  namaBulan: string;
+  tahun: number;
+  pegawai: { nama: string; jabatan: string; nip: string; unit: string };
+  /** `nama` = nama tercetak di blok TTD; `akun` = akun yang benar-benar menandatangani. */
+  penandaTangan: { peran: PeranTtd; nama: string; akun: string; jabatanTtd: string; waktu: string }[];
+  kode: string;
+  sha256: string;
+  isiUtuh: boolean;
+  diajukanAt: string;
+  diakhiriAt: string | null;
+  alasan: string | null;
+  /** Tautan PDF bila penampil berhak (pemilik / penanda tangan / tim). */
+  pdf: string | null;
+};

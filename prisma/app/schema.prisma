@@ -443,6 +443,82 @@ model BckhPengaturan {
   @@map("bckh_pengaturan")
 }
 
+// --- v1.2 persetujuan & tanda tangan (PRD §15) — tabel BARU, yang lama tak diubah ---
+
+/// Pegawai → akun atasan langsung (dipilih pegawai di profil laporan).
+model BckhAtasan {
+  userId    String   @id @map("user_id") @db.VarChar(191)
+  atasanId  String   @map("atasan_id") @db.VarChar(191)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([atasanId], map: "idx_bckh_atasan_atasan")
+  @@map("bckh_atasan")
+}
+
+/// Setelan global kunci–nilai (mis. `mengetahui_id` = akun direktur).
+model BckhSetelan {
+  kunci          String   @id @db.VarChar(40)
+  nilai          String   @db.VarChar(191)
+  diubahOlehId   String?  @map("diubah_oleh_id") @db.VarChar(191)
+  diubahOlehNama String?  @map("diubah_oleh_nama") @db.VarChar(191)
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("bckh_setelan")
+}
+
+/// Pengajuan persetujuan laporan bulanan + snapshot laporan yang ditandatangani.
+/// `aktif` = "1" selama berjalan/disetujui, null bila berakhir (UNIQUE satu aktif per bulan).
+model BckhPengajuan {
+  id               String    @id @default(cuid()) @db.VarChar(30)
+  userId           String    @map("user_id") @db.VarChar(191)
+  /// YYYY-MM
+  bulan            String    @db.Char(7)
+  /// MENUNGGU_ATASAN | MENUNGGU_MENGETAHUI | DISETUJUI | DITOLAK | DITARIK | DIBATALKAN
+  status           String    @db.VarChar(20)
+  aktif            String?   @db.Char(1)
+  sampaiMengetahui Boolean   @default(true) @map("sampai_mengetahui")
+  atasanId         String    @map("atasan_id") @db.VarChar(191)
+  mengetahuiId     String?   @map("mengetahui_id") @db.VarChar(191)
+  catatan          String    @default("") @db.VarChar(500)
+  /// Snapshot laporan (JSON) — sumber PDF yang disahkan.
+  isi              String    @db.LongText
+  isiSha256        String    @map("isi_sha256") @db.Char(64)
+  token            String    @unique(map: "uq_bckh_pengajuan_token") @db.Char(32)
+  alasan           String?   @db.VarChar(500)
+  diakhiriOlehId   String?   @map("diakhiri_oleh_id") @db.VarChar(191)
+  diakhiriOlehNama String?   @map("diakhiri_oleh_nama") @db.VarChar(191)
+  diakhiriAt       DateTime? @map("diakhiri_at")
+  diajukanAt       DateTime  @default(now()) @map("diajukan_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  ttd BckhTtd[]
+
+  @@unique([userId, bulan, aktif], map: "uq_bckh_pengajuan_aktif")
+  @@index([userId, bulan], map: "idx_bckh_pengajuan_user")
+  @@index([atasanId, status], map: "idx_bckh_pengajuan_atasan")
+  @@index([mengetahuiId, status], map: "idx_bckh_pengajuan_mengetahui")
+  @@map("bckh_pengajuan")
+}
+
+/// Gambar TTD per pengajuan × peran (PEGAWAI | ATASAN | MENGETAHUI). Sekali tulis.
+model BckhTtd {
+  id          String        @id @default(cuid()) @db.VarChar(30)
+  pengajuanId String        @map("pengajuan_id") @db.VarChar(30)
+  peran       String        @db.VarChar(12)
+  userId      String        @map("user_id") @db.VarChar(191)
+  nama        String        @db.VarChar(191)
+  png         Bytes         @db.MediumBlob
+  sha256      String        @db.Char(64)
+  ukuran      Int
+  ip          String?       @db.VarChar(64)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  pengajuan   BckhPengajuan @relation(fields: [pengajuanId], references: [id], onDelete: Restrict, map: "fk_bckh_ttd_pengajuan")
+
+  @@unique([pengajuanId, peran], map: "uq_bckh_ttd_peran")
+  @@map("bckh_ttd")
+}
+
 // ============================================================================
 // MODUL INVENTARISASI BARANG — data aset RSUD (READ-WRITE). Tabel `inv_*`.
 // DDL manual: scripts/db/inventaris.sql + migrate-inventaris.mjs. Model di sini

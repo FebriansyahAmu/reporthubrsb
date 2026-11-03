@@ -7,25 +7,35 @@ import { Input, Label } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
 import { apiPut, pesanGalat } from "@/lib/api-client";
 import type { ProfilDto } from "@/server/modules/bckh/bckh.types";
+import { PemilihAkun, usePenyetuju } from "./PemilihAkun";
 
-type Isian = Pick<ProfilDto, "namaLengkap" | "namaTtd" | "jabatan" | "nip" | "unit" | "atasanNama" | "atasanNip">;
-const KOSONG: Isian = { namaLengkap: "", namaTtd: "", jabatan: "", nip: "", unit: "", atasanNama: "", atasanNip: "" };
+type Isian = Pick<ProfilDto, "namaLengkap" | "namaTtd" | "jabatan" | "nip" | "unit" | "atasanNama" | "atasanNip" | "atasanId">;
+const KOSONG: Isian = { namaLengkap: "", namaTtd: "", jabatan: "", nip: "", unit: "", atasanNama: "", atasanNip: "", atasanId: null };
 
-const BIDANG: { k: keyof Isian; label: string; bantu?: string; maks: number; mode?: "numeric" }[] = [
-  { k: "namaLengkap", label: "Nama lengkap (sampul)", bantu: "Mis. Nama Lengkap, S.Kom", maks: 191 },
-  { k: "namaTtd", label: "Nama di tanda tangan", bantu: "Mis. NAMA L. LENGKAP, S.KOM", maks: 191 },
-  { k: "jabatan", label: "Jabatan", maks: 191 },
+type Bidang = { k: Exclude<keyof Isian, "atasanId">; label: string; bantu?: string; maks: number; mode?: "numeric"; lebar?: boolean };
+
+const IDENTITAS: Bidang[] = [
+  { k: "namaLengkap", label: "Nama lengkap (sampul)", bantu: "Mis. Nama Lengkap, S.Kom", maks: 191, lebar: true },
+  { k: "namaTtd", label: "Nama di tanda tangan", bantu: "Mis. NAMA L. LENGKAP, S.KOM", maks: 191, lebar: true },
+  { k: "jabatan", label: "Jabatan", maks: 191, lebar: true },
   { k: "nip", label: "NIP", bantu: "Kosongkan bila tidak ada (tercetak \"-\")", maks: 40, mode: "numeric" },
   { k: "unit", label: "Unit / instalasi", maks: 191 },
-  { k: "atasanNama", label: "Nama atasan langsung", maks: 191 },
-  { k: "atasanNip", label: "NIP atasan langsung", maks: 40, mode: "numeric" },
+];
+const ATASAN_CETAK: Bidang[] = [
+  { k: "atasanNama", label: "Nama atasan (tercetak)", maks: 191 },
+  { k: "atasanNip", label: "NIP atasan (tercetak)", maks: 40, mode: "numeric" },
 ];
 
-/** Profil laporan SENDIRI (sampul + blok tanda tangan Laporan Kinerja Harian). */
+/**
+ * Profil laporan SENDIRI (sampul + blok tanda tangan Laporan Kinerja Harian) dan
+ * AKUN atasan langsung — tujuan pengajuan tanda tangan; memilih akun mengisi nama &
+ * NIP atasan untuk cetak (tetap bisa disesuaikan).
+ */
 export function ProfilModal({ open, profil, onClose, onTersimpan }: { open: boolean; profil: ProfilDto; onClose: () => void; onTersimpan: () => void }) {
   const toast = useToast();
   const [isi, setIsi] = useState<Isian>(KOSONG);
   const [simpan, setSimpan] = useState(false);
+  const akun = usePenyetuju(open);
 
   useEffect(() => {
     if (!open) return;
@@ -38,6 +48,7 @@ export function ProfilModal({ open, profil, onClose, onTersimpan }: { open: bool
       unit: profil.unit,
       atasanNama: profil.atasanNama,
       atasanNip: profil.atasanNip,
+      atasanId: profil.atasanId,
     });
   }, [open, profil]);
 
@@ -53,6 +64,20 @@ export function ProfilModal({ open, profil, onClose, onTersimpan }: { open: bool
       setSimpan(false);
     }
   };
+
+  const bidang = (b: Bidang) => (
+    <div key={b.k} className={b.lebar ? "sm:col-span-2" : undefined}>
+      <Label htmlFor={`profil-${b.k}`}>{b.label}</Label>
+      <Input
+        id={`profil-${b.k}`}
+        value={isi[b.k]}
+        maxLength={b.maks}
+        inputMode={b.mode}
+        placeholder={b.bantu}
+        onChange={(e) => setIsi((s) => ({ ...s, [b.k]: e.target.value }))}
+      />
+    </div>
+  );
 
   return (
     <Modal
@@ -73,25 +98,35 @@ export function ProfilModal({ open, profil, onClose, onTersimpan }: { open: bool
       }
     >
       <form
-        className="grid gap-4 sm:grid-cols-2"
+        className="space-y-6"
         onSubmit={(e) => {
           e.preventDefault();
           void kirim();
         }}
       >
-        {BIDANG.map((b) => (
-          <div key={b.k} className={b.k === "namaLengkap" || b.k === "namaTtd" || b.k === "jabatan" ? "sm:col-span-2" : undefined}>
-            <Label htmlFor={`profil-${b.k}`}>{b.label}</Label>
-            <Input
-              id={`profil-${b.k}`}
-              value={isi[b.k]}
-              maxLength={b.maks}
-              inputMode={b.mode}
-              placeholder={b.bantu}
-              onChange={(e) => setIsi((s) => ({ ...s, [b.k]: e.target.value }))}
-            />
-          </div>
-        ))}
+        <fieldset className="grid min-w-0 gap-4 sm:grid-cols-2">
+          <legend className="sr-only">Identitas</legend>
+          {IDENTITAS.map(bidang)}
+        </fieldset>
+
+        <fieldset className="min-w-0 space-y-4 rounded-[var(--radius-md)] border border-border bg-surface-2/40 p-4">
+          <legend className="px-1 text-sm font-semibold text-fg">Atasan langsung</legend>
+          <PemilihAkun
+            label="Akun atasan (tujuan pengajuan tanda tangan)"
+            akun={akun}
+            nilai={isi.atasanId}
+            kecuali={profil.userId}
+            onPilih={(a) =>
+              setIsi((s) => ({
+                ...s,
+                atasanId: a?.id ?? null,
+                ...(a ? { atasanNama: a.namaTtd, atasanNip: a.nip } : {}),
+              }))
+            }
+            bantuan="Laporan yang Anda ajukan masuk ke kotak persetujuan akun ini. Nama & NIP di bawah terisi otomatis."
+          />
+          <div className="grid gap-4 sm:grid-cols-2">{ATASAN_CETAK.map(bidang)}</div>
+        </fieldset>
         <button type="submit" hidden />
       </form>
     </Modal>

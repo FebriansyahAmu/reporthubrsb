@@ -1,15 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { BadgeCheck, Ban, ChevronLeft, ChevronRight, CircleX, Clock, Undo2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   INFO_KATEGORI,
   LABEL_STATUS,
+  LABEL_STATUS_PENGAJUAN,
   NAMA_BULAN,
   STATUS_BEKERJA,
   type Kategori,
   type StatusHari,
+  type StatusPengajuan,
 } from "@/server/modules/bckh/bckh.constants";
 
 /* --------------------------------------------------------------- identicon */
@@ -107,6 +109,32 @@ export function BadgeStatus({ status, className }: { status: StatusHari; classNa
 }
 
 export const bekerja = (s: StatusHari) => STATUS_BEKERJA.has(s);
+
+/** Kelas `<textarea>` selaras `Input` (tak ada komponen Textarea bersama). */
+export const KELAS_TEXTAREA =
+  "w-full resize-y rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-subtle focus-visible:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring/40";
+
+/* ----------------------------------------------- status pengajuan (PRD §15) */
+
+const INFO_PENGAJUAN: Record<StatusPengajuan, { ikon: typeof Clock; kelas: string }> = {
+  MENUNGGU_ATASAN: { ikon: Clock, kelas: "bg-warning-soft text-warning ring-warning/25" },
+  MENUNGGU_MENGETAHUI: { ikon: Clock, kelas: "bg-warning-soft text-warning ring-warning/25" },
+  DISETUJUI: { ikon: BadgeCheck, kelas: "bg-success-soft text-success ring-success/25" },
+  DITOLAK: { ikon: CircleX, kelas: "bg-danger-soft text-danger ring-danger/25" },
+  DITARIK: { ikon: Undo2, kelas: "bg-surface-2 text-fg-muted ring-border" },
+  DIBATALKAN: { ikon: Ban, kelas: "bg-surface-2 text-fg-muted ring-border" },
+};
+
+/** Lencana status pengajuan — ikon + label (warna tak pernah satu-satunya pembeda). */
+export function LencanaPengajuan({ status, className }: { status: StatusPengajuan; className?: string }) {
+  const { ikon: Ikon, kelas } = INFO_PENGAJUAN[status];
+  return (
+    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset", kelas, className)}>
+      <Ikon className="size-3" aria-hidden />
+      {LABEL_STATUS_PENGAJUAN[status]}
+    </span>
+  );
+}
 
 /** Penghitung kecil di tab (ala "Counter" GitHub). */
 export function Penghitung({ n, className }: { n: number | string; className?: string }) {

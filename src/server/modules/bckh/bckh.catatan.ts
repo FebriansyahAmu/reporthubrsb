@@ -1,9 +1,19 @@
 import "server-only";
 import { tanggalHariIniWita } from "@/lib/format";
 import { getAppDb } from "@/server/db/app.client";
-import { ConflictError, NotFoundError, ValidationError } from "@/server/lib/errors";
+import { BusinessRuleError, ConflictError, NotFoundError, ValidationError } from "@/server/lib/errors";
 import { adaPerubahan, hariTerlambat, ringkasPerubahan, tanggalPalingAwal, tanggalPanjang } from "./bckh.aturan";
-import { LOG_PER_HALAMAN, STATUS_BEKERJA, type AksiLog, type Kategori, type StatusHari, type Target } from "./bckh.constants";
+import {
+  JENIS_LOG,
+  LOG_PER_HALAMAN,
+  NAMA_BULAN,
+  STATUS_BEKERJA,
+  type AksiLog,
+  type JenisLog,
+  type Kategori,
+  type StatusHari,
+  type Target,
+} from "./bckh.constants";
 import { bacaHari, dariDate, keDate, keHariDto } from "./bckh.dal";
 import type { SimpanHariInput } from "./bckh.schema";
 import type { HariDto, LogResult, RincianLog } from "./bckh.types";
@@ -20,12 +30,28 @@ function cekTanggal(tanggal: string): void {
   if (tanggal < tanggalPalingAwal(hariIni)) throw galat(`Catatan paling awal untuk ${tanggalPanjang(tanggalPalingAwal(hariIni))}`);
 }
 
-type Tx = Parameters<Parameters<ReturnType<typeof getAppDb>["$transaction"]>[0]>[0];
+export type Tx = Parameters<Parameters<ReturnType<typeof getAppDb>["$transaction"]>[0]>[0];
 
-function tulisLog(tx: Tx, userId: string, aktor: Aktor, aksi: AksiLog, tanggal: string, rincian: RincianLog) {
+export function tulisLog(tx: Tx, userId: string, aktor: Aktor, aksi: AksiLog, tanggal: string, rincian: RincianLog) {
   return tx.bckhLog.create({
     data: { userId, aktorId: aktor.id, aktorNama: aktor.nama.slice(0, 191), aksi, tanggal: keDate(tanggal), rincian, ip: aktor.ip?.slice(0, 64) ?? null },
   });
+}
+
+/**
+ * Catatan bulan yang laporannya sedang diajukan / sudah disetujui TERKUNCI (PRD
+ * §15.2): snapshot yang ditandatangani tak boleh berbeda dari catatan.
+ */
+async function cekTidakTerkunci(tx: Tx, userId: string, tanggal: string): Promise<void> {
+  const bulan = tanggal.slice(0, 7);
+  const p = await tx.bckhPengajuan.findFirst({ where: { userId, bulan, aktif: "1" }, select: { status: true } });
+  if (!p) return;
+  const nama = `${NAMA_BULAN[Number(bulan.slice(5, 7)) - 1]} ${bulan.slice(0, 4)}`;
+  throw new BusinessRuleError(
+    p.status === "DISETUJUI"
+      ? `Laporan ${nama} sudah disetujui — catatan bulan ini terkunci. Minta atasan membatalkan persetujuan bila perlu diubah.`
+      : `Laporan ${nama} sedang diajukan untuk ditandatangani — catatan bulan ini terkunci. Tarik pengajuan dulu untuk mengubahnya.`,
+  );
 }
 
 /**
@@ -41,6 +67,7 @@ export async function simpanHari(aktor: Aktor, tanggal: string, input: SimpanHar
 
   try {
     await db.$transaction(async (tx) => {
+      await cekTidakTerkunci(tx, aktor.id, tanggal);
       const lama = await tx.bckhHari.findUnique({
         where: { userId_tanggal: { userId: aktor.id, tanggal: keDate(tanggal) } },
         select: { id: true, status: true, keterangan: true, updatedAt: true, kegiatan: { select: { id: true, uraian: true, kategori: true, target: true }, orderBy: [{ urutan: "asc" }, { createdAt: "asc" }] } },
@@ -104,6 +131,7 @@ export async function simpanHari(aktor: Aktor, tanggal: string, input: SimpanHar
 /** Hapus catatan SENDIRI (kegiatan ikut terhapus, CASCADE) + log. */
 export async function hapusHari(aktor: Aktor, tanggal: string, versi: string): Promise<void> {
   await getAppDb().$transaction(async (tx) => {
+    await cekTidakTerkunci(tx, aktor.id, tanggal);
     const lama = await tx.bckhHari.findUnique({
       where: { userId_tanggal: { userId: aktor.id, tanggal: keDate(tanggal) } },
       select: { id: true, status: true, updatedAt: true, _count: { select: { kegiatan: true } } },
@@ -124,17 +152,30 @@ export async function catatEkspor(pemilikId: string, aktor: Aktor, bulan: string
   await getAppDb().$transaction((tx) => tulisLog(tx, pemilikId, aktor, "EKSPOR", `${bulan}-01`, { bulan }));
 }
 
-/** Log pengisian terbaru → lama, 30 per halaman (cursor `sebelum` = id). */
-export async function daftarLog(userId: string, sebelum?: number): Promise<LogResult> {
-  const rows = await getAppDb().bckhLog.findMany({
-    where: { userId, ...(sebelum ? { id: { lt: sebelum } } : {}) },
+/**
+ * Log pengisian terbaru → lama, berhalaman (`LOG_PER_HALAMAN`, nomor halaman) dengan
+ * filter jenis aksi. Indeks `(user_id, id)`; halaman di luar jangkauan → halaman terakhir.
+ */
+export async function daftarLog(userId: string, halamanMinta = 1, jenis: JenisLog = "semua"): Promise<LogResult> {
+  const db = getAppDb();
+  const aksi = JENIS_LOG[jenis];
+  const where = { userId, ...(aksi ? { aksi: { in: [...aksi] } } : {}) };
+  const total = await db.bckhLog.count({ where });
+  const jumlahHalaman = Math.max(1, Math.ceil(total / LOG_PER_HALAMAN));
+  const halaman = Math.min(halamanMinta, jumlahHalaman);
+  const rows = await db.bckhLog.findMany({
+    where,
     orderBy: { id: "desc" },
-    take: LOG_PER_HALAMAN + 1,
+    skip: (halaman - 1) * LOG_PER_HALAMAN,
+    take: LOG_PER_HALAMAN,
     select: { id: true, aksi: true, tanggal: true, rincian: true, aktorId: true, aktorNama: true, createdAt: true },
   });
-  const halaman = rows.slice(0, LOG_PER_HALAMAN);
   return {
-    log: halaman.map((r) => {
+    total,
+    halaman,
+    jumlahHalaman,
+    perHalaman: LOG_PER_HALAMAN,
+    log: rows.map((r) => {
       const tanggal = dariDate(r.tanggal);
       const dibuat = r.createdAt.toISOString();
       return {
@@ -148,6 +189,5 @@ export async function daftarLog(userId: string, sebelum?: number): Promise<LogRe
         terlambat: r.aksi === "BUAT" ? hariTerlambat(tanggal, dibuat) : 0,
       };
     }),
-    berikutnya: rows.length > LOG_PER_HALAMAN ? halaman[halaman.length - 1].id : null,
   };
 }

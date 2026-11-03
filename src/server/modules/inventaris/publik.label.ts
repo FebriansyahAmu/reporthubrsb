@@ -1,7 +1,7 @@
 import "server-only";
-import QRCode from "qrcode";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { loadInstansiLogo, san } from "@/server/lib/pdf";
+import { gambarQr } from "@/server/lib/pdf-qr";
 
 /**
  * Label QR ruangan siap tempel (A6 potret, 105 × 148 mm). QR digambar sebagai
@@ -48,30 +48,6 @@ function bungkus(teks: string, font: PDFFont, size: number, lebar: number, maksB
     baris[maksBaris - 1] = `${baris[maksBaris - 1].replace(/.{0,3}$/, "")}...`;
   }
   return baris;
-}
-
-/** Gambar QR vektor; modul hitam sebaris digabung jadi satu persegi panjang. */
-function gambarQr(page: PDFPage, teks: string, x: number, y: number, sisi: number) {
-  const qr = QRCode.create(teks, { errorCorrectionLevel: "Q" });
-  const n = qr.modules.size;
-  const quiet = 4; // zona sunyi standar (modul)
-  const m = sisi / (n + quiet * 2);
-  page.drawRectangle({ x, y, width: sisi, height: sisi, color: rgb(1, 1, 1) });
-  for (let r = 0; r < n; r++) {
-    for (let c = 0; c < n; c++) {
-      if (!qr.modules.get(r, c)) continue;
-      let akhir = c;
-      while (akhir + 1 < n && qr.modules.get(r, akhir + 1)) akhir++;
-      page.drawRectangle({
-        x: x + (quiet + c) * m,
-        y: y + sisi - (quiet + r + 1) * m,
-        width: (akhir - c + 1) * m + 0.01, // tumpang 0,01 pt: tanpa garis rambut antar modul
-        height: m + 0.01,
-        color: rgb(0, 0, 0),
-      });
-      c = akhir;
-    }
-  }
 }
 
 export async function buildLabelQrPdf(opts: { url: string; ruangan: string; kodePrefix: string }): Promise<Uint8Array> {

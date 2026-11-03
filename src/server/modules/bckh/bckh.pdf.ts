@@ -11,6 +11,7 @@ import {
   type PDFPage,
 } from "pdf-lib";
 import { loadInstansiLogo, san } from "@/server/lib/pdf";
+import { gambarQr } from "@/server/lib/pdf-qr";
 import type { BarisLaporan, LaporanResult } from "./bckh.types";
 
 /**
@@ -312,8 +313,44 @@ const TTD = {
   size: 11,
 };
 
-function tandaTangan(page: PDFPage, f: Font, lap: LaporanResult, y0: number) {
+/** Gambar TTD (PNG) disisipkan di atas nama blok; dipasang di dalam kotak `w×h`, rata bawah & tengah. */
+async function bubuhkanTtd(doc: PDFDocument, page: PDFPage, png: Uint8Array | undefined, tengah: number, atas: number, w: number, h: number) {
+  if (!png) return;
+  try {
+    const img = await doc.embedPng(png);
+    const skala = Math.min(w / img.width, h / img.height, 1.2);
+    const lw = img.width * skala;
+    const lh = img.height * skala;
+    page.drawImage(img, { x: tengah - lw / 2, y: Y(atas + h), width: lw, height: lh });
+  } catch {
+    /* PNG tak terbaca pdf-lib → blok tetap bernama (TTD tercatat di halaman verifikasi) */
+  }
+}
+
+/** QR verifikasi + keterangan di kanan blok "Mengetahui" (hanya laporan DISETUJUI). */
+function stempelVerifikasi(page: PDFPage, f: Font, y0: number, v: Verifikasi) {
+  const sisi = 56;
+  const x = X[6] - sisi;
+  const atas = y0 + 138;
+  if (v.url) gambarQr(page, v.url, x, Y(atas + sisi), sisi, "M");
+  const tengah = x + sisi / 2;
+  const bl = v.url ? atas + sisi + 7 : atas + 20;
+  teksTengah(page, "Disahkan elektronik", tengah, bl, f.tr, 6.5);
+  teksTengah(page, `Kode ${v.kode}`, tengah, bl + 8, f.tb, 6.5);
+}
+
+export type TtdLaporan = Partial<Record<"PEGAWAI" | "ATASAN" | "MENGETAHUI", Uint8Array>>;
+type Verifikasi = { url: string | null; kode: string };
+export type Pengesahan = { ttd: TtdLaporan; verifikasi: Verifikasi | null };
+
+async function tandaTangan(doc: PDFDocument, page: PDFPage, f: Font, lap: LaporanResult, y0: number, sah?: Pengesahan) {
   const s = TTD.size;
+  if (sah) {
+    await bubuhkanTtd(doc, page, sah.ttd.PEGAWAI, TTD.kiri, y0 + 4, 130, 36);
+    await bubuhkanTtd(doc, page, sah.ttd.ATASAN, TTD.kanan, y0 + 4, 130, 36);
+    await bubuhkanTtd(doc, page, sah.ttd.MENGETAHUI, TTD.namaMengetahui, y0 + 136, 150, 50);
+    if (sah.verifikasi) stempelVerifikasi(page, f, y0, sah.verifikasi);
+  }
   const nama = (t: string, tengah: number, baseline: number) => {
     const n = san(t);
     if (!n) {
@@ -343,7 +380,11 @@ function tandaTangan(page: PDFPage, f: Font, lap: LaporanResult, y0: number) {
 
 /* ================================================================= utama */
 
-export async function bangunPdfLaporan(lap: LaporanResult): Promise<Uint8Array> {
+/**
+ * `sah` (opsional) = laporan dari pengajuan aktif: gambar TTD per blok, dan bila
+ * DISETUJUI stempel verifikasi (QR + kode). Tanpa `sah` = laporan biasa (tanpa TTD).
+ */
+export async function bangunPdfLaporan(lap: LaporanResult, sah?: Pengesahan): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.setTitle(san(`Laporan Kinerja Harian ${lap.profil.namaLengkap} - ${lap.namaBulan} ${lap.tahun}`));
   doc.setAuthor(san(lap.profil.namaLengkap));
@@ -378,7 +419,7 @@ export async function bangunPdfLaporan(lap: LaporanResult): Promise<Uint8Array> 
     page = doc.addPage([LEBAR, TINGGI]);
     y0 = TABEL_ATAS + 20;
   }
-  tandaTangan(page, f, lap, y0);
+  await tandaTangan(doc, page, f, lap, y0, sah);
 
   return doc.save();
 }

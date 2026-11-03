@@ -17,20 +17,29 @@ const HARI_MINI = 35;
  * BCKH + siapa pun yang sudah punya catatan/profil. Superadmin tanpa catatan tidak
  * ikut (peran admin tidak otomatis pengisi BCKH).
  */
-export async function daftarTim(bulan: string): Promise<TimResult> {
+export const daftarTim = (bulan: string): Promise<TimResult> => ringkasAnggota(bulan, null);
+
+/**
+ * Ringkasan pengisian per pegawai. `ids` null = semua pegawai pengisi BCKH (Tim);
+ * selain itu hanya akun-akun itu ("Pegawai saya" atasan).
+ */
+export async function ringkasAnggota(bulan: string, ids: readonly string[] | null): Promise<TimResult> {
   const db = getAppDb();
   const hariIni = tanggalHariIniWita();
   const { dari, sampai } = rentangBulanIni(bulan);
   const awalMini = tambahHari(hariIni, -(HARI_MINI - 1));
+  if (ids && ids.length === 0) return { bulan, anggota: [], hariIni };
 
   const [grant, terakhir, profil] = await Promise.all([
-    db.rolePermission.findMany({ where: { moduleKey: "bckh", action: "view" }, select: { roleId: true } }),
-    db.bckhHari.groupBy({ by: ["userId"], _max: { updatedAt: true } }),
-    db.bckhProfil.findMany({ select: { userId: true, namaLengkap: true, jabatan: true, unit: true } }),
+    ids ? Promise.resolve([]) : db.rolePermission.findMany({ where: { moduleKey: "bckh", action: "view" }, select: { roleId: true } }),
+    db.bckhHari.groupBy({ by: ["userId"], ...(ids ? { where: { userId: { in: [...ids] } } } : {}), _max: { updatedAt: true } }),
+    db.bckhProfil.findMany({ ...(ids ? { where: { userId: { in: [...ids] } } } : {}), select: { userId: true, namaLengkap: true, jabatan: true, unit: true } }),
   ]);
   const punyaData = [...new Set([...terakhir.map((t) => t.userId), ...profil.map((p) => p.userId)])];
   const users = await db.user.findMany({
-    where: { OR: [{ roleId: { in: grant.map((g) => g.roleId) }, isActive: true }, { id: { in: punyaData } }] },
+    where: ids
+      ? { id: { in: [...ids] } }
+      : { OR: [{ roleId: { in: grant.map((g) => g.roleId) }, isActive: true }, { id: { in: punyaData } }] },
     select: PILIH_PENGGUNA,
   });
   if (users.length === 0) return { bulan, anggota: [], hariIni };
