@@ -59,4 +59,16 @@ describe("katalog modul RBAC", () => {
     expect(moduleKeyForApiPath("/api/form-rm/f/RM.04/pasien")).toBe("form-rm");
     expect(moduleKeyForApiPath("/api/form-rm/isian/abc")).toBe("form-rm");
   });
+
+  it("Perangkat TTD siaga: modul sendiri, bukan bagian akses formulir", () => {
+    expect(moduleKeyForApiPath("/api/form-rm/perangkat")).toBe("form-rm.perangkat");
+    expect(moduleKeyForApiPath("/api/form-rm/perangkat/abc/kode-pasang")).toBe("form-rm.perangkat");
+    // Prefiks dicocokkan per segmen: rute serupa tidak ikut terpetakan.
+    expect(moduleKeyForApiPath("/api/form-rm/perangkatx")).toBe("form-rm");
+    for (const a of ["view", "create", "update", "delete"] as const) {
+      expect(isValidModuleAction("form-rm.perangkat", a)).toBe(true);
+    }
+    expect(isValidModuleAction("form-rm.perangkat", "print")).toBe(false);
+    expect(MODUL_AKSES_FORM_RM).not.toContain("form-rm.perangkat");
+  });
 });

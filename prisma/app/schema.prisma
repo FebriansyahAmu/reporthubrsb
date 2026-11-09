@@ -275,6 +275,28 @@ model FormRmIdentitasSementara {
   @@map("form_rm_identitas_sementara")
 }
 
+/// Perangkat TTD siaga (tablet/HP RS) — docs/PRD_TTD_Perangkat_Siaga.md §7.5.
+/// Kredensial hanya sebagai sha256. Dicabut = aktif false + tokenHash null.
+/// `ruanganId` = master.ruangan.ID SIMGOS (referensi lunak). DDL: scripts/db/form-rm.sql.
+model FormRmPerangkatTtd {
+  id              String    @id @default(cuid()) @db.VarChar(30)
+  nama            String    @unique(map: "uq_form_rm_perangkat_ttd_nama") @db.VarChar(80)
+  ruanganId       String?   @map("ruangan_id") @db.VarChar(10)
+  tokenHash       String?   @unique(map: "uq_form_rm_perangkat_ttd_token") @map("token_hash") @db.Char(64)
+  tokenHashLama   String?   @map("token_hash_lama") @db.Char(64)
+  tokenDiputarAt  DateTime? @map("token_diputar_at")
+  aktif           Boolean   @default(true)
+  dipasangAt      DateTime? @map("dipasang_at")
+  terakhirAktifAt DateTime? @map("terakhir_aktif_at")
+  dicabutAt       DateTime? @map("dicabut_at")
+  dibuatOlehId    String?   @map("dibuat_oleh_id") @db.VarChar(191)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([tokenHashLama], map: "idx_form_rm_perangkat_ttd_lama")
+  @@map("form_rm_perangkat_ttd")
+}
+
 /// Penetapan pejabat per ruangan (Kepala Instalasi, Kepala Ruangan, Ketua Tim, dll).
 /// Ruangan dibaca dari SIMGOS (`master.ruangan`, READ-ONLY); penetapan ini kita
 /// simpan di sini. `ruanganId` = `master.ruangan.ID` (9 digit) untuk satu ruangan,

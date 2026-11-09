@@ -36,6 +36,14 @@ describe("halamanAwal (tujuan setelah masuk)", () => {
     expect(workspaceKeyForPath("/form-rm/riwayat")).toBe("form-rm");
   });
 
+  it("Perangkat TTD: hanya untuk form-rm.perangkat, tanpa membuka menu formulir", () => {
+    const ws = visibleWorkspaces(izin("form-rm.perangkat")).find((w) => w.key === "form-rm");
+    expect(ws?.items.map((i) => i.href)).toEqual(["/form-rm/perangkat"]);
+    expect(halamanAwal(izin("form-rm.perangkat"))).toBe("/form-rm/perangkat");
+    const petugas = visibleWorkspaces(izin("form-rm")).find((w) => w.key === "form-rm");
+    expect(petugas?.items.map((i) => i.href)).not.toContain("/form-rm/perangkat");
+  });
+
   it("modul alternatif (anyOf) & kategori Form RM ikut dihitung", () => {
     expect(halamanAwal(izin("berkas-klaim.paket"))).toBe("/berkas-klaim/verifikasi");
     expect(halamanAwal(izin("form-rm.gawat-darurat"))).toBe("/form-rm");

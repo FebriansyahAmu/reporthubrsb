@@ -23,11 +23,12 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Stethoscope,
+  TabletSmartphone,
   UsersRound,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { MODUL_AKSES_FORM_RM, MODUL_FORM_RM } from "@/features/form-rm/kategori";
+import { MODUL_AKSES_FORM_RM, MODUL_FORM_RM, MODUL_PERANGKAT_TTD } from "@/features/form-rm/kategori";
 
 /**
  * TAKSONOMI MODUL (workspace) — struktur navigasi "per modul".
@@ -205,6 +206,13 @@ export const WORKSPACES: Workspace[] = [
         description: "Isian Form RM per rentang tanggal",
         moduleKey: MODUL_FORM_RM,
         anyOf: MODUL_AKSES_FORM_RM,
+      },
+      {
+        href: "/form-rm/perangkat",
+        label: "Perangkat TTD",
+        icon: TabletSmartphone,
+        description: "Tablet/HP tanda tangan siaga",
+        moduleKey: MODUL_PERANGKAT_TTD,
       },
     ],
   },

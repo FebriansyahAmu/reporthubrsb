@@ -111,3 +111,28 @@ CREATE TABLE IF NOT EXISTS form_rm_ttd_petugas (
   UNIQUE KEY uq_form_rm_ttd_petugas (user_id, jenis),
   CONSTRAINT fk_form_rm_ttd_petugas_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Perangkat TTD SIAGA: tablet/HP RS yang selalu siap menerima permintaan TTD
+-- dari PC petugas (docs/PRD_TTD_Perangkat_Siaga.md §7.5). Kredensial perangkat
+-- HANYA disimpan sebagai sha256 (token mentah tak pernah disimpan); token lama
+-- disimpan sebentar setelah rotasi (jendela grasi). Dicabut = aktif 0 + hash
+-- NULL; baris tetap ada sebagai jejak dan bisa dipasang ulang. ruangan_id =
+-- master.ruangan.ID SIMGOS (referensi lunak, tanpa FK lintas DB).
+CREATE TABLE IF NOT EXISTS form_rm_perangkat_ttd (
+  id                 VARCHAR(30)  NOT NULL PRIMARY KEY,
+  nama               VARCHAR(80)  NOT NULL,
+  ruangan_id         VARCHAR(10)  NULL,
+  token_hash         CHAR(64)     NULL,                           -- sha256 kredensial aktif; NULL = belum/tidak terpasang
+  token_hash_lama    CHAR(64)     NULL,                           -- kredensial sebelum rotasi terakhir
+  token_diputar_at   DATETIME(3)  NULL,
+  aktif              TINYINT(1)   NOT NULL DEFAULT 1,
+  dipasang_at        DATETIME(3)  NULL,
+  terakhir_aktif_at  DATETIME(3)  NULL,                           -- ditulis saat sambung/putus, bukan tiap detak
+  dicabut_at         DATETIME(3)  NULL,
+  dibuat_oleh_id     VARCHAR(191) NULL,
+  created_at         DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at         DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uq_form_rm_perangkat_ttd_nama (nama),
+  UNIQUE KEY uq_form_rm_perangkat_ttd_token (token_hash),
+  KEY idx_form_rm_perangkat_ttd_lama (token_hash_lama)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

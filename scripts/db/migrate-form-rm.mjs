@@ -18,7 +18,14 @@ const require = createRequire(import.meta.url);
 const mariadb = require("mariadb");
 
 /** Tabel yang WAJIB ada setelah migrasi (urutan = urutan FK). */
-const TABLES = ["form_rm_isian", "form_rm_ttd", "form_rm_revisi", "form_rm_identitas_sementara", "form_rm_ttd_petugas"];
+const TABLES = [
+  "form_rm_isian",
+  "form_rm_ttd",
+  "form_rm_revisi",
+  "form_rm_identitas_sementara",
+  "form_rm_ttd_petugas",
+  "form_rm_perangkat_ttd",
+];
 
 // Env: utamakan process.env (env_file Docker), fallback baca .env dari root.
 function envUrl(name) {

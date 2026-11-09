@@ -49,6 +49,12 @@ export const DAFTAR_KATEGORI = Object.keys(KATEGORI_FORM) as KategoriForm[];
 export const MODUL_FORM_RM = "form-rm";
 /** Modul RBAC buka koreksi / batalkan isian FINAL (Instalasi RM), lintas kategori. */
 export const MODUL_KELOLA_FORM_RM = "form-rm.kelola";
+/**
+ * Modul RBAC pengelola perangkat TTD siaga (docs/PRD_TTD_Perangkat_Siaga.md
+ * §7.7): daftar, tambah, ubah, cabut, kode pasang. SENGAJA tidak termasuk
+ * `MODUL_AKSES_FORM_RM` — tidak membuka formulir atau isian apa pun.
+ */
+export const MODUL_PERANGKAT_TTD = "form-rm.perangkat";
 
 export const modulKategori = (k: KategoriForm): string => `${MODUL_FORM_RM}.${k}`;
 

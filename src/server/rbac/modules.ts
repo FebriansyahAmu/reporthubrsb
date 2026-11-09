@@ -33,6 +33,7 @@ import {
   ReceiptText,
   ShieldCheck,
   SlidersHorizontal,
+  TabletSmartphone,
   Users,
   UsersRound,
   Wrench,
@@ -43,6 +44,7 @@ import {
   KATEGORI_FORM,
   MODUL_FORM_RM,
   MODUL_KELOLA_FORM_RM,
+  MODUL_PERANGKAT_TTD,
   modulKategori,
 } from "@/features/form-rm/kategori";
 
@@ -204,6 +206,20 @@ export const MODULES: readonly AppModule[] = [
     apiPrefixes: [],
     actions: ["view", "update"],
     order: 51,
+  },
+  // Perangkat TTD siaga (docs/PRD_TTD_Perangkat_Siaga.md §7.7). Hanya mengelola
+  // tablet; tidak membuka formulir/isian. Prefiks API lebih panjang dari
+  // `/api/form-rm` → `moduleKeyForApiPath` memilih modul ini.
+  {
+    key: MODUL_PERANGKAT_TTD,
+    group: "Form RM",
+    label: "Perangkat TTD Siaga",
+    description: "Daftarkan, pasangkan, ganti nama, dan cabut tablet/HP tanda tangan siaga",
+    icon: TabletSmartphone,
+    navHref: "/form-rm/perangkat",
+    apiPrefixes: ["/api/form-rm/perangkat"],
+    actions: ["view", "create", "update", "delete"],
+    order: 52,
   },
   {
     key: "laporan",
