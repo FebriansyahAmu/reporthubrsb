@@ -198,6 +198,14 @@ export const WORKSPACES: Workspace[] = [
         moduleKey: MODUL_FORM_RM,
         anyOf: MODUL_AKSES_FORM_RM,
       },
+      {
+        href: "/form-rm/riwayat",
+        label: "Riwayat Pengisian",
+        icon: History,
+        description: "Isian Form RM per rentang tanggal",
+        moduleKey: MODUL_FORM_RM,
+        anyOf: MODUL_AKSES_FORM_RM,
+      },
     ],
   },
   {
@@ -320,6 +328,13 @@ export const WORKSPACES: Workspace[] = [
         icon: UsersRound,
         description: "Pantau catatan kegiatan pegawai (hanya-lihat)",
         moduleKey: "bckh.tim",
+      },
+      {
+        href: "/bckh/persetujuan",
+        label: "Pegawai & Persetujuan",
+        icon: FileSignature,
+        description: "Tanda tangani laporan bawahan, riwayat & pegawai saya",
+        moduleKey: "bckh.persetujuan",
       },
     ],
   },

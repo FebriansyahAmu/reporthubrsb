@@ -338,6 +338,7 @@ Registri divalidasi oleh unit test:
 | `/form-rm/f/[kode]`                           | pemilih pasien untuk form itu                    |
 | `/form-rm/isian/[id]`                         | halaman isian (satu URL per isian)               |
 | `/form-rm/pasien` · `/form-rm/pasien/[nopen]` | alur pasien lebih dulu (daftar · profil episode) |
+| `/form-rm/riwayat`                            | riwayat pengisian: isian per rentang tanggal (9 Nov 2026) |
 | `/print/form-rm/isian/[id]`                   | cetak, dengan tata letak sesuai versi isian      |
 
 | API                                                        | Izin                     | Keterangan                                        |
@@ -1269,6 +1270,82 @@ Tanpa perubahan tabel.
   - tambah pengkajian → "Pakai paraf saya" mengisi paraf dan nama di baris yang sama;
   - baris 1 utuh;
   - hapus baris benar.
+
+### Katalog baru & Riwayat Pengisian (9 Nov 2026)
+
+**Permintaan pemilik:** katalog formulir lebih menarik dan elegan dengan gaya SaaS yang terang dan lembut (ala shadcn/ui); filter otomatis Rawat Jalan / IGD / Rawat Inap di katalog; submenu baru **Riwayat Pengisian** berisi isian Form RM yang sudah diisi, bisa difilter menurut tanggal.
+
+**Katalog (`/form-rm`):**
+
+- **Filter layanan** berupa tab segmen: Semua · Rawat Jalan · IGD · Rawat Inap, dengan jumlah formulir per tab.
+  - Langsung menyaring tanpa tombol terapkan.
+  - Disimpan di URL (`?layanan=rj|igd|ri`, `replaceState`), sehingga muat ulang atau kembali ke halaman tetap memakai pilihan itu.
+  - Dasarnya `sasaran.jenis` registri. Form berbatas ruangan, misalnya RM.70 (IRDO & Perawatan OBGYN), tetap ikut jenisnya dan menampilkan keterangan ruangannya.
+  - Tab hanya muncul untuk jenis yang dimiliki form yang boleh dilihat.
+- **Kartu per formulir** di bawah judul kategori:
+  - ikon form, kode, judul, dan keterangan;
+  - cip layanan bertitik warna entitas (RJ teal, IGD terakota, RI emas; sama dengan grafik);
+  - penanda "Wajib IGD", serta satuan untuk form berulang (per tindakan, rujukan, atau transfusi);
+  - kaki kartu berisi draf Anda, draf seluruhnya, dan triase belum tertaut.
+  - Pencarian kode atau judul tetap ada.
+- **Ringkasan** di atas katalog: jumlah formulir, draf Anda (tautan ke Riwayat dengan filter draf milik saya), dan isian belum tertaut.
+
+**Riwayat Pengisian (`/form-rm/riwayat`):**
+
+- Daftar isian (`form_rm_isian`) dari form yang boleh dilihat pengguna, terbaru dulu, dikelompokkan per tanggal (WITA), 20 isian per halaman.
+- **Filter:**
+  - rentang tanggal, maksimal 366 hari, dengan pintasan Hari ini / 7 hari / 30 hari / Bulan ini;
+  - dasar tanggal: diperbarui (bawaan), dibuat, atau difinalkan;
+  - status: Semua / Draf / Final / Batal, dengan jumlah per status;
+  - formulir;
+  - cari pasien (No.RM/NOPEN angka atau nama, minimal 3 karakter, aturan sama dengan pemilih pasien);
+  - "Hanya isian saya" (dibuat oleh saya).
+- Filter disimpan di URL.
+- **Isi tiap baris:** waktu, formulir (dan pembeda isian berulang, misalnya nama tindakan RM.22), pasien (nama, No.RM, NOPEN, atau "Belum tertaut"), ruang, status, dan petugas pembuat/pemfinal (nama bergelar).
+- **Aksi:** baris membuka halaman isian. Tombol Cetak (tab baru) muncul bila pengguna punya hak cetak kategorinya, sama dengan tombol Cetak di halaman isian.
+- **Batas tanggal:** dari 00.00 WITA tanggal awal sampai sebelum 00.00 WITA sesudah tanggal akhir. Kolom DB menyimpan waktu UTC.
+
+**API:** `GET /api/form-rm/riwayat?dari&sampai[&dasar&status&form&q&saya&halaman]`
+
+- Butuh hak lihat Form RM (salah satu kategori).
+- Skema strict; parameter asing ditolak dengan 422.
+- Hanya form yang kategorinya boleh dilihat yang ikut. Parameter `form` di luar hak menghasilkan daftar kosong, bukan galat, agar keberadaan isian kategori lain tak terbaca.
+- Baca murni tanpa audit, seperti daftar dan pemilih pasien lain. Membuka isian tetap diaudit (`lihat`).
+- `no-store`.
+- Nama petugas diambil dari `users` (nama dan gelar saja; id akun tidak dikirim).
+- Data isian hanya dibaca untuk baris form berulang (ringkasan pembeda).
+- Tanpa perubahan skema atau tabel. Query memakai indeks `idx_form_rm_isian_status (form_kode, status, updated_at)` yang sudah ada.
+
+**Sidebar:** Form RM kini berisi Katalog Formulir · Per Pasien · Riwayat Pengisian.
+- Perbaikan sekalian: menu BCKH **Pegawai & Persetujuan** (`/bckh/persetujuan`, v1.2) ternyata belum terdaftar di sidebar, sehingga hanya bisa dibuka lewat URL. Kini sudah ditambahkan.
+- Uji unit baru menolak modul ber-`navHref` yang tidak punya item menu. Pengecualian yang disengaja: `kunjungan` dan `laporan.pendapatan`, yang dibuka dari Pusat Laporan.
+
+**Komponen:**
+- `components/ui/SegmentedControl.tsx`: tab segmen lembut dengan tombol `aria-pressed`. Label tidak pernah dipotong; bila tak muat, grup bergulir di dalam wadahnya, bukan halaman.
+- `features/form-rm/KatalogFormRm.tsx`, `RiwayatPengisianView.tsx`, `layanan.ts`, `riwayat.ts` (aturan murni dan DTO).
+- `server/modules/form-rm/isian.riwayat.ts`, `app/api/form-rm/riwayat/route.ts`, `app/(dashboard)/form-rm/riwayat/page.tsx`.
+
+**Hasil uji** (build produksi :3100; `tsc` dan ESLint bersih; data uji bertanggal 2021 dibersihkan sampai 0):
+
+- **Unit 586/586**, termasuk `riwayat.test.ts` (21) dan uji menu sidebar.
+- **E2E API `frm-riwayat-e2e.mjs` 61/61:**
+  - 401/403 dan 10 kasus validasi 422;
+  - batas tengah malam WITA dan tiga dasar tanggal;
+  - jumlah per status;
+  - ringkas form berulang, nama bergelar, dan "Pengguna terhapus";
+  - isolasi kategori: form di luar hak menghasilkan daftar kosong, dan pencarian tidak bocor;
+  - cari No.RM/NOPEN persis;
+  - paginasi dan penjepitan halaman;
+  - tanpa audit;
+  - tanpa sandi, TTD, atau id akun di respons;
+  - halaman, sidebar, dan katalog `?layanan`.
+- **UI Chrome `frm-riwayat-ui.mjs` 47/47:**
+  - filter layanan (URL dan muat ulang), cari, dan reset;
+  - isi kartu;
+  - kelompok tanggal, status, cari tertunda, isian saya, paginasi, dan pintasan;
+  - 5 lebar layar (360–1280) tanpa gulir menyamping, label segmen utuh;
+  - tanpa galat JS.
+- **Regresi BCKH:** UI 35/35, persetujuan UI 42/42.
 
 ## 17. Sumber
 

@@ -72,7 +72,7 @@ Diturunkan dari `src/components/layout/nav.ts` + folder `src/app/api/**` saat in
 | `monitoring.antrean-bpjs` | Monitoring | `/monitoring/antrean-bpjs` | `/api/monitoring/antrean-bpjs` | view, update | "Sesuaikan task" = update |
 | `monitoring.pelayanan` | Monitoring Pelayanan | `/monitoring/pelayanan/kunjungan` | `/api/monitoring/pelayanan` | view | Mencakup kunjungan/belum-final/diagnosa/resume |
 | `berkas-klaim` | Berkas Klaim | `/berkas-klaim/rm` | `/api/berkas-klaim` | view, print | + `/api/print/simgos` (cetak) |
-| `form-rm` | Form RM | `/form-rm` | `/api/form-rm` | view, create, update, print | **Semua kategori** formulir RM (grant lama tetap berlaku) |
+| `form-rm` | Form RM | `/form-rm` | `/api/form-rm` | view, create, update, print | **Semua kategori** formulir RM (grant lama tetap berlaku). Menu: Katalog Formulir (`/form-rm`, filter `?layanan=rj\|igd\|ri`), Per Pasien, Riwayat Pengisian (`/form-rm/riwayat`, `GET /api/form-rm/riwayat` — hanya isian kategori yang boleh dilihat) |
 | `form-rm.<kategori>` | Form RM | — | — | view, create, update, print | Satu kategori (`administrasi-persetujuan`, `gawat-darurat`, `asesmen-keperawatan`, `kebidanan`, `edukasi`, `ringkasan-pemulangan`; dibangkitkan dari `src/features/form-rm/kategori.ts`). `view` wajib untuk aksi lain; isian kategori tak terlihat → 404 seragam (PRD Form RM Terpadu §8.4) |
 | `form-rm.kelola` | Form RM | — | — | view, update | Buka koreksi / batalkan isian FINAL (Instalasi RM) |
 | `laporan` | Laporan | `/laporan` | `/api/laporan` | view, print | Pusat Laporan (katalog) |
