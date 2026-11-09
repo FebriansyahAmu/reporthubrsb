@@ -77,10 +77,16 @@ export function RiwayatPengisianView({
   opsiForm,
   hariIni,
   awal,
+  formTetap,
+  onUrl,
 }: {
   opsiForm: OpsiFormRiwayat[];
   hariIni: string;
   awal: FilterRiwayat;
+  /** Riwayat satu form saja (halaman detail form): pemilih formulir disembunyikan, baris berfokus pasien. */
+  formTetap?: KodeForm;
+  /** Ada = URL dikelola pemanggil (mis. tab halaman detail) — terima query string filter. */
+  onUrl?: (qs: string) => void;
 }) {
   const [f, setF] = useState<FilterRiwayat>(awal);
   const [cariInput, setCariInput] = useState(awal.q);
@@ -101,12 +107,13 @@ export function RiwayatPengisianView({
       ? `Rentang tanggal maksimal ${MAKS_RENTANG_RIWAYAT} hari.`
       : null;
 
-  const qsApi = queryRiwayat(f, hariIni, true);
-  const qsUrl = queryRiwayat(f, hariIni, false);
+  const qsApi = queryRiwayat(formTetap ? { ...f, form: formTetap } : f, hariIni, true);
+  const qsUrl = queryRiwayat(formTetap ? { ...f, form: "" } : f, hariIni, false);
   useEffect(() => {
+    if (onUrl) return onUrl(qsUrl);
     const url = `${window.location.pathname}${qsUrl ? `?${qsUrl}` : ""}`;
     if (`${window.location.pathname}${window.location.search}` !== url) window.history.replaceState(window.history.state, "", url);
-  }, [qsUrl]);
+  }, [qsUrl, onUrl]);
 
   const { result, loading, error, reload } = useAsyncData<RiwayatResult | null>(
     () => (rentangSalah ? Promise.resolve(null) : apiGet<RiwayatResult>(`/api/form-rm/riwayat?${qsApi}`)),
@@ -191,7 +198,14 @@ export function RiwayatPengisianView({
         </div>
         {rentangSalah && <p className="-mt-1 text-xs text-danger">{rentangSalah}</p>}
 
-        <div className="grid gap-3 border-t border-border pt-4 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] lg:items-end">
+        <div
+          className={cn(
+            "grid gap-3 border-t border-border pt-4",
+            formTetap
+              ? "sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
+              : "sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] lg:items-end",
+          )}
+        >
           <div className="min-w-0">
             <Label htmlFor="riwayat-cari">Cari pasien</Label>
             <InputWithIcon
@@ -211,13 +225,18 @@ export function RiwayatPengisianView({
               </p>
             )}
           </div>
-          <div className="min-w-0">
-            <Label htmlFor="riwayat-form">Formulir</Label>
-            <Select id="riwayat-form" value={f.form} onChange={(v) => ubah({ form: v })} options={opsiSelect} placeholder="Semua formulir" />
-          </div>
+          {!formTetap && (
+            <div className="min-w-0">
+              <Label htmlFor="riwayat-form">Formulir</Label>
+              <Select id="riwayat-form" value={f.form} onChange={(v) => ubah({ form: v })} options={opsiSelect} placeholder="Semua formulir" />
+            </div>
+          )}
           <label
             htmlFor="riwayat-saya"
-            className="flex h-10 cursor-pointer items-center gap-2.5 rounded-lg px-1 text-sm font-medium text-fg sm:col-span-2 lg:col-span-1"
+            className={cn(
+              "flex h-10 cursor-pointer items-center gap-2.5 rounded-lg px-1 text-sm font-medium text-fg",
+              !formTetap && "sm:col-span-2 lg:col-span-1",
+            )}
           >
             <Switch id="riwayat-saya" checked={f.saya} onChange={(v) => ubah({ saya: v })} />
             Hanya isian saya
@@ -257,8 +276,8 @@ export function RiwayatPengisianView({
 
         <div className="hidden border-b border-border bg-surface-2/40 px-4 py-2 text-xs font-medium text-fg-muted md:grid md:grid-cols-[3.25rem_2.25rem_minmax(0,1.4fr)_minmax(0,1.2fr)_minmax(0,1fr)_6.75rem_4.5rem] md:gap-x-3">
           <span>Pukul</span>
-          <span className="col-span-2">Formulir</span>
-          <span>Pasien</span>
+          <span className="col-span-2">{formTetap ? "Pasien" : "Formulir"}</span>
+          <span>{formTetap ? "Keterangan / ruang" : "Pasien"}</span>
           <span>Petugas</span>
           <span>Status</span>
           <span className="sr-only">Aksi</span>
@@ -291,7 +310,7 @@ export function RiwayatPengisianView({
                 </h3>
                 <ul className="divide-y divide-border border-b border-border last:border-b-0">
                   {g.items.map((it) => (
-                    <BarisRiwayat key={it.id} item={it} dasar={f.dasar} />
+                    <BarisRiwayat key={it.id} item={it} dasar={f.dasar} fokusPasien={!!formTetap} />
                   ))}
                 </ul>
               </section>
@@ -317,9 +336,24 @@ export function RiwayatPengisianView({
   );
 }
 
-function BarisRiwayat({ item, dasar }: { item: ItemRiwayat; dasar: DasarTanggal }) {
+function LencanaBelumTertaut() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning-soft px-1.5 text-[11px] font-medium leading-[1.125rem] text-warning">
+      <Link2Off className="size-3" aria-hidden />
+      Belum tertaut
+    </span>
+  );
+}
+
+/**
+ * Satu isian. `fokusPasien` (riwayat satu form): kolom utama = pasien, kolom
+ * kedua = pembeda isian (mis. tindakan) atau ruang; ikon = inisial pasien.
+ */
+function BarisRiwayat({ item, dasar, fokusPasien }: { item: ItemRiwayat; dasar: DasarTanggal; fokusPasien: boolean }) {
   const t = TAMPILAN_FORM[item.kode];
   const Ikon = t.ikon;
+  const namaPasien = item.namaPasien || "Tanpa nama";
+  const identitas = item.tertaut ? `RM ${item.norm} · ${item.nopen}` : "Identitas sementara";
   const st = STATUS[item.status];
   const IkonStatus = st.ikon;
   const petugas = item.difinalkanOleh ?? item.dibuatOleh;
@@ -346,22 +380,41 @@ function BarisRiwayat({ item, dasar }: { item: ItemRiwayat; dasar: DasarTanggal 
           {jam}
         </time>
 
-        <span className="order-1 row-span-3 grid size-9 place-items-center rounded-lg bg-surface-2/70 text-fg-muted ring-1 ring-inset ring-border md:order-2 md:row-span-1">
-          <Ikon className="size-4" aria-hidden />
-        </span>
+        {fokusPasien ? (
+          <span
+            aria-hidden
+            className="order-1 row-span-3 grid size-9 place-items-center rounded-full bg-surface-2/70 text-xs font-semibold text-fg-muted ring-1 ring-inset ring-border md:order-2 md:row-span-1"
+          >
+            {item.tertaut ? inisial(namaPasien) : <Link2Off className="size-4" />}
+          </span>
+        ) : (
+          <span className="order-1 row-span-3 grid size-9 place-items-center rounded-lg bg-surface-2/70 text-fg-muted ring-1 ring-inset ring-border md:order-2 md:row-span-1">
+            <Ikon className="size-4" aria-hidden />
+          </span>
+        )}
 
         <div className="order-2 min-w-0 md:order-3">
           <Link
             href={`/form-rm/isian/${item.id}`}
             prefetch={false}
             data-baris
-            className="block truncate text-sm font-semibold text-fg after:absolute after:inset-0 after:content-[''] focus-visible:outline-none group-has-[a[data-baris]:focus-visible]:underline"
+            className={cn(
+              "flex min-w-0 items-center gap-1.5 text-sm font-semibold text-fg after:absolute after:inset-0 after:content-['']",
+              "focus-visible:outline-none group-has-[a[data-baris]:focus-visible]:underline",
+            )}
           >
-            {t.label}
+            <span className="truncate">{fokusPasien ? namaPasien : t.label}</span>
+            {fokusPasien && !item.tertaut && <LencanaBelumTertaut />}
           </Link>
-          <p className="truncate text-xs text-fg-muted">
-            <span className="font-mono font-medium">{item.kode}</span>
-            {item.ringkas && <span> · {item.ringkas}</span>}
+          <p className="truncate text-xs text-fg-muted tabular">
+            {fokusPasien ? (
+              identitas
+            ) : (
+              <>
+                <span className="font-mono font-medium">{item.kode}</span>
+                {item.ringkas && <span> · {item.ringkas}</span>}
+              </>
+            )}
           </p>
         </div>
 
@@ -372,27 +425,23 @@ function BarisRiwayat({ item, dasar }: { item: ItemRiwayat; dasar: DasarTanggal 
           </span>
         </span>
 
-        <div className="order-4 col-span-2 min-w-0 md:col-span-1">
-          <p className="flex min-w-0 items-center gap-1.5 text-sm text-fg">
-            <span className="truncate font-medium">{item.namaPasien || "Tanpa nama"}</span>
-            {!item.tertaut && (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning-soft px-1.5 text-[11px] font-medium leading-[1.125rem] text-warning">
-                <Link2Off className="size-3" aria-hidden />
-                Belum tertaut
-              </span>
-            )}
-          </p>
-          <p className="truncate text-xs text-fg-muted tabular">
-            {item.tertaut ? (
-              <>
-                RM {item.norm} · {item.nopen}
-                {item.ruang && <span className="max-md:hidden"> · {item.ruang}</span>}
-              </>
-            ) : (
-              "Identitas sementara"
-            )}
-          </p>
-        </div>
+        {fokusPasien ? (
+          <div className="order-4 col-span-2 min-w-0 md:col-span-1">
+            <p className="truncate text-sm text-fg">{item.ringkas ?? item.ruang ?? "Ruang tidak tercatat"}</p>
+            {item.ringkas && item.ruang && <p className="truncate text-xs text-fg-muted">{item.ruang}</p>}
+          </div>
+        ) : (
+          <div className="order-4 col-span-2 min-w-0 md:col-span-1">
+            <p className="flex min-w-0 items-center gap-1.5 text-sm text-fg">
+              <span className="truncate font-medium">{namaPasien}</span>
+              {!item.tertaut && <LencanaBelumTertaut />}
+            </p>
+            <p className="truncate text-xs text-fg-muted tabular">
+              {identitas}
+              {item.tertaut && item.ruang && <span className="max-md:hidden"> · {item.ruang}</span>}
+            </p>
+          </div>
+        )}
 
         <div className="order-5 col-span-2 flex items-center justify-between gap-2 text-xs text-fg-muted md:hidden">
           <span className="min-w-0 truncate">
@@ -405,7 +454,7 @@ function BarisRiwayat({ item, dasar }: { item: ItemRiwayat; dasar: DasarTanggal 
                 · {perannya.toLowerCase()} {item.milikSaya && !item.difinalkanOleh ? "oleh Anda" : `oleh ${petugas.nama}`}
               </>
             )}
-            {item.ruang && <> · {item.ruang}</>}
+            {!fokusPasien && item.ruang && <> · {item.ruang}</>}
           </span>
           {cetak}
         </div>

@@ -63,8 +63,10 @@ export type DaftarPasienForm = {
   meta: PageMeta;
   /** `aktif` = daftar bawaan sasaran form; `cari` = hasil pencarian No.RM / nama / NIK. */
   mode: "aktif" | "cari";
-  /** Hitungan status isian atas seluruh hasil (sebelum saring status). */
+  /** Hitungan status isian atas hasil (sesudah filter layanan, sebelum saring status). */
   ringkas: Record<StatusFormPasien, number>;
+  /** Jumlah episode per jenis kunjungan (sebelum filter layanan & status). */
+  perLayanan: Partial<Record<JenisKunjungan, number>>;
   updatedAt: string;
 };
 

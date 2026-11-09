@@ -130,6 +130,24 @@ export async function drafSaya(def: DefinisiForm, userId: string, batas = 12): P
   }));
 }
 
+/** Ringkasan seluruh isian satu form (kepala halaman detail form). */
+export type StatistikForm = { DRAF: number; FINAL: number; BATAL: number; drafSaya: number; total: number };
+
+export async function statistikForm(kode: KodeForm, userId: string): Promise<StatistikForm> {
+  const db = getAppDb();
+  const [perStatus, drafSaya] = await Promise.all([
+    db.formRmIsian.groupBy({ by: ["status"], where: { formKode: kode }, _count: { _all: true } }),
+    db.formRmIsian.count({ where: { formKode: kode, status: "DRAF", dibuatOlehId: userId } }),
+  ]);
+  const hasil: StatistikForm = { DRAF: 0, FINAL: 0, BATAL: 0, drafSaya, total: 0 };
+  for (const r of perStatus) {
+    if (!adalahStatusIsian(r.status)) continue;
+    hasil[r.status] = r._count._all;
+    hasil.total += r._count._all;
+  }
+  return hasil;
+}
+
 /** Jumlah isian DRAF yang belum tertaut ke pendaftaran per form — katalog. */
 export async function hitungBelumTertaut(kodes: readonly KodeForm[]): Promise<Partial<Record<KodeForm, number>>> {
   if (kodes.length === 0) return {};

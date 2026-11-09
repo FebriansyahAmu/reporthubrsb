@@ -344,7 +344,7 @@ Registri divalidasi oleh unit test:
 | API                                                        | Izin                     | Keterangan                                        |
 | ---------------------------------------------------------- | ------------------------ | ------------------------------------------------- |
 | `GET /api/form-rm/katalog`                                 | view                     | form yang boleh diakses + hitungan draf           |
-| `GET /api/form-rm/f/[kode]/pasien?q=&halaman=`             | view kategori            | daftar pasien sasaran + status isian              |
+| `GET /api/form-rm/f/[kode]/pasien?q=&ruangan=&status=&layanan=&halaman=` | view kategori | daftar pasien sasaran + status isian; `layanan=rj\|igd\|ri` + `perLayanan` (9 Nov 2026) |
 | `POST /api/form-rm/isian` `{kode, nopen, kunjungan?}`      | create kategori          | buat-atau-buka; isi otomatis dijalankan di server |
 | `GET /api/form-rm/isian/[id]`                              | view kategori            | isian + asal kolom                                |
 | `PATCH /api/form-rm/isian/[id]` `{rev, data}`              | update kategori          | simpan draf; `rev` usang → 409                    |
@@ -1346,6 +1346,62 @@ Tanpa perubahan tabel.
   - 5 lebar layar (360–1280) tanpa gulir menyamping, label segmen utuh;
   - tanpa galat JS.
 - **Regresi BCKH:** UI 35/35, persetujuan UI 42/42.
+
+### Halaman detail form (9 Nov 2026)
+
+**Permintaan pemilik:** halaman detail form (`/form-rm/f/[kode]`, dibuka dari kartu katalog) dibuat solid, modern, dan interaktif dengan gaya SaaS shadcn. Halaman ini memuat riwayat pengisian form itu dan filter otomatis Rawat Inap / Rawat Jalan / IGD untuk daftar pasien.
+
+**Susunan halaman:**
+
+- **Breadcrumb:** Katalog formulir › kategori › kode.
+- **Kartu kepala form:**
+  - ikon, kode, kategori, "Wajib IGD", dan satuan form berulang;
+  - judul, serta judul resmi bila berbeda; keterangan;
+  - cip layanan bertitik warna entitas, ruang terbatas (RM.70);
+  - kertas, jumlah kolom isi otomatis SIMRS, dan "Bisa diisi sebelum pasien terdaftar" (RM.04);
+  - ringkasan seluruh isian: draf berjalan, final, dibatalkan, draf Anda (`statistikForm`, satu `groupBy`).
+- **Tab** (`role=tab`, panah kiri/kanan, `?tab=riwayat`):
+  - **Pilih pasien**:
+    - draf Anda (kartu lanjutkan) dan panel belum tertaut (RM.04);
+    - filter **Layanan** (Semua · Rawat Jalan · IGD · Rawat Inap; hanya jenis sasaran form, tampil bila lebih dari satu) yang langsung berlaku dan disimpan di URL `?layanan=`;
+    - cari dan ruangan (opsi ruangan ikut layanan terpilih);
+    - segmen status Semua / Belum diisi / Draf / Final dengan jumlah;
+    - baris pasien berisi inisial, identitas, cip layanan, status dilayani, ruang, waktu masuk, dan aksi;
+    - paginasi bernomor.
+  - **Riwayat pengisian**:
+    - tampilan Riwayat Pengisian dikunci ke form ini (pemilih formulir disembunyikan);
+    - baris berfokus pasien (nama sebagai tautan; kolom keterangan = pembeda isian, misalnya tindakan, dan ruang);
+    - lencana jumlah isian di tab;
+    - dimuat saat tab pertama kali dibuka.
+  - Kedua panel tetap terpasang, jadi filter tidak hilang saat berpindah tab. URL berisi tab aktif dan filter panel itu.
+- **Filter otomatis dari katalog:** bila katalog sedang disaring (misalnya Rawat Inap), kartu form multi-layanan menautkan `/form-rm/f/<kode>?layanan=ri`, sehingga daftar pasien langsung tersaring.
+
+**API:** `GET /api/form-rm/f/[kode]/pasien` menerima `layanan=rj|igd|ri` (strict; nilai lain 422). Respons ditambah `perLayanan` (jumlah episode per jenis kunjungan).
+- Hitungan bertingkat dari satu query SIMGOS yang sama (baca saja): `perLayanan` dihitung sebelum filter layanan, `ringkas` (status) sesudah filter layanan dan sebelum filter status. Angka pada setiap pilihan selalu sama dengan hasil bila pilihan itu diklik.
+- Layanan di luar sasaran form menghasilkan daftar kosong.
+
+**Kode:** `features/form-rm/TabDetailForm.tsx`, `tab-detail.ts` (konstanta tab di modul biasa, bukan berkas klien), `PemilihPasien.tsx` (ditulis ulang), `RiwayatPengisianView.tsx` (`formTetap`, `onUrl`), `layanan.ts` (`TITIK_LAYANAN`, `jenisDariLayanan`), `app/(dashboard)/form-rm/f/[kode]/page.tsx`, `server/modules/form-rm/form-rm.pasien.ts` & `isian.cari.ts` (`statistikForm`).
+
+**Hasil uji** (build produksi :3100; data SIMGOS nyata dibaca saja dan tidak ada isian dibuat; nama pasien disamarkan di tangkapan layar):
+
+- **Unit 589/589.**
+- **E2E `frm-detail-e2e.mjs` 38/38:**
+  - perLayanan hanya jenis sasaran; Σ perLayanan = Σ ringkas = total;
+  - filter igd/ri benar per baris; status sesudah layanan;
+  - RJ di luar sasaran → kosong; RM.33 RJ;
+  - 422/403/401; cari + layanan;
+  - SSR tab, filter, dan statistik = DB;
+  - RM.04 dan RM.70; /403 dan 404;
+  - tautan katalog membawa `?layanan`.
+- **UI `frm-detail-ui.mjs` 27/27:**
+  - kepala form dan statistik;
+  - filter layanan (URL, baris, jumlah status);
+  - Belum diisi;
+  - tab dan keyboard (filter pulih di URL);
+  - riwayat berfokus pasien dan status;
+  - katalog → detail tersaring;
+  - 5 lebar layar tanpa gulir menyamping; tanpa galat JS.
+- **Regresi Riwayat:** E2E 61/61, UI 47/47.
 
 ## 17. Sumber
 

@@ -13,6 +13,7 @@ export const LAYANAN = [
 
 export type Layanan = (typeof LAYANAN)[number];
 export type KunciLayanan = Layanan["kunci"];
+export const KUNCI_LAYANAN = LAYANAN.map((l) => l.kunci) as [KunciLayanan, ...KunciLayanan[]];
 
 const BY_KUNCI = new Map<string, Layanan>(LAYANAN.map((l) => [l.kunci, l]));
 const BY_JENIS = new Map<number, Layanan>(LAYANAN.map((l) => [l.jenis, l]));
@@ -22,6 +23,10 @@ export const layananDariParam = (v: unknown): KunciLayanan | null =>
   typeof v === "string" && BY_KUNCI.has(v) ? (v as KunciLayanan) : null;
 
 export const layananDariJenis = (j: number): Layanan | undefined => BY_JENIS.get(j);
+export const jenisDariLayanan = (k: KunciLayanan): JenisKunjungan => BY_KUNCI.get(k)!.jenis;
+
+/** Kelas titik warna entitas layanan — sama dengan grafik (RJ teal, IGD terakota, RI emas). */
+export const TITIK_LAYANAN: Record<JenisKunjungan, string> = { 1: "bg-chart-rj", 2: "bg-chart-igd", 3: "bg-chart-ri" };
 
 /** Form dengan sasaran `jenis` cocok dengan filter layanan (null = semua). */
 export const cocokLayanan = (jenis: readonly number[], kunci: KunciLayanan | null): boolean =>

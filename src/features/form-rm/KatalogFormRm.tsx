@@ -7,7 +7,7 @@ import { InputWithIcon } from "@/components/ui/Field";
 import { SegmentedControl, type SegmentItem } from "@/components/ui/SegmentedControl";
 import { cn } from "@/lib/cn";
 import { DAFTAR_KATEGORI, KATEGORI_FORM, type KategoriForm } from "./kategori";
-import { cocokLayanan, LAYANAN, layananDariJenis, type KunciLayanan } from "./layanan";
+import { cocokLayanan, jenisDariLayanan, LAYANAN, layananDariJenis, TITIK_LAYANAN, type KunciLayanan } from "./layanan";
 import type { JenisKunjungan, KodeForm } from "./registry";
 import { TAMPILAN_FORM } from "./tampilan";
 
@@ -32,9 +32,6 @@ export type ItemKatalog = {
 export type TautanKatalog = { drafSaya: string };
 
 const normal = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
-
-/** Kelas titik warna entitas layanan — sama dengan grafik (RJ teal, IGD terakota, RI emas). */
-const TITIK_LAYANAN: Record<JenisKunjungan, string> = { 1: "bg-chart-rj", 2: "bg-chart-igd", 3: "bg-chart-ri" };
 
 const daftarDan = (s: readonly string[]) => (s.length > 1 ? `${s.slice(0, -1).join(", ")} & ${s[s.length - 1]}` : s.join(""));
 
@@ -205,7 +202,7 @@ export function KatalogFormRm({
                 <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
                   {forms.map((it) => (
                     <li key={it.kode} className="min-w-0">
-                      <KartuForm item={it} />
+                      <KartuForm item={it} layanan={aktif} />
                     </li>
                   ))}
                 </ul>
@@ -218,13 +215,15 @@ export function KatalogFormRm({
   );
 }
 
-function KartuForm({ item }: { item: ItemKatalog }) {
+/** `layanan` = filter katalog aktif: ikut dibawa ke halaman detail (daftar pasien langsung tersaring). */
+function KartuForm({ item, layanan }: { item: ItemKatalog; layanan: KunciLayanan | null }) {
   const t = TAMPILAN_FORM[item.kode];
   const Ikon = t.ikon;
   const wajib = item.wajib.map((j) => layananDariJenis(j)?.label ?? "").filter(Boolean);
+  const bawa = layanan && item.jenis.length > 1 && item.jenis.includes(jenisDariLayanan(layanan)) ? `?layanan=${layanan}` : "";
   return (
     <Link
-      href={`/form-rm/f/${item.kode}`}
+      href={`/form-rm/f/${item.kode}${bawa}`}
       prefetch={false}
       title={item.sasaran}
       className={cn(

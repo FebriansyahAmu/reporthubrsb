@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MIN_CARI, tafsirCari } from "@/features/form-rm/cari";
+import { KUNCI_LAYANAN } from "@/features/form-rm/layanan";
 import { KODE_FORM } from "@/features/form-rm/registry";
 import {
   DASAR_TANGGAL,
@@ -44,6 +45,8 @@ export const pasienFormQuerySchema = z.strictObject({
     }),
   ruangan: ruanganSchema.optional(),
   status: z.enum(["KOSONG", "DRAF", "FINAL"]).optional(),
+  /** Filter layanan (jenis kunjungan leg sasaran episode). */
+  layanan: z.enum(KUNCI_LAYANAN).optional(),
   halaman: z.coerce.number().int().min(1).max(1000).default(1),
 });
 

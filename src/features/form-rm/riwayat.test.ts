@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { riwayatQuerySchema } from "@/server/modules/form-rm/form-rm.schema";
-import { cocokLayanan, LAYANAN, layananDariJenis, layananDariParam } from "./layanan";
+import { pasienFormQuerySchema, riwayatQuerySchema } from "@/server/modules/form-rm/form-rm.schema";
+import {
+  cocokLayanan,
+  jenisDariLayanan,
+  KUNCI_LAYANAN,
+  LAYANAN,
+  layananDariJenis,
+  layananDariParam,
+  TITIK_LAYANAN,
+} from "./layanan";
+import { tabDetailDariParam } from "./tab-detail";
 import {
   batasRentang,
   filterAwalRiwayat,
@@ -98,6 +107,26 @@ describe("riwayat: skema API (strict)", () => {
     expect(
       riwayatQuerySchema.parse({ ...sah, q: "Siti Aminah", form: "RM.04", saya: "1", dasar: "dibuat", status: "BATAL", halaman: "4" }),
     ).toMatchObject({ q: "Siti Aminah", form: "RM.04", saya: "1", dasar: "dibuat", status: "BATAL", halaman: 4 });
+  });
+});
+
+describe("halaman detail form: tab & filter layanan pasien", () => {
+  it("tab dari URL: dikenal saja, bawaan pasien", () => {
+    expect(tabDetailDariParam("riwayat")).toBe("riwayat");
+    expect(tabDetailDariParam("pasien")).toBe("pasien");
+    expect(tabDetailDariParam("RIWAYAT")).toBe("pasien");
+    expect(tabDetailDariParam(undefined)).toBe("pasien");
+  });
+  it("skema pemilih pasien menerima layanan dikenal, menolak lainnya (strict)", () => {
+    expect(pasienFormQuerySchema.parse({ layanan: "ri" })).toMatchObject({ layanan: "ri", halaman: 1 });
+    expect(pasienFormQuerySchema.safeParse({ layanan: "3" }).success).toBe(false);
+    expect(pasienFormQuerySchema.safeParse({ layanan: "RI" }).success).toBe(false);
+    expect(pasienFormQuerySchema.safeParse({ jenis: "3" }).success).toBe(false);
+  });
+  it("kunci layanan ↔ jenis kunjungan", () => {
+    expect(KUNCI_LAYANAN).toEqual(["rj", "igd", "ri"]);
+    expect(KUNCI_LAYANAN.map(jenisDariLayanan)).toEqual([1, 2, 3]);
+    expect(TITIK_LAYANAN[2]).toBe("bg-chart-igd");
   });
 });
 

@@ -29,6 +29,8 @@ export type PasienFormArgs = {
   q?: string;
   ruanganId?: string;
   status?: StatusFormPasien;
+  /** Hanya episode yang leg sasaran terbarunya berjenis ini (filter layanan). */
+  jenis?: JenisKunjungan;
   halaman: number;
 };
 
@@ -37,13 +39,18 @@ export type PasienFormArgs = {
  * (leg sasaran masih dilayani / masuk dalam jendela jam). Dengan kata kunci
  * (≥ 3 karakter): episode sasaran milik pasien yang cocok No.RM / NIK / NOPEN /
  * nama, terbaru dulu. Tiap baris membawa isian aktif form itu.
+ *
+ * Saringan bertingkat (satu query SIMGOS): `perLayanan` dihitung sebelum
+ * filter layanan, `ringkas` (status isian) sesudah filter layanan dan sebelum
+ * filter status — angka di setiap pilihan selalu sesuai hasil bila dipilih.
  */
 export async function daftarPasienForm(def: DefinisiForm, a: PasienFormArgs): Promise<DaftarPasienForm> {
   const kunci = a.q ? tafsirCari(a.q) : null;
   const mode = a.q ? "cari" : "aktif";
   const ringkas: Record<StatusFormPasien, number> = { KOSONG: 0, DRAF: 0, FINAL: 0 };
+  const perLayanan: Partial<Record<JenisKunjungan, number>> = {};
   if (!isSimgosConfigured() || (a.q && !kunci)) {
-    return { ...halamanDari([], 1, UKURAN_PEMILIH), mode, ringkas, updatedAt: new Date().toISOString() };
+    return { ...halamanDari([], 1, UKURAN_PEMILIH), mode, ringkas, perLayanan, updatedAt: new Date().toISOString() };
   }
 
   const acuan = new Date();
@@ -52,13 +59,15 @@ export async function daftarPasienForm(def: DefinisiForm, a: PasienFormArgs): Pr
     ? await queryLegPasien({ sasaran, norm: await queryNormCari(kunci) })
     : await queryLegAktif({ sasaran, jendelaJam: def.sasaran.jendelaJam, ruanganId: a.ruanganId });
   const episode = kelompokkanEpisode(legs, acuan);
+  for (const e of episode) perLayanan[e.jenis] = (perLayanan[e.jenis] ?? 0) + 1;
+  const sesuaiLayanan = a.jenis ? episode.filter((e) => e.jenis === a.jenis) : episode;
 
-  const isian = await isianAktifPerNopen(episode.map((e) => e.nopen), [def.kode]);
-  const semua: PasienSasaran[] = episode.map((e) => ({ ...e, isian: isian.get(e.nopen)?.[def.kode] ?? null }));
+  const isian = await isianAktifPerNopen(sesuaiLayanan.map((e) => e.nopen), [def.kode]);
+  const semua: PasienSasaran[] = sesuaiLayanan.map((e) => ({ ...e, isian: isian.get(e.nopen)?.[def.kode] ?? null }));
   for (const p of semua) ringkas[statusPasien(p.isian)]++;
   const tersaring = a.status ? semua.filter((p) => statusPasien(p.isian) === a.status) : semua;
 
-  return { ...halamanDari(tersaring, a.halaman, UKURAN_PEMILIH), mode, ringkas, updatedAt: acuan.toISOString() };
+  return { ...halamanDari(tersaring, a.halaman, UKURAN_PEMILIH), mode, ringkas, perLayanan, updatedAt: acuan.toISOString() };
 }
 
 /** Gabungan jenis kunjungan sasaran form yang boleh dilihat (urut 1, 2, 3). */
