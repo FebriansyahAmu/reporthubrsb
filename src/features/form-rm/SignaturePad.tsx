@@ -22,6 +22,8 @@ import { ImageCropper } from "@/features/form-rm/ImageCropper";
 import { useTerkunci } from "@/features/form-rm/isian/kunci";
 import { useTtdSaya } from "@/features/form-rm/isian/TtdSayaProvider";
 import { srcTtd } from "@/features/form-rm/skema";
+import { TombolKirimCepat, TtdPerangkat } from "@/features/form-rm/ttd-siaga/TtdPerangkat";
+import { useTtdPerangkat } from "@/features/form-rm/ttd-siaga/TtdPerangkatProvider";
 import {
   bolehSimpanSebagaiSaya,
   LABEL_JENIS_TTD_SAYA,
@@ -38,7 +40,8 @@ import {
   processPhoto,
 } from "@/features/form-rm/signature";
 
-type Mode = "" | "draw" | "upload" | "camera" | "remote";
+/** `device` = tablet siaga (docs/PRD_TTD_Perangkat_Siaga.md) — hanya di isian Form RM DRAF. */
+type Mode = "" | "draw" | "upload" | "camera" | "remote" | "device";
 const DEFAULT_CROP: CropRect = { x: 0.05, y: 0.05, w: 0.9, h: 0.9 };
 
 type RemoteSession = { token: string; qr: string; url: string };
@@ -97,6 +100,11 @@ export function SignaturePad({
   useEffect(() => {
     terbaru.current = { petugas, dataSaya, simpanSaya, tawarSimpan };
   });
+
+  // Tablet siaga: hanya bila halaman isian Form RM memasang konteksnya (DRAF + boleh ubah).
+  const ttdPerangkat = useTtdPerangkat();
+  const bolehPerangkat = !!ttdPerangkat?.aktif;
+  const [perangkatLangsung, setPerangkatLangsung] = useState<{ id: string; nama: string } | null>(null);
 
   // TTD jarak jauh (hand-off ke HP via QR).
   const [remote, setRemote] = useState<RemoteSession | null>(null);
@@ -277,7 +285,13 @@ export function SignaturePad({
   function chooseMode(m: Mode) {
     resetCapture();
     setCamError(null);
+    setPerangkatLangsung(null);
     setMode(m);
+  }
+  /** Metode tablet siaga: `p` = kirim langsung ke perangkat itu, null = tampilkan pemilih. */
+  function mulaiPerangkat(p: { id: string; nama: string } | null) {
+    chooseMode("device");
+    setPerangkatLangsung(p);
   }
   /** Mulai tahap crop & sesuaikan dari sebuah gambar sumber. */
   function startSource(src: string) {
@@ -518,6 +532,7 @@ export function SignaturePad({
                 </span>
               </button>
             )}
+            {bolehPerangkat && <TombolKirimCepat onPilih={mulaiPerangkat} onDaftar={() => mulaiPerangkat(null)} />}
             <div className="grid grid-cols-2 gap-2">
               <MethodBtn icon={<PenLine className="size-5" />} label="Gambar" onClick={() => chooseMode("draw")} />
               <MethodBtn icon={<Smartphone className="size-5" />} label="Via HP" onClick={startRemote} />
@@ -636,6 +651,17 @@ export function SignaturePad({
               </div>
             ) : null}
           </div>
+        )}
+
+        {/* 5) Tablet siaga — permintaan didorong lewat SSE, pasien cukup menggambar */}
+        {mode === "device" && bolehPerangkat && (
+          <TtdPerangkat
+            key={perangkatLangsung?.id ?? "pilih"}
+            slot={label}
+            langsung={perangkatLangsung}
+            onPakai={(png) => commit(png)}
+            onKembali={() => chooseMode("")}
+          />
         )}
 
         {mode !== "" && tawarSimpan && (

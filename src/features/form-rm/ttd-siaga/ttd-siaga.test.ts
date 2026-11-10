@@ -309,11 +309,28 @@ describe("rute publik tablet (daftar tertutup)", () => {
     expect(cocokRuteTtdSiaga("/api/ttd-siaga/pasang", "GET").jenis).toBe("metode");
     expect(cocokRuteTtdSiaga("/api/ttd-siaga/aliran", "GET").jenis).toBe("ok");
     expect(cocokRuteTtdSiaga("/api/ttd-siaga/segarkan", "POST").jenis).toBe("ok");
+    const id = "abcdefghijklmnopqrstu_";
+    expect(cocokRuteTtdSiaga(`/api/ttd-siaga/permintaan/${id}`, "POST").jenis).toBe("ok");
+    expect(cocokRuteTtdSiaga(`/api/ttd-siaga/permintaan/${id}`, "GET").jenis).toBe("metode");
+    expect(cocokRuteTtdSiaga(`/api/ttd-siaga/permintaan/${id}/tampil`, "POST").jenis).toBe("ok");
+    expect(cocokRuteTtdSiaga(`/api/ttd-siaga/permintaan/${id}/tampil`, "DELETE").jenis).toBe("metode");
   });
 
   it("jalur tak terdaftar → tak-ada (tanpa endpoint tersembunyi)", () => {
-    for (const p of ["/ttd-siaga/", "/ttd-siaga/admin", "/api/ttd-siaga", "/api/ttd-siaga/debug", "/api/ttd-siaga/aliran/x", "/api/ttd-siaga/pasang/../aliran"]) {
-      expect(cocokRuteTtdSiaga(p, "GET").jenis, p).toBe("tak-ada");
+    for (const p of [
+      "/ttd-siaga/",
+      "/ttd-siaga/admin",
+      "/api/ttd-siaga",
+      "/api/ttd-siaga/debug",
+      "/api/ttd-siaga/aliran/x",
+      "/api/ttd-siaga/pasang/../aliran",
+      "/api/ttd-siaga/permintaan",
+      "/api/ttd-siaga/permintaan/pendek",
+      "/api/ttd-siaga/permintaan/abcdefghijklmnopqrstu_/terima",
+      "/api/ttd-siaga/permintaan/abcdefghijklmnopqrstu_/aliran",
+      "/api/ttd-siaga/permintaan/abcdefghijklmnopqrstu_x",
+    ]) {
+      expect(cocokRuteTtdSiaga(p, "POST").jenis, p).toBe("tak-ada");
     }
   });
 });

@@ -1,5 +1,7 @@
 /** Tipe bersama (klien & server) perangkat TTD siaga — docs/PRD_TTD_Perangkat_Siaga.md. */
 
+import type { StatusPermintaan } from "./status";
+
 /** BELUM = belum pernah/tidak sedang terpasang; DICABUT = dicabut pengelola. */
 export type StatusPasang = "BELUM" | "TERPASANG" | "DICABUT";
 
@@ -37,3 +39,44 @@ export type KodePasangDto = {
 export type OpsiRuanganPerangkat = { id: string; nama: string; kategori: string };
 
 export const JALUR_TTD_SIAGA = "/ttd-siaga";
+
+/* ------------------------------------------------- permintaan TTD (Langkah 3) */
+
+/** Status perangkat di pemilih petugas. */
+export type StatusPerangkatPilih = "SIAP" | "SIBUK" | "TERPUTUS";
+
+/** Perangkat di pemilih petugas: tanpa kredensial, tanpa siapa yang sedang memakai. */
+export type PerangkatPilihDto = {
+  id: string;
+  nama: string;
+  /** Nama ruangan lokasi (SIMGOS, baca saja); null bila tak diisi/tak terbaca. */
+  lokasi: string | null;
+  status: StatusPerangkatPilih;
+};
+
+/** Kenapa permintaan berakhir (selain diterima). */
+export type AlasanAkhir = "pc" | "pc-pergi" | "perangkat-dicabut" | "tenggat";
+
+/** Respons pembuatan permintaan. */
+export type PermintaanDibuatDto = {
+  id: string;
+  /** Sisa tenggat menggambar (ms) — dihitung server, bebas selisih jam PC. */
+  sisaMs: number;
+  perangkat: { id: string; nama: string };
+};
+
+/** Data event `status` di aliran PC. */
+export type StatusPermintaanPc = {
+  status: StatusPermintaan;
+  sisaMs: number;
+  putaran: number;
+  /** Aliran tablet tujuan sedang tersambung. */
+  terhubung: boolean;
+  alasan: AlasanAkhir | null;
+};
+
+/** Data event `ttd` di aliran PC dan respons "Pakai": PNG ternormalisasi server. */
+export type TtdMasukDto = { png: string; sha256: string };
+
+/** Data event `permintaan` di aliran tablet: HANYA ID + putaran (K2). */
+export type PermintaanTabletDto = { id: string; putaran: number };

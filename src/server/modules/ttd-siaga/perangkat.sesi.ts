@@ -6,6 +6,7 @@ import { buatPembatasLaju } from "@/server/lib/rate-limit";
 import { buatPencatatGanda } from "./ganda";
 import { hubTtd, type KoneksiPerangkat } from "./hub";
 import { kodePasang } from "./kode-pasang.store";
+import { permintaanTtd } from "./permintaan.hub";
 import { putuskanKredensial } from "./kredensial.aturan";
 import { buatTokenPerangkat, hashTokenPerangkat } from "./kredensial";
 
@@ -37,6 +38,7 @@ async function cabutOtomatis(perangkatId: string, nama: string, aksi: string, ip
     data: { aktif: false, tokenHash: null, tokenHashLama: null, tokenDiputarAt: null, dicabutAt: new Date() },
   });
   kodePasang.batalkan(perangkatId);
+  permintaanTtd.inti.batalkanPerangkat(perangkatId, "perangkat-dicabut");
   hubTtd.putuskan(perangkatId, "dicabut");
   lupakanGanda(perangkatId);
   await writeAudit({
@@ -172,7 +174,7 @@ export function catatAktif(perangkatId: string): void {
     .catch((err: unknown) => console.error("[ttd-siaga] gagal mencatat terakhir aktif:", (err as Error)?.message));
 }
 
-hubTtd.saatLepas((k: KoneksiPerangkat) => catatAktif(k.perangkatId));
+hubTtd.saatLepas("catat-aktif", (k: KoneksiPerangkat) => catatAktif(k.perangkatId));
 
 /**
  * Setelah aliran baru tersambung: catat aktif; bila menggantikan aliran lain,

@@ -134,6 +134,8 @@
   - 3 menit tanpa TTD → KEDALUWARSA;
   - TTD sudah masuk tetapi tidak diterima/diminta ulang dalam 2 menit → KEDALUWARSA, PNG dibuang.
 - **Aliran PC putus** (tab ditutup, pindah halaman): server menunggu sambung ulang 10 dtk. Bila PC tidak kembali → DIBATALKAN.
+  - PC yang tidak pernah membuka aliran setelah membuat permintaan → DIBATALKAN setelah 20 dtk.
+  - Halaman juga mencoba membatalkan seketika (`pagehide` → DELETE keepalive). Ini **upaya terbaik**: peramban tidak menjamin permintaan saat halaman dibongkar terkirim. Jaminannya tetap grasi 10 dtk di server.
 - **Tablet putus** saat permintaan aktif: permintaan tetap hidup sampai tenggat. Saat tablet tersambung lagi, kanvas tampil kembali.
 - **Server restart:** semua permintaan hilang. Tablet tersambung ulang otomatis, dan PC menampilkan "Permintaan terputus, kirim ulang".
 
@@ -198,13 +200,14 @@ DIKIRIM ─► TAMPIL ─► DITANDATANGANI ─► DITERIMA (PC, akhir)
 
 | Aliran               | Event                                                                           | Isi `data` (JSON)                                    |
 | -------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| Tablet               | `siap`                                                                          | `{}`                                                 |
+| Tablet               | `siap`                                                                          | `{ "permintaan": { "id", "putaran" } \| null }` — permintaan yang masih menunggu kanvas (tablet sempat putus); null = tutup kanvas |
 | Tablet               | `diganti`                                                                       | `{}` — aliran lain dengan kredensial sama mengambil alih; koneksi ini ditutup |
-| Tablet               | `permintaan`                                                                    | `{ "id": "<id>", "sampai": <epoch ms> }` — **tanpa data lain** (K2) |
+| Tablet               | `permintaan`                                                                    | `{ "id": "<id>", "putaran": n }` — **tanpa data lain** (K2). Putaran naik saat "Minta ulang" → kanvas dikosongkan |
 | Tablet               | `selesai`                                                                       | `{ "id": "<id>" }` (diterima/batal/kedaluwarsa → kembali siaga) |
 | Tablet               | `dicabut`                                                                       | `{}` lalu koneksi ditutup                             |
-| PC                   | `status`                                                                        | `{ "status": "TAMPIL" \| "DIBATALKAN" \| "KEDALUWARSA" , "sampai"? }` |
+| PC                   | `status`                                                                        | `{ "status", "sisaMs", "putaran", "terhubung", "alasan" }` — semua transisi + tablet putus/sambung. `sisaMs` dihitung server (bebas selisih jam PC). Status akhir → aliran ditutup |
 | PC                   | `ttd`                                                                           | `{ "png": "data:image/png;base64,…", "sha256": "…" }` (PNG sudah dinormalkan server) |
+| PC                   | `diganti`                                                                       | `{}` — aliran PC lain (pemilik yang sama) untuk permintaan ini mengambil alih |
 | Keduanya             | `detak`                                                                         | `{}` tiap 20 dtk (event, bukan komentar — lihat §5.2) |
 
 - **Frame disusun lewat satu fungsi** `frameSse(event, obj)`: nama event dari daftar tetap, `data` = `JSON.stringify` satu baris. **String mentah tidak pernah disisipkan** ke frame. Ini mencegah injeksi frame SSE lewat `\n`.
@@ -652,6 +655,79 @@ Jalur lain di bawah prefiks itu → 404, metode lain → 405. Laju per IP per ru
 - data uji bersih (0 sisa).
 
 **Uji keamanan §8.6 yang sudah tercakup:** no. 1–7, 15, 16, 24, 25 (sebagian: kapasitas hub + laju per IP; uji 300 koneksi di Langkah 4), 26. Untuk no. 21 (galat DB → 503), jalurnya sudah ada di kode, tetapi uji dengan galat DB tiruan baru di Langkah 4.
+
+### Langkah 3 — Permintaan TTD ujung ke ujung ✅ (10 Nov 2026)
+
+**Server** (`src/server/modules/ttd-siaga/`):
+- `permintaan.inti.ts` (murni, jam & timer disuntikkan):
+  - penyimpanan memori + mesin status §6 lewat `transisi` (compare-and-set);
+  - tenggat 3 mnt (menggambar) dan 2 mnt (keputusan);
+  - grasi PC 10 dtk (20 dtk bila aliran PC tak pernah dibuka);
+  - satu permintaan per perangkat, ≤ 3 per pengguna, ≤ 1000 total;
+  - PNG dibuang saat status akhir; entri dihapus 30 dtk kemudian.
+- `permintaan.hub.ts` (`globalThis`): menghubungkan inti dengan aliran tablet dan aliran PC pemilik (satu per permintaan, maks. 500, detak 20 dtk, yang lama menerima `diganti`), menulis audit `minta/tampil/ttd/ulang/terima/batal/kedaluwarsa`. Tablet putus/sambung → PC diberi tahu (`terhubung`).
+- `permintaan.service.ts` (petugas):
+  - pemilih perangkat (`{id, nama, lokasi, status}`, lokasi SIMGOS disinggahkan 5 mnt);
+  - minta: hak `update` per kategori lewat `cariIsianBoleh`, isian DRAF, perangkat terpasang + tersambung + bebas, laju 20/mnt/pengguna;
+  - terima/ulang/batal hanya untuk pemilik (404 seragam, tanpa jalan pintas superadmin).
+- `permintaan.tablet.ts`: tampil (idempoten) dan kirim PNG untuk perangkat tujuan saja; body dibaca bertahap dan dihentikan begitu > 512 KB; `normalkanPng`; TTD kedua → 409.
+- Cabut perangkat (manual atau otomatis) membatalkan permintaan aktifnya.
+- Skema `permintaan.schema.ts` (`strictObject`, ID 22 karakter base64url, label slot dibatasi karakter).
+
+**Rute:**
+- tablet: `POST /api/ttd-siaga/permintaan/[id]` dan `…/[id]/tampil`, terdaftar di daftar tertutup proxy (laju 20 dan 30/mnt/IP);
+- petugas: `GET /api/form-rm/ttd-siaga/perangkat`, `POST …/permintaan`, `DELETE …/permintaan/[id]`, `GET …/[id]/aliran`, `POST …/[id]/terima`, `POST …/[id]/ulang`.
+
+**UI:**
+- **Tablet** (`KanvasPermintaan.tsx`): hanya kanvas + garis bantu + Ulangi/Kirim (K2). Terkirim → centang "Terima kasih" lalu siaga. `selesai` menutup kanvas seketika. Sambung ulang tidak menghapus coretan bila permintaannya sama (id + putaran).
+- **Kanvas bersama** `features/sign/KanvasTtd.tsx`, diekstrak dari `MobileSignView` (yang kini memakainya juga). Tanpa `style` inline. PNG diperkecil ke sisi ≤ 1200 px.
+- **PC** (`TtdPerangkat.tsx`, `TtdPerangkatProvider.tsx` dipasang `IsianFrame`):
+  - tombol "Kirim ke tablet siaga", atau satu klik "Kirim ke <tablet terakhir>" (localStorage hanya ID perangkat);
+  - pemilih dengan status Siap / Sedang dipakai / Terputus;
+  - kartu tunggu dengan tahap, hitung mundur dari `sisaMs`, peringatan tablet terputus, dan Batalkan;
+  - pratinjau "Pakai tanda tangan ini" / "Minta ulang";
+  - hanya di isian DRAF yang boleh diubah; Master, BCKH, dan Berkas Klaim tidak terpengaruh.
+
+**Integritas (A08):** normalisasi PNG idempoten — sha256 di audit `terima` = `form_rm_ttd.sha256` setelah isian disimpan, dan byte PNG tersimpan identik (diverifikasi E2E dan UI). Risiko §14 "normalisasi tidak idempoten" tertutup.
+
+**Penyesuaian dari v1.0:**
+- event tablet `permintaan` = `{id, putaran}` (bukan `sampai`); `siap` membawa permintaan aktif;
+- event PC `status` membawa `sisaMs`, `putaran`, `terhubung`, `alasan`; PC juga bisa menerima `diganti`;
+- grasi awal 20 dtk;
+- batal saat halaman dibongkar bersifat upaya terbaik (§5.6).
+
+**Uji (build produksi :3100):**
+- unit 640/640 (14 baru: inti mesin status dengan jam tiruan — alur, CAS, ulang, tenggat, grasi PC, batas, cabut — serta skema dan rute tertutup);
+- `tsc` + ESLint 0;
+- E2E `scratchpad/ttd-permintaan-e2e.mjs` **117/117**:
+  - pemilih (401/403, DTO persis);
+  - minta (lintas situs, strict 422, injeksi slot, kategori 404/403, FINAL/BATAL 409, sibuk 409, terputus);
+  - kanvas tiba di tablet dalam **11 ms**;
+  - aliran PC (bukan pemilik & superadmin → 404);
+  - tablet lain 404; PNG SVG/HTML/CRC/dimensi/chunk kritis → 422, > 512 KB → 413, polyglot dinormalkan, TTD kedua 409;
+  - sinkron ulang + `diganti`; IDOR terima/ulang/batal;
+  - minta ulang putaran 2; terima; sha256 audit = `form_rm_ttd`;
+  - batal, PC pergi ±10 dtk, batas 3/pengguna 429, laju ke-21 429;
+  - cabut saat berjalan; tablet putus/sambung;
+  - proxy 404/405;
+  - tenggat 2 & 3 menit nyata;
+  - aliran tablet tanpa nama pasien / No. RM / judul form / slot / petugas / ID isian / PNG;
+  - audit lengkap tanpa PNG/token/PHI;
+- UI `scratchpad/ttd-permintaan-ui.mjs` **39/39** — form **RM.22 nyata** + tablet emulasi:
+  - metode lama tetap ada; pemilih Siap/Terputus;
+  - kanvas tampil dalam ±0,2 dtk dan layar tablet hanya "× Ulangi Kirim";
+  - kanvas kosong ditolak; centang lalu siaga;
+  - pratinjau → minta ulang → pakai → simpan otomatis, sha256 cocok;
+  - tombol cepat perangkat terakhir; Batalkan; Kirim lagi; pindah halaman;
+  - isian FINAL tanpa opsi; ponsel 390 px;
+  - regresi `/sign` dengan kanvas bersama;
+  - tanpa pelanggaran CSP dan galat konsol;
+- regresi:
+  - Langkah 2: E2E 70/70 (ekspektasi `siap` diperbarui ke `{permintaan:null}`), UI 28/28 tiga kali berturut-turut. Uji S9 kini menunggu hidrasi: fragmen yang diubah saat halaman masih berhidrasi ditimpa URL kanonik router Next. Ini hanya terjadi di uji; QR sungguhan selalu membuka navigasi baru;
+  - Langkah 1: E2E 93/93, UI 28/28 (cek "keadaan kosong" dilewati karena sudah ada perangkat nyata di DB);
+- data uji bersih (0 sisa).
+
+**Uji keamanan §8.6 yang tercakup di langkah ini:** no. 5 (permintaan aktif dibatalkan saat cabut), 8, 9, 10, 12, 13, 15 (rute petugas & tablet baru), 17, 18, 19, 20, 22, 23, 26 (rute baru).
 
 ## 16. Sumber
 

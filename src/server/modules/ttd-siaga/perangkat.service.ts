@@ -16,6 +16,7 @@ import {
 } from "@/features/form-rm/ttd-siaga/types";
 import { hubTtd } from "./hub";
 import { kodePasang } from "./kode-pasang.store";
+import { permintaanTtd } from "./permintaan.hub";
 import type { BuatPerangkatInput, UbahPerangkatInput } from "./perangkat.schema";
 import { lupakanGanda } from "./perangkat.sesi";
 
@@ -90,6 +91,17 @@ async function ruanganSimgos(): Promise<RuanganOption[] | null> {
 async function petaNamaRuangan(): Promise<Map<string, string>> {
   const rooms = await ruanganSimgos();
   return new Map((rooms ?? []).map((r) => [r.id, r.nama]));
+}
+
+let cacheRuangan: { peta: Map<string, string>; sampai: number } | null = null;
+
+/** Nama ruangan untuk label lokasi di pemilih petugas — disimpan 5 menit (SIMGOS dibaca jarang). */
+export async function petaNamaRuanganTersimpan(): Promise<Map<string, string>> {
+  if (cacheRuangan && cacheRuangan.sampai > Date.now()) return cacheRuangan.peta;
+  const rooms = await ruanganSimgos();
+  const peta = new Map((rooms ?? []).map((r) => [r.id, r.nama]));
+  if (rooms) cacheRuangan = { peta, sampai: Date.now() + 5 * 60_000 };
+  return peta;
 }
 
 /** Opsi lokasi untuk form pengelola; SIMGOS tak tersedia → daftar kosong. */
@@ -198,6 +210,7 @@ export async function cabutPerangkat(id: string, aktor: AktorPerangkat): Promise
     data: { aktif: false, tokenHash: null, tokenHashLama: null, tokenDiputarAt: null, dicabutAt: new Date() },
     select: PILIH,
   });
+  permintaanTtd.denganIp(aktor.ip, () => permintaanTtd.inti.batalkanPerangkat(id, "perangkat-dicabut"));
   hubTtd.putuskan(id, "dicabut");
   lupakanGanda(id);
   await writeAudit({

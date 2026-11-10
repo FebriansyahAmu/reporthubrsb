@@ -15,6 +15,9 @@ export function jagaAsalPerangkat(req: NextRequest): void {
   }
 }
 
+/** Cek asal-sama yang sama untuk rute petugas (aliran SSE pemilik juga membawa cookie sesi). */
+export const jagaAsalSama = jagaAsalPerangkat;
+
 /** Header aliran SSE (PRD §7.3): tanpa cache/kompresi/buffer proxy, tanpa CORS. */
 export const HEADER_ALIRAN: Readonly<Record<string, string>> = {
   "Content-Type": "text/event-stream; charset=utf-8",

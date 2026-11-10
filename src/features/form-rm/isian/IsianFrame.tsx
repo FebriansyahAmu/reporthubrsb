@@ -25,6 +25,7 @@ import { formatDateTime } from "@/lib/format";
 import { statusAsal } from "@/features/form-rm/asal";
 import type { AksiIsian } from "@/features/form-rm/isian.status";
 import type { IsianForm } from "@/server/modules/form-rm/isian.types";
+import { TtdPerangkatProvider } from "@/features/form-rm/ttd-siaga/TtdPerangkatProvider";
 import { AksiIsianDialog } from "./AksiIsianDialog";
 import { KunciIsian } from "./kunci";
 import { MuatUlangSimrs } from "./MuatUlangSimrs";
@@ -85,7 +86,12 @@ export function IsianFrame<T>({
         <PemberitahuanStatus kendali={k} onRiwayat={() => setRiwayat(true)} />
         <PitaTautan kendali={k} />
         <RingkasAsal kendali={k} onMuatUlang={bukaSimrs} />
-        <KunciIsian terkunci={k.terkunci}>{children}</KunciIsian>
+        <KunciIsian terkunci={k.terkunci}>
+          {/* Metode "Kirim ke tablet" hanya untuk isian DRAF yang boleh diubah (PRD TTD Perangkat Siaga §5.3). */}
+          <TtdPerangkatProvider isianId={isian.id} aktif={isian.status === "DRAF" && !k.terkunci}>
+            {children}
+          </TtdPerangkatProvider>
+        </KunciIsian>
 
         <BilahAksi kendali={k} aksen={aksen} onAksi={bukaDialog} onRiwayat={() => setRiwayat(true)} />
 

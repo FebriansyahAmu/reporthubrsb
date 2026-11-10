@@ -3,14 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { CircleAlert, KeyRound, Loader2, MonitorSmartphone, PenLine, Unplug, Wifi } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { KanvasPermintaan } from "./KanvasPermintaan";
 import { ALFABET_KODE, PANJANG_KODE } from "./kode-pasang";
 import { BATAS_SENYAP_MS } from "./sse";
+import type { PermintaanTabletDto } from "./types";
 
 /**
  * Layar tablet TTD siaga (docs/PRD_TTD_Perangkat_Siaga.md §5.1–5.2).
  * Halaman ini berjalan di bawah CSP ketat ber-nonce: TANPA atribut `style`
  * inline dan tanpa pustaka animasi — hanya kelas CSS. Tidak pernah menampilkan
- * maupun menyimpan data pasien (K2); tidak memakai localStorage.
+ * maupun menyimpan data pasien (K2); tidak memakai localStorage. Permintaan TTD
+ * (§5.4) hanya membawa ID + putaran dan membuka `KanvasPermintaan`.
  */
 
 type Fase =
@@ -265,6 +268,29 @@ function useLayarMenyala() {
   }, []);
 }
 
+/** Data JSON event SSE (null bila rusak). */
+function baca(ev: Event): Record<string, unknown> | null {
+  try {
+    const v: unknown = JSON.parse((ev as MessageEvent<string>).data);
+    return v && typeof v === "object" ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+const ID_PERMINTAAN_RE = /^[A-Za-z0-9_-]{22}$/;
+
+function bacaPermintaan(v: unknown): PermintaanTabletDto | null {
+  if (!v || typeof v !== "object") return null;
+  const { id, putaran } = v as Record<string, unknown>;
+  if (typeof id !== "string" || !ID_PERMINTAAN_RE.test(id)) return null;
+  if (typeof putaran !== "number" || !Number.isInteger(putaran) || putaran < 1) return null;
+  return { id, putaran };
+}
+
+const samaPermintaan = (a: PermintaanTabletDto | null, b: PermintaanTabletDto | null) =>
+  a?.id === b?.id && a?.putaran === b?.putaran;
+
 /**
  * Aliran SSE + penjagaannya: periksa pemasangan (`segarkan`, sekaligus rotasi),
  * buka EventSource, watchdog detak, sambung ulang bertahap 3 → 30 dtk (EventSource
@@ -275,6 +301,9 @@ function useAliranSiaga(cb: {
   onNama: (nama: string) => void;
   onTakTerpasang: (pesan: string) => void;
   onDiganti: () => void;
+  /** Permintaan yang menunggu kanvas (`siap` membawa null bila tak ada). */
+  onPermintaan: (p: PermintaanTabletDto | null) => void;
+  onSelesai: (id: string) => void;
 }): Koneksi {
   const [koneksi, setKoneksi] = useState<Koneksi>("menyambung");
   const ref = useRef(cb);
@@ -335,13 +364,24 @@ function useAliranSiaga(cb: {
         const sumber = new EventSource(`${API}/aliran`);
         es = sumber;
         terakhir = Date.now();
-        sumber.addEventListener("siap", () => {
+        sumber.addEventListener("siap", (ev) => {
           terakhir = Date.now();
           jeda = JEDA_AWAL_MS;
           setKoneksi("siap");
+          ref.current.onPermintaan(bacaPermintaan(baca(ev)?.permintaan));
         });
         sumber.addEventListener("detak", () => {
           terakhir = Date.now();
+        });
+        sumber.addEventListener("permintaan", (ev) => {
+          terakhir = Date.now();
+          const p = bacaPermintaan(baca(ev));
+          if (p) ref.current.onPermintaan(p);
+        });
+        sumber.addEventListener("selesai", (ev) => {
+          terakhir = Date.now();
+          const id = baca(ev)?.id;
+          if (typeof id === "string") ref.current.onSelesai(id);
         });
         sumber.addEventListener("dicabut", () => berhenti(() => ref.current.onTakTerpasang(PESAN_DICABUT)));
         sumber.addEventListener("diganti", () => berhenti(() => ref.current.onDiganti()));
@@ -425,11 +465,29 @@ function LayarSiaga({
   onTakTerpasang: (pesan: string) => void;
   onDiganti: () => void;
 }) {
-  const koneksi = useAliranSiaga({ onNama, onTakTerpasang, onDiganti });
+  const [aktif, setAktif] = useState<PermintaanTabletDto | null>(null);
+  const koneksi = useAliranSiaga({
+    onNama,
+    onTakTerpasang,
+    onDiganti,
+    // Permintaan yang sama (id + putaran) tidak memasang ulang kanvas → coretan tak hilang saat sambung ulang.
+    onPermintaan: (p) => setAktif((lama) => (samaPermintaan(lama, p) ? lama : p)),
+    onSelesai: (id) => setAktif((lama) => (lama?.id === id ? null : lama)),
+  });
   useLayarMenyala();
   const jam = useJam();
   const t = TAMPIL_KONEKSI[koneksi];
   const Ikon = koneksi === "terputus" ? Unplug : koneksi === "siap" ? PenLine : Wifi;
+
+  if (aktif) {
+    return (
+      <KanvasPermintaan
+        key={`${aktif.id}:${aktif.putaran}`}
+        permintaan={aktif}
+        onTutup={() => setAktif((lama) => (lama === aktif ? null : lama))}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col px-5 py-6 sm:px-10 sm:py-8" data-koneksi={koneksi}>

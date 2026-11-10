@@ -32,20 +32,23 @@ type Status = {
   perangkat: Map<string, KoneksiPerangkat>;
   seq: number;
   detak: ReturnType<typeof setInterval> | null;
-  /** Dipanggil setiap koneksi terlepas (mis. untuk mencatat terakhir aktif). */
-  saatLepas: ((k: KoneksiPerangkat) => void) | null;
+  /** Dipanggil setiap koneksi terlepas (catat terakhir aktif, kabari PC). Berkunci → aman HMR. */
+  pendengarLepas?: Map<string, (k: KoneksiPerangkat) => void>;
 };
 
 const g = globalThis as unknown as { __ttdSiagaHub?: Status };
-const st: Status = (g.__ttdSiagaHub ??= { perangkat: new Map(), seq: 0, detak: null, saatLepas: null });
+const st: Status = (g.__ttdSiagaHub ??= { perangkat: new Map(), seq: 0, detak: null });
+const pendengarLepas = (st.pendengarLepas ??= new Map());
 
 function lepasInternal(k: KoneksiPerangkat): boolean {
   if (st.perangkat.get(k.perangkatId)?.seq !== k.seq) return false;
   st.perangkat.delete(k.perangkatId);
-  try {
-    st.saatLepas?.(k);
-  } catch {
-    /* pencatat tak boleh mengganggu hub */
+  for (const fn of pendengarLepas.values()) {
+    try {
+      fn(k);
+    } catch {
+      /* pendengar tak boleh mengganggu hub */
+    }
   }
   return true;
 }
@@ -134,7 +137,7 @@ export const hubTtd = {
     k.tutup();
   },
 
-  /** Kirim satu frame ke aliran perangkat (Langkah 3: permintaan). */
+  /** Kirim satu frame ke aliran perangkat (permintaan / selesai). */
   kirimKe(perangkatId: string, teks: string): boolean {
     const k = st.perangkat.get(perangkatId);
     if (!k) return false;
@@ -152,8 +155,8 @@ export const hubTtd = {
     return st.perangkat.size;
   },
 
-  /** Pasang pencatat lepas (sekali, dari service). */
-  saatLepas(fn: (k: KoneksiPerangkat) => void): void {
-    st.saatLepas = fn;
+  /** Pasang pendengar lepas berkunci (kunci sama = menggantikan, mis. setelah HMR). */
+  saatLepas(kunci: string, fn: (k: KoneksiPerangkat) => void): void {
+    pendengarLepas.set(kunci, fn);
   },
 };

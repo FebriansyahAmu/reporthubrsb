@@ -22,6 +22,9 @@ export const RUTE_TTD_SIAGA: readonly RuteTtdSiaga[] = [
   { nama: "pasang", pola: /^\/api\/ttd-siaga\/pasang$/, metode: ["POST"], lajuPerMenit: 20 },
   { nama: "segarkan", pola: /^\/api\/ttd-siaga\/segarkan$/, metode: ["POST"], lajuPerMenit: 30 },
   { nama: "aliran", pola: /^\/api\/ttd-siaga\/aliran$/, metode: ["GET"], lajuPerMenit: 12 },
+  // ID permintaan = 22 karakter base64url; format lain tak pernah sampai ke route handler.
+  { nama: "tampil", pola: /^\/api\/ttd-siaga\/permintaan\/[A-Za-z0-9_-]{22}\/tampil$/, metode: ["POST"], lajuPerMenit: 30 },
+  { nama: "kirim", pola: /^\/api\/ttd-siaga\/permintaan\/[A-Za-z0-9_-]{22}$/, metode: ["POST"], lajuPerMenit: 20 },
 ];
 
 export const diBawahTtdSiaga = (pathname: string): boolean =>

@@ -156,6 +156,14 @@
       opacity: 0;
     }
   }
+  /* Tablet TTD siaga: centang "terkirim" muncul sekali (umpan balik aksi). */
+  --animate-centang: centang 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  @keyframes centang {
+    from {
+      transform: scale(0.5);
+      opacity: 0;
+    }
+  }
 }
 
 /* ========================================================================= */
