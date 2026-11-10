@@ -14,8 +14,10 @@ import {
   type PerangkatTtdDto,
   type StatusPasang,
 } from "@/features/form-rm/ttd-siaga/types";
+import { hubTtd } from "./hub";
 import { kodePasang } from "./kode-pasang.store";
 import type { BuatPerangkatInput, UbahPerangkatInput } from "./perangkat.schema";
+import { lupakanGanda } from "./perangkat.sesi";
 
 /**
  * Registri perangkat TTD siaga (docs/PRD_TTD_Perangkat_Siaga.md §5.1, §5.7,
@@ -63,6 +65,7 @@ function keDto(r: BarisPerangkat, namaRuangan: ReadonlyMap<string, string>): Per
     ruanganId: r.ruanganId,
     ruanganNama: r.ruanganId ? (namaRuangan.get(r.ruanganId) ?? null) : null,
     status: statusDari(r),
+    terhubung: r.aktif && r.tokenHash !== null && hubTtd.terhubung(r.id),
     dipasangAt: iso(r.dipasangAt),
     terakhirAktifAt: iso(r.terakhirAktifAt),
     dicabutAt: iso(r.dicabutAt),
@@ -180,9 +183,9 @@ export async function ubahPerangkat(
 }
 
 /**
- * Cabut: kredensial (aktif & lama) dihapus, kode pasang aktif dibatalkan.
- * Idempoten — perangkat yang sudah dicabut dikembalikan apa adanya tanpa audit.
- * (Langkah 2: aliran SSE perangkat ikut ditutup di sini.)
+ * Cabut: kredensial (aktif & lama) dihapus, kode pasang aktif dibatalkan, dan
+ * aliran SSE tablet langsung ditutup dengan event `dicabut`. Idempoten —
+ * perangkat yang sudah dicabut dikembalikan apa adanya tanpa audit.
  */
 export async function cabutPerangkat(id: string, aktor: AktorPerangkat): Promise<PerangkatTtdDto> {
   const lama = await cariBaris(id);
@@ -195,6 +198,8 @@ export async function cabutPerangkat(id: string, aktor: AktorPerangkat): Promise
     data: { aktif: false, tokenHash: null, tokenHashLama: null, tokenDiputarAt: null, dicabutAt: new Date() },
     select: PILIH,
   });
+  hubTtd.putuskan(id, "dicabut");
+  lupakanGanda(id);
   await writeAudit({
     actorId: aktor.id,
     actorName: aktor.nama,

@@ -142,6 +142,20 @@
       box-shadow: 0 0 0 7px rgba(26, 123, 110, 0);
     }
   }
+  /* Layar TTD siaga: cincin "bernapas" pelan saat tablet siap — satu-satunya
+     gerak di layar yang menyala seharian (motion-safe). */
+  --animate-napas: napas 3.2s ease-in-out infinite;
+  @keyframes napas {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.55;
+    }
+    50% {
+      transform: scale(1.18);
+      opacity: 0;
+    }
+  }
 }
 
 /* ========================================================================= */

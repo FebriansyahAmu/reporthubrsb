@@ -4,6 +4,7 @@ import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/server/auth/cookie-names";
 import { buatPembatasLaju, kunciIpKlien } from "@/server/lib/rate-limit";
 import { HEADER_PUBLIK, buatNonce, cspPublik } from "@/server/lib/security-headers";
 import { RUTE_PUBLIK_RUANG } from "@/server/modules/inventaris/publik.schema";
+import { cocokRuteTtdSiaga, diBawahTtdSiaga, RUTE_TTD_SIAGA } from "@/server/modules/ttd-siaga/rute";
 import { JALUR_BERANDA } from "@/lib/jalur";
 
 const LOGIN_PATH = "/";
@@ -64,6 +65,53 @@ function halamanPublikInventaris(req: NextRequest): NextResponse {
 }
 
 /**
+ * Tablet TTD siaga (`/ttd-siaga`, `/api/ttd-siaga/*`, docs/PRD_TTD_Perangkat_Siaga.md
+ * §7.4) — tanpa sesi PENGGUNA; route handler memeriksa kredensial PERANGKAT.
+ * Di sini: daftar rute TERTUTUP (tak terdaftar → 404, metode lain → 405), laju
+ * per IP per rute + global, CSP ber-nonce untuk halaman, header keamanan.
+ */
+const lajuTtdSiaga = new Map(
+  RUTE_TTD_SIAGA.map((r) => [r.nama, buatPembatasLaju({ batas: r.lajuPerMenit, jendelaMs: 60_000 })] as const),
+);
+const lajuTtdSiagaGlobal = buatPembatasLaju({ batas: 3000, jendelaMs: 60_000, maksKunci: 1 });
+
+function jagaTtdSiaga(req: NextRequest): NextResponse {
+  const hasil = cocokRuteTtdSiaga(req.nextUrl.pathname, req.method);
+  if (hasil.jenis === "tak-ada") return tolakPublik(404, "Tidak ditemukan.");
+  if (hasil.jenis === "metode") return tolakPublik(405, "Metode tidak diizinkan.", { Allow: hasil.rute.metode.join(", ") });
+
+  const laju = lajuTtdSiaga.get(hasil.rute.nama)!(kunciIpKlien(req.headers));
+  const lolos = laju.izin ? lajuTtdSiagaGlobal("*") : laju;
+  if (!lolos.izin) {
+    return tolakPublik(429, `Terlalu banyak permintaan. Coba lagi dalam ${lolos.ulangDetik} detik.`, {
+      "Retry-After": String(lolos.ulangDetik),
+    });
+  }
+
+  if (!hasil.rute.halaman) {
+    // API/SSE: Cache-Control & Content-Type diatur route handler (aliran butuh `no-transform`).
+    const res = NextResponse.next();
+    for (const k of ["X-Robots-Tag", "Referrer-Policy", "X-Content-Type-Options", "Cross-Origin-Resource-Policy"]) {
+      res.headers.set(k, HEADER_PUBLIK[k]);
+    }
+    return res;
+  }
+
+  const csp = cspPublik(buatNonce(), {
+    dev: process.env.NODE_ENV === "development",
+    https: req.nextUrl.protocol === "https:" || req.headers.get("x-forwarded-proto") === "https",
+  });
+  const headers = new Headers(req.headers);
+  headers.set("content-security-policy", csp);
+  const res = NextResponse.next({ request: { headers } });
+  res.headers.set("Content-Security-Policy", csp);
+  for (const [k, v] of Object.entries(HEADER_PUBLIK)) res.headers.set(k, v);
+  // Layar siaga boleh menahan layar tetap menyala (Screen Wake Lock); izin lain tetap mati.
+  res.headers.set("Permissions-Policy", `${HEADER_PUBLIK["Permissions-Policy"]}, screen-wake-lock=(self)`);
+  return res;
+}
+
+/**
  * Proteksi seluruh route (kecuali /api/auth & aset statis, lihat matcher).
  * Next.js 16: konvensi "middleware" diganti menjadi "proxy" (file `src/proxy.ts`,
  * export bernama `proxy`).
@@ -77,6 +125,7 @@ export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
   if (cocokPrefiks(pathname, RUTE_PUBLIK_RUANG)) return halamanPublikInventaris(req);
+  if (diBawahTtdSiaga(pathname)) return jagaTtdSiaga(req);
   if (PUBLIC_PREFIXES.some((p) => cocokPrefiks(pathname, p))) return NextResponse.next();
 
   const access = req.cookies.get(ACCESS_COOKIE)?.value;

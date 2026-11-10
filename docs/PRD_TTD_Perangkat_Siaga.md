@@ -95,8 +95,13 @@
 ### 5.2 Siaga
 
 - **Layar siaga** hanya berisi logo RS, nama perangkat, titik status ("Siap" hijau / "Menyambung…" kuning / "Terputus" merah), dan jam. Tanpa data pasien.
-- **Koneksi.** Tablet membuka `EventSource("/api/ttd-siaga/aliran")`. Server mengirim `retry: 3000`, event `siap`, lalu detak `: ping` tiap 20 dtk.
-- **Sambung ulang.** Bila tidak ada detak > 45 dtk, atau halaman kembali terlihat, klien menutup lalu membuka ulang aliran.
+- **Koneksi.** Tablet lebih dulu memanggil `POST /api/ttd-siaga/segarkan` (memastikan masih terpasang + rotasi kredensial), lalu membuka `EventSource("/api/ttd-siaga/aliran")`. Server mengirim `retry: 3000`, event `siap`, lalu event `detak` tiap 20 dtk.
+  - Detak berupa **event**, bukan komentar `: ping`, karena EventSource tidak meneruskan komentar ke JavaScript. Tanpa itu, watchdog klien tidak bisa melihat detak.
+- **Sambung ulang.**
+  - Tidak ada detak > 45 dtk, aliran galat, halaman kembali terlihat, atau jaringan pulih → klien menutup lalu menyambung ulang manual dengan jeda bertahap 3 → 30 dtk. EventSource sendiri berhenti setelah respons non-200.
+  - `segarkan` 401 → layar pasang.
+  - Event `dicabut` → layar pasang dengan pesan.
+  - Event `diganti` (tab lain mengambil alih) → layar "dibuka di tempat lain" dengan tombol **Pakai di layar ini**, tanpa sambung ulang otomatis, supaya dua tab tidak saling rebut.
 - **Permintaan aktif tidak hilang.** Setiap kali tersambung, server mengirim ulang permintaan aktif perangkat itu (bila ada).
 - **Layar tetap menyala:** pengaturan browser kiosk (§10), ditambah Screen Wake Lock API bila konteksnya aman.
 
@@ -194,12 +199,13 @@ DIKIRIM ─► TAMPIL ─► DITANDATANGANI ─► DITERIMA (PC, akhir)
 | Aliran               | Event                                                                           | Isi `data` (JSON)                                    |
 | -------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------- |
 | Tablet               | `siap`                                                                          | `{}`                                                 |
+| Tablet               | `diganti`                                                                       | `{}` — aliran lain dengan kredensial sama mengambil alih; koneksi ini ditutup |
 | Tablet               | `permintaan`                                                                    | `{ "id": "<id>", "sampai": <epoch ms> }` — **tanpa data lain** (K2) |
 | Tablet               | `selesai`                                                                       | `{ "id": "<id>" }` (diterima/batal/kedaluwarsa → kembali siaga) |
 | Tablet               | `dicabut`                                                                       | `{}` lalu koneksi ditutup                             |
 | PC                   | `status`                                                                        | `{ "status": "TAMPIL" \| "DIBATALKAN" \| "KEDALUWARSA" , "sampai"? }` |
 | PC                   | `ttd`                                                                           | `{ "png": "data:image/png;base64,…", "sha256": "…" }` (PNG sudah dinormalkan server) |
-| Keduanya             | detak                                                                           | baris komentar `: ping` tiap 20 dtk                   |
+| Keduanya             | `detak`                                                                         | `{}` tiap 20 dtk (event, bukan komentar — lihat §5.2) |
 
 - **Frame disusun lewat satu fungsi** `frameSse(event, obj)`: nama event dari daftar tetap, `data` = `JSON.stringify` satu baris. **String mentah tidak pernah disisipkan** ke frame. Ini mencegah injeksi frame SSE lewat `\n`.
 - **Header aliran:**
@@ -215,7 +221,9 @@ DIKIRIM ─► TAMPIL ─► DITANDATANGANI ─► DITERIMA (PC, akhir)
 | Endpoint                                                   | Penjaga (semua: skema strict, galat seragam lewat `fail()`, `no-store`)                                                                                                                    |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `POST /api/ttd-siaga/pasang` `{kode}`                       | Publik. Cek asal-sama (`permintaanLintasSitus`). Laju per IP 5/mnt + global 30/mnt. Kode sekali pakai. Set cookie perangkat.                                                               |
-| `GET /api/ttd-siaga/aliran`                                 | Cookie perangkat sah + asal-sama. SSE tablet. Rotasi kredensial (§7.6).                                                                                                                     |
+| `POST /api/ttd-siaga/segarkan`                              | Cookie perangkat + asal-sama. Periksa pemasangan + rotasi kredensial (§7.6); cookie dipasang ulang (umur bergulir). 401 → cookie dihapus.                                                   |
+| `GET /api/ttd-siaga/aliran`                                 | Cookie perangkat sah + asal-sama. SSE tablet (tanpa rotasi). Satu aliran per perangkat; kapasitas 200 aliran.                                                                              |
+| Halaman `GET /ttd-siaga`                                    | Publik, CSP ber-nonce. Cookie perangkat sah → layar siaga (hanya nama perangkat), selain itu layar pasang.                                                                                 |
 | `POST /api/ttd-siaga/permintaan/[id]/tampil`                | Cookie perangkat + asal-sama + `permintaan.perangkatId === perangkat.id` (selain itu 404 seragam).                                                                                          |
 | `POST /api/ttd-siaga/permintaan/[id]` `{png}`               | Sama seperti di atas, ditambah status DIKIRIM/TAMPIL dan belum lewat tenggat. Body dibaca dengan batas 512 KB **sebelum** parse. `normalkanPng` → gagal = 422.                             |
 | `GET /api/form-rm/perangkat`                                | `authorize("form-rm.perangkat","view")`. DTO tanpa hash/kredensial.                                                                                                                       |
@@ -274,12 +282,16 @@ Perbedaan dari sketsa v1.0:
 - **Cookie:**
   - nama `__Host-rh_perangkat` di HTTPS (Secure, `Path=/`, tanpa `Domain`); `rh_perangkat` hanya di HTTP dev;
   - `HttpOnly`, `SameSite=Strict`, `Max-Age` 30 hari, bergulir saat rotasi.
-- **Rotasi saat tersambung** (paling sering 1×/24 jam):
-  - token baru diset di respons aliran, dan hash lama disimpan di `token_hash_lama` selama **grasi 2 menit**;
-  - token lama dipakai **setelah** grasi → indikasi kredensial disalin → perangkat **dicabut otomatis** + audit `form-rm.ttd-siaga.indikasi-salin`.
-  Pola ini sama dengan deteksi pakai-ulang refresh token yang sudah ada.
-- **Kedaluwarsa diam:** perangkat yang tidak tersambung 30 hari harus dipasang ulang (cookie habis; server juga menolak bila `terakhir_aktif_at` > 30 hari).
-- **Koneksi ganda:** dua koneksi dengan kredensial yang sama saling bergantian ≥ 5× dalam 5 menit → dicabut + audit (indikasi kloning).
+- **Rotasi lewat `POST /api/ttd-siaga/segarkan`** (paling sering 1×/24 jam). Klien memanggilnya setiap akan menyambung dan tiap 6 jam selama tersambung. Rotasi tidak dilakukan lewat respons aliran SSE, karena `Set-Cookie` di respons JSON biasa lebih pasti diproses peramban sebelum klien melanjutkan.
+  - Token baru diset di cookie; hash token yang dipakai klien disimpan di `token_hash_lama`. Rotasi bersifat compare-and-set, sehingga dua segarkan bersamaan tidak saling menimpa.
+  - Token lama dipakai **dalam grasi 2 menit** (respons rotasi kemungkinan tak sampai) → diterima dan dirotasi ulang.
+  - Token lama dipakai **setelah** grasi → indikasi kredensial disalin → perangkat **dicabut otomatis** + audit `form-rm.ttd-siaga.indikasi-salin`. Pola ini sama dengan deteksi pakai-ulang refresh token yang sudah ada.
+  - Sisa risiko: penyalin yang memakai token lama *di dalam* jendela grasi bisa merebut pemasangan. Tablet asli lalu menampilkan layar pasang, dan memasang ulang akan menyingkirkan penyalin.
+- **Kedaluwarsa diam:** token yang tidak dirotasi 30 hari (`token_diputar_at`) ditolak, sehingga tablet yang lama mati harus dipasang ulang. Cookie juga habis dalam 30 hari.
+- **Koneksi ganda:** aliran baru menggantikan aliran lama (event `diganti`).
+  - Wi-Fi yang putus-sambung juga memicu penggantian, jadi penggantian dari **IP yang sama tidak pernah dicurigai**.
+  - Penggantian dari IP berbeda → audit peringatan `koneksi-ganda`.
+  - ≥ 5 penggantian dalam 5 menit yang melibatkan ≥ 2 IP → pola dua salinan saling merebut → perangkat **dicabut otomatis** + audit.
 - **Lingkup:** cookie ini hanya dibaca endpoint `/api/ttd-siaga/*` dan halaman `/ttd-siaga`. Untuk API lain cookie ini tidak bermakna, karena proxy dan guard hanya mengenal `rh_access`/`rh_refresh`.
 - **Kode pasang:**
   - alfabet 31 karakter tanpa yang mirip (0/O, 1/I/L), 8 karakter ≈ 39,6 bit;
@@ -566,6 +578,80 @@ Semua `no-store` + `nosniff`, tanpa CORS. Penulisan memakai `jagaTulis`: cek lin
 - data uji bersih (0 sisa).
 
 **Uji keamanan §8.6 yang sudah tercakup:** no. 1 (bagian kode: format/sekali pakai/kedaluwarsa/kode baru membatalkan, unit), 11, 12, 14, 15 (API pengelola), 16, 26 (sebagian: metode 405).
+
+### Langkah 2 — Tablet siaga: pasang + aliran ✅ (10 Nov 2026)
+
+**Rute publik tablet** (penjaga khusus di `src/proxy.ts`, daftar tertutup di `server/modules/ttd-siaga/rute.ts`):
+- halaman `/ttd-siaga`;
+- `POST /api/ttd-siaga/pasang`;
+- `POST /api/ttd-siaga/segarkan`;
+- `GET /api/ttd-siaga/aliran`.
+
+Jalur lain di bawah prefiks itu → 404, metode lain → 405. Laju per IP per rute: halaman 60, pasang 20, segarkan 30, aliran 12 per menit, ditambah batas global. Halaman memakai CSP ber-nonce + header publik + `Permissions-Policy: screen-wake-lock=(self)`.
+
+**Kredensial perangkat** (`kredensial.aturan.ts` murni + `kredensial.ts` + `perangkat.sesi.ts`):
+- token 256 bit; DB hanya menyimpan sha256;
+- cookie `__Host-rh_perangkat` (HTTPS) / `rh_perangkat` (HTTP), HttpOnly, SameSite=Strict, 30 hari bergulir. Nama cookie terikat skema koneksi;
+- pasang menukar kode sekali pakai: laju 5/menit/IP + 30/menit global dengan audit `laju-pasang`. Tablet lama perangkat itu diputus;
+- rotasi 24 jam lewat `segarkan` (compare-and-set), grasi 2 menit, token lama setelah grasi → dicabut otomatis + audit `indikasi-salin`;
+- kedaluwarsa 30 hari tanpa rotasi;
+- galat DB saat memeriksa kredensial → 503 (gagal tertutup).
+
+**Hub SSE** (`hub.ts`, `globalThis`):
+- satu aliran per perangkat (yang lama menerima `diganti`), kapasitas 200 aliran;
+- detak global 20 dtk sebagai event `detak`;
+- antrean > 64 KB = klien macet → putus;
+- cabut atau pasang ulang → event `dicabut` + aliran ditutup;
+- `terakhir_aktif_at` dicatat saat sambung/putus.
+
+**Koneksi ganda** (`ganda.ts`): IP sama tidak pernah dicurigai; IP berbeda → audit peringatan; ≥ 5 penggantian dari ≥ 2 IP dalam 5 menit → dicabut otomatis.
+
+**Layar tablet** (`LayarTtdSiaga.tsx`, tanpa `style` inline dan tanpa pustaka animasi, demi CSP):
+- **Pasang:** kode dirapikan otomatis (huruf besar + tanda hubung). Fragmen QR `#kode=` dipakai otomatis lalu dihapus dari URL, juga lewat `hashchange`.
+- **Siaga:** jam WITA, ikon status dengan cincin "bernapas" (motion-safe), nama perangkat, titik status. Tanpa data pasien dan tanpa localStorage.
+- **Diganti:** "Pakai di layar ini", tanpa sambung ulang otomatis.
+- **Koneksi:** watchdog 45 dtk; sambung ulang bertahap 3 → 30 dtk; segera saat terlihat/online; segarkan tiap 6 jam; Screen Wake Lock bila didukung.
+
+**Pengelola:**
+- DTO + `terhubung`;
+- baris menampilkan Terhubung / Terputus + terakhir aktif;
+- daftar disegarkan tiap 15 dtk saat tab terlihat (3 dtk saat modal kode terbuka);
+- modal kode otomatis menampilkan **"Tablet terpasang"** begitu kode dipakai.
+
+**Penyesuaian desain dari v1.0** (sudah tercatat di §5.2, §7.3, §7.4, §7.6):
+- detak = event, bukan komentar;
+- rotasi lewat `segarkan`, bukan respons aliran;
+- koneksi ganda berbasis IP;
+- pasang ulang baru mematikan tablet lama saat kode dipakai.
+
+**Uji (build produksi :3100):**
+- unit 626/626 (12 baru: aturan kredensial, rute tertutup, koneksi ganda, skema pasang);
+- `tsc` + ESLint 0;
+- E2E `scratchpad/ttd-siaga-e2e.mjs` **70/70**:
+  - halaman: CSP nonce, header, Permissions-Policy;
+  - 404/405 rute tertutup;
+  - pasang: 403 lintas situs, 422 strict, 401 seragam, cookie HttpOnly/Strict/30 hari, `__Host-`+Secure di HTTPS, nama cookie biasa ditolak di HTTPS, token tak di body, hash di DB, kode sekali pakai, audit;
+  - pemisahan kredensial ↔ sesi pengguna dua arah;
+  - rotasi / grasi / token perantara / indikasi salin → dicabut + audit;
+  - aliran: 401/403, header, `retry`+`siap`, `diganti`, detak tiba sendiri dalam ±20 dtk saat aliran terbuka, event tanpa PHI, cabut → `dicabut` dalam **52 ms**, terakhir aktif;
+  - pasang ulang memindahkan pemasangan;
+  - koneksi ganda (IP sama aman, 2 IP → dicabut + audit);
+  - laju pasang per IP, aliran per IP, Retry-After, pasang global + audit;
+  - tanpa token di audit;
+- UI `scratchpad/ttd-siaga-ui.mjs` **28/28** (tablet potret 800 px & lanskap, beberapa tab):
+  - pasang lewat ketik kode;
+  - modal pengelola otomatis "Tablet terpasang" + baris Terhubung;
+  - muat ulang langsung siaga;
+  - dua tab tidak saling rebut;
+  - aliran mati diam-diam → watchdog Terputus (50 dtk) → sambung ulang otomatis;
+  - cabut → layar pasang berpesan;
+  - QR fragmen (termasuk `hashchange`) → terpasang otomatis + fragmen terhapus;
+  - cookie tak terbaca JS, tanpa localStorage, tanpa pelanggaran CSP, tanpa galat konsol;
+- regresi Langkah 1: E2E 93/93, UI 29/29;
+- rute publik lama (`/ruang`, `/sign`, `/api/sign`, `/api/desktop`) berperilaku sama;
+- data uji bersih (0 sisa).
+
+**Uji keamanan §8.6 yang sudah tercakup:** no. 1–7, 15, 16, 24, 25 (sebagian: kapasitas hub + laju per IP; uji 300 koneksi di Langkah 4), 26. Untuk no. 21 (galat DB → 503), jalurnya sudah ada di kode, tetapi uji dengan galat DB tiruan baru di Langkah 4.
 
 ## 16. Sumber
 

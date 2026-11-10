@@ -13,6 +13,8 @@ export type PerangkatTtdDto = {
   ruanganId: string | null;
   ruanganNama: string | null;
   status: StatusPasang;
+  /** Aliran SSE tablet sedang tersambung ke server (hanya untuk perangkat terpasang). */
+  terhubung: boolean;
   dipasangAt: string | null;
   terakhirAktifAt: string | null;
   dicabutAt: string | null;

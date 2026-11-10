@@ -5,13 +5,13 @@
  * berisi baris baru tidak bisa menyuntik field/event tambahan (injeksi frame).
  */
 
-export const EVENT_SSE = ["siap", "permintaan", "selesai", "dicabut", "status", "ttd"] as const;
+export const EVENT_SSE = ["siap", "detak", "diganti", "permintaan", "selesai", "dicabut", "status", "ttd"] as const;
 export type EventSse = (typeof EVENT_SSE)[number];
 
-/** Detak: baris komentar (diabaikan EventSource) agar proxy tak menutup koneksi diam. */
-export const DETAK_SSE = ": ping\n\n";
 /** Selang detak; harus jauh di bawah `proxy_read_timeout` nginx (60 dtk bawaan). */
 export const SELANG_DETAK_MS = 20_000;
+/** Klien menganggap aliran mati bila tak ada event selama ini (2 detak + kelonggaran). */
+export const BATAS_SENYAP_MS = 45_000;
 
 /** Instruksi jeda sambung ulang untuk EventSource. */
 export function retrySse(ms: number): string {
@@ -26,3 +26,10 @@ export function frameSse(event: EventSse, data: Record<string, unknown>): string
   if (/[\r\n]/.test(json)) throw new RangeError("data SSE harus satu baris");
   return `event: ${event}\ndata: ${json}\n\n`;
 }
+
+/**
+ * Detak = EVENT sungguhan, bukan baris komentar `: ping`: EventSource tidak
+ * meneruskan komentar ke JavaScript, padahal klien butuh detak untuk mengenali
+ * koneksi yang mati diam-diam (watchdog `BATAS_SENYAP_MS`).
+ */
+export const DETAK_SSE = frameSse("detak", {});

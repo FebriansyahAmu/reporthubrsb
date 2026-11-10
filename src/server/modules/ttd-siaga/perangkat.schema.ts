@@ -41,5 +41,8 @@ export const ubahPerangkatSchema = z
   })
   .refine((v) => v.nama !== undefined || v.ruanganId !== undefined, { message: "Tidak ada perubahan" });
 
+/** Body `POST /api/ttd-siaga/pasang` (tablet, publik). Isi kode dinilai `normalkanKode`. */
+export const pasangSchema = z.strictObject({ kode: z.string().max(32) });
+
 export type BuatPerangkatInput = z.infer<typeof buatPerangkatSchema>;
 export type UbahPerangkatInput = z.infer<typeof ubahPerangkatSchema>;

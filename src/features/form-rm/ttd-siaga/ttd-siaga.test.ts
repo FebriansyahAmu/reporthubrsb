@@ -14,9 +14,20 @@ import { DETAK_SSE, frameSse, retrySse } from "./sse";
 import {
   buatPerangkatSchema,
   namaPerangkatSchema,
+  pasangSchema,
   PERANGKAT_ID_RE,
   ubahPerangkatSchema,
 } from "@/server/modules/ttd-siaga/perangkat.schema";
+import {
+  GRASI_ROTASI_MS,
+  namaCookiePerangkat,
+  putuskanKredensial,
+  ROTASI_SETIAP_MS,
+  TOKEN_PERANGKAT_RE,
+  UMUR_KREDENSIAL_MS,
+} from "@/server/modules/ttd-siaga/kredensial.aturan";
+import { cocokRuteTtdSiaga, diBawahTtdSiaga } from "@/server/modules/ttd-siaga/rute";
+import { buatPencatatGanda } from "@/server/modules/ttd-siaga/ganda";
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
@@ -180,8 +191,8 @@ describe("frame SSE", () => {
     expect(() => frameSse("status\ndata: x" as never, {})).toThrow(RangeError);
   });
 
-  it("detak = komentar, retry = bilangan bulat", () => {
-    expect(DETAK_SSE.startsWith(":")).toBe(true);
+  it("detak = event sungguhan (komentar tak sampai ke JS), retry = bilangan bulat", () => {
+    expect(DETAK_SSE).toBe("event: detak\ndata: {}\n\n");
     expect(retrySse(3000)).toBe("retry: 3000\n\n");
     expect(() => retrySse(-1)).toThrow(RangeError);
     expect(() => retrySse(1.5)).toThrow(RangeError);
@@ -230,5 +241,104 @@ describe("skema pengelola perangkat", () => {
     expect(PERANGKAT_ID_RE.test("cmhr0f1ab0000xyz123456789")).toBe(true);
     expect(PERANGKAT_ID_RE.test("../etc/passwd")).toBe(false);
     expect(PERANGKAT_ID_RE.test("CMHR0F1AB0000XYZ123456789")).toBe(false);
+  });
+});
+
+describe("aturan kredensial perangkat", () => {
+  const T0 = 1_700_000_000_000;
+  const baris = (o: Partial<{ aktif: boolean; tokenHash: string | null; tokenHashLama: string | null; diputar: number | null }> = {}) => ({
+    aktif: o.aktif ?? true,
+    tokenHash: o.tokenHash === undefined ? "AKTIF" : o.tokenHash,
+    tokenHashLama: o.tokenHashLama === undefined ? "LAMA" : o.tokenHashLama,
+    tokenDiputarAt: o.diputar === null ? null : new Date(o.diputar ?? T0),
+  });
+
+  it("token aktif segar → sah tanpa rotasi; ≥ 24 jam → perlu rotasi", () => {
+    expect(putuskanKredensial(baris(), "AKTIF", T0 + 1000)).toEqual({ jenis: "sah", perluRotasi: false });
+    expect(putuskanKredensial(baris(), "AKTIF", T0 + ROTASI_SETIAP_MS)).toEqual({ jenis: "sah", perluRotasi: true });
+  });
+
+  it("token aktif ≥ 30 hari tanpa rotasi → kedaluwarsa", () => {
+    expect(putuskanKredensial(baris(), "AKTIF", T0 + UMUR_KREDENSIAL_MS)).toEqual({ jenis: "tolak", alasan: "kedaluwarsa" });
+    expect(putuskanKredensial(baris({ diputar: null }), "AKTIF", T0)).toEqual({ jenis: "tolak", alasan: "kedaluwarsa" });
+  });
+
+  it("token lama dalam grasi → grasi; setelah grasi → curi", () => {
+    expect(putuskanKredensial(baris(), "LAMA", T0 + GRASI_ROTASI_MS - 1)).toEqual({ jenis: "grasi" });
+    expect(putuskanKredensial(baris(), "LAMA", T0 + GRASI_ROTASI_MS)).toEqual({ jenis: "curi" });
+    // Jam mundur (umur negatif) tidak memberi grasi tak terbatas.
+    expect(putuskanKredensial(baris(), "LAMA", T0 - 10_000)).toEqual({ jenis: "curi" });
+  });
+
+  it("perangkat dicabut / hash tak dikenal → tolak", () => {
+    expect(putuskanKredensial(baris({ aktif: false }), "AKTIF", T0)).toEqual({ jenis: "tolak", alasan: "dicabut" });
+    expect(putuskanKredensial(null, "X", T0)).toEqual({ jenis: "tolak", alasan: "tak-dikenal" });
+    expect(putuskanKredensial(baris(), "LAIN", T0)).toEqual({ jenis: "tolak", alasan: "tak-dikenal" });
+    // Baris tanpa token (belum dipasang) tak pernah cocok dengan hash apa pun.
+    expect(putuskanKredensial(baris({ tokenHash: null, tokenHashLama: null }), "AKTIF", T0).jenis).toBe("tolak");
+  });
+
+  it("format token & nama cookie", () => {
+    expect(TOKEN_PERANGKAT_RE.test(randomBytes(32).toString("base64url"))).toBe(true);
+    expect(TOKEN_PERANGKAT_RE.test("a".repeat(42))).toBe(false);
+    expect(TOKEN_PERANGKAT_RE.test(`${"a".repeat(42)};`)).toBe(false);
+    expect(namaCookiePerangkat(true)).toBe("__Host-rh_perangkat");
+    expect(namaCookiePerangkat(false)).toBe("rh_perangkat");
+  });
+
+  it("body pasang strict", () => {
+    expect(pasangSchema.safeParse({ kode: "K7Q4-MZ2T" }).success).toBe(true);
+    expect(pasangSchema.safeParse({ kode: "K7Q4-MZ2T", perangkatId: "x" }).success).toBe(false);
+    expect(pasangSchema.safeParse({ kode: 12345678 }).success).toBe(false);
+    expect(pasangSchema.safeParse({ kode: "A".repeat(33) }).success).toBe(false);
+  });
+});
+
+describe("rute publik tablet (daftar tertutup)", () => {
+  it("prefiks per segmen", () => {
+    expect(diBawahTtdSiaga("/ttd-siaga")).toBe(true);
+    expect(diBawahTtdSiaga("/api/ttd-siaga/aliran")).toBe(true);
+    expect(diBawahTtdSiaga("/ttd-siagax")).toBe(false);
+    expect(diBawahTtdSiaga("/api/ttd-siagaa")).toBe(false);
+  });
+
+  it("rute terdaftar + metode", () => {
+    expect(cocokRuteTtdSiaga("/ttd-siaga", "GET").jenis).toBe("ok");
+    expect(cocokRuteTtdSiaga("/ttd-siaga", "POST").jenis).toBe("metode");
+    expect(cocokRuteTtdSiaga("/api/ttd-siaga/pasang", "post").jenis).toBe("ok");
+    expect(cocokRuteTtdSiaga("/api/ttd-siaga/pasang", "GET").jenis).toBe("metode");
+    expect(cocokRuteTtdSiaga("/api/ttd-siaga/aliran", "GET").jenis).toBe("ok");
+    expect(cocokRuteTtdSiaga("/api/ttd-siaga/segarkan", "POST").jenis).toBe("ok");
+  });
+
+  it("jalur tak terdaftar → tak-ada (tanpa endpoint tersembunyi)", () => {
+    for (const p of ["/ttd-siaga/", "/ttd-siaga/admin", "/api/ttd-siaga", "/api/ttd-siaga/debug", "/api/ttd-siaga/aliran/x", "/api/ttd-siaga/pasang/../aliran"]) {
+      expect(cocokRuteTtdSiaga(p, "GET").jenis, p).toBe("tak-ada");
+    }
+  });
+});
+
+describe("deteksi koneksi ganda", () => {
+  it("putus-sambung dari IP yang sama tidak pernah dicurigai", () => {
+    const g = buatPencatatGanda();
+    for (let i = 0; i < 20; i++) expect(g.catat("p1", "10.0.0.5", "10.0.0.5", i * 1000).curiga).toBe(false);
+  });
+
+  it("≥ 5 penggantian dengan ≥ 2 IP dalam 5 menit → curiga", () => {
+    const g = buatPencatatGanda();
+    const ip = ["10.0.0.5", "10.0.0.9"];
+    const hasil = [0, 1, 2, 3, 4].map((i) => g.catat("p1", ip[i % 2], ip[(i + 1) % 2], i * 10_000));
+    expect(hasil.slice(0, 4).every((h) => !h.curiga)).toBe(true);
+    expect(hasil[4].curiga).toBe(true);
+    expect(hasil[0].ipBerbeda).toBe(true);
+  });
+
+  it("penggantian di luar jendela 5 menit tidak dihitung; lupakan mengosongkan", () => {
+    const g = buatPencatatGanda();
+    for (let i = 0; i < 4; i++) g.catat("p1", "a", "b", i * 1000);
+    expect(g.catat("p1", "a", "b", 6 * 60_000).curiga).toBe(false);
+    for (let i = 0; i < 4; i++) g.catat("p2", "a", "b", i);
+    g.lupakan("p2");
+    expect(g.catat("p2", "a", "b", 10).curiga).toBe(false);
   });
 });

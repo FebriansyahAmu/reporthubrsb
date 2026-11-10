@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  BadgeCheck,
   Ban,
   Copy,
   KeyRound,
@@ -20,7 +21,7 @@ import { Modal } from "@/components/ui/Modal";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Select, type SelectGroup } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/Toast";
-import { ApiError, apiDelete, apiPatch, apiPost, pesanGalat } from "@/lib/api-client";
+import { ApiError, apiDelete, apiGet, apiPatch, apiPost, pesanGalat } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 import { UMUR_KODE_MS } from "./kode-pasang";
 import {
@@ -90,6 +91,27 @@ export function PerangkatTtdView({
 
   const ganti = (dto: PerangkatTtdDto) =>
     setItems((prev) => [...prev.filter((x) => x.id !== dto.id), dto].sort(urut));
+
+  // Status terhubung & pemasangan berubah dari tablet → segarkan berkala selama
+  // halaman terlihat; lebih rapat saat modal kode terbuka agar "terpasang" cepat tampil.
+  const kodeTerbuka = !!kode?.data;
+  useEffect(() => {
+    let mati = false;
+    const muat = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const data = await apiGet<PerangkatTtdDto[]>(API);
+        if (!mati) setItems(data);
+      } catch {
+        /* galat sesaat: coba lagi di putaran berikut */
+      }
+    };
+    const id = setInterval(() => void muat(), kodeTerbuka ? 3_000 : 15_000);
+    return () => {
+      mati = true;
+      clearInterval(id);
+    };
+  }, [kodeTerbuka]);
 
   const jumlah = useMemo(() => {
     const j: Record<StatusPasang, number> = { TERPASANG: 0, BELUM: 0, DICABUT: 0 };
@@ -194,6 +216,7 @@ export function PerangkatTtdView({
       {kode && (
         <KodePasangModal
           state={kode}
+          terkini={items.find((x) => x.id === kode.p.id)}
           onUlang={() => void terbitkanKode(kode.p)}
           onClose={() => setKode(null)}
           onSalin={(ok) =>
@@ -282,6 +305,16 @@ function BarisPerangkat({
               </span>
             </span>
             <span>{keterangan}</span>
+            {p.status === "TERPASANG" && (
+              <span className="inline-flex items-center gap-1.5" data-koneksi-perangkat={p.terhubung ? "terhubung" : "terputus"}>
+                <span className={cn("size-1.5 rounded-full", p.terhubung ? "bg-success" : "bg-fg-subtle")} aria-hidden />
+                {p.terhubung
+                  ? "Terhubung"
+                  : p.terakhirAktifAt
+                    ? `Terputus, terakhir aktif ${waktu(p.terakhirAktifAt)}`
+                    : "Belum pernah tersambung"}
+              </span>
+            )}
           </p>
           {p.kodeSampai !== null && (
             <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning">
@@ -499,16 +532,21 @@ const mmss = (ms: number) => {
 
 function KodePasangModal({
   state,
+  terkini,
   onUlang,
   onClose,
   onSalin,
 }: {
   state: StateKode;
+  /** Baris perangkat terbaru dari daftar (disegarkan berkala) — untuk mendeteksi kode sudah dipakai. */
+  terkini: PerangkatTtdDto | undefined;
   onUlang: () => void;
   onClose: () => void;
   onSalin: (ok: boolean) => void;
 }) {
   const { p, data, batasLokal, galat, memuat } = state;
+  const terpasang =
+    !!data && !!terkini && terkini.status === "TERPASANG" && terkini.kodeSampai === null && terkini.dipasangAt !== p.dipasangAt;
   const now = useSekarang();
   const sisa = batasLokal !== null && now !== null ? Math.min(UMUR_KODE_MS, Math.max(0, batasLokal - now)) : null;
   const habis = sisa === 0;
@@ -546,7 +584,7 @@ function KodePasangModal({
         </Button>
       }
     >
-      {p.status === "TERPASANG" && (
+      {p.status === "TERPASANG" && !terpasang && (
         <p className="mb-4 flex gap-2 rounded-lg bg-warning-soft px-3 py-2.5 text-xs text-warning">
           <TriangleAlert className="mt-px size-4 shrink-0" aria-hidden />
           <span>
@@ -556,7 +594,17 @@ function KodePasangModal({
         </p>
       )}
 
-      {memuat ? (
+      {terpasang ? (
+        <div className="py-8 text-center" role="status" data-terpasang>
+          <span className="mx-auto grid size-14 place-items-center rounded-full bg-success-soft text-success ring-1 ring-inset ring-success/20">
+            <BadgeCheck className="size-7" aria-hidden />
+          </span>
+          <p className="mt-4 text-base font-semibold text-fg">Tablet terpasang</p>
+          <p className="mt-1 text-sm text-fg-muted">
+            {p.nama} sudah siaga{terkini?.terhubung ? " dan terhubung" : ""}. Kode ini tidak bisa dipakai lagi.
+          </p>
+        </div>
+      ) : memuat ? (
         <p className="py-10 text-center text-sm text-fg-muted" role="status">
           Membuat kode…
         </p>
