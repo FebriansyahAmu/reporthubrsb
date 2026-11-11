@@ -9,12 +9,12 @@ import { ToastProvider } from "@/components/ui/Toast";
 // produksi pun tak lagi bergantung pada internet. Berkas = subset latin variabel
 // yang sama persis dengan sajian Google Fonts.
 
-// Figtree — keluarga tunggal (bahasa "Cord"): 400 body → 800 display.
-// Judul terasa "distempel" berkat bobot berat; tracking negatif di ukuran besar.
-const figtree = localFont({
-  src: "./fonts/figtree-latin-wght.woff2",
-  variable: "--font-figtree",
-  weight: "300 900",
+// Geist Sans — font bawaan template shadcn/ui (Next.js), pasangan Geist Mono.
+// Menggantikan Figtree (11 Nov 2026); berkas Figtree masih di `fonts/`.
+const geist = localFont({
+  src: "./fonts/geist-latin-wght.woff2",
+  variable: "--font-geist",
+  weight: "100 900",
 });
 
 const geistMono = localFont({
@@ -43,7 +43,7 @@ export default function RootLayout({
     <html
       lang="id"
       suppressHydrationWarning
-      className={`${figtree.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geist.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <ToastProvider>{children}</ToastProvider>
