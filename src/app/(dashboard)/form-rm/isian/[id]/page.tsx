@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, UserRound } from "lucide-react";
+import { ArrowLeft, GitMerge, UserRound } from "lucide-react";
+import { formatDateTime } from "@/lib/format";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { FadeIn } from "@/components/motion/Motion";
 import { ConsentFormView } from "@/features/form-rm/ConsentFormView";
@@ -18,8 +19,10 @@ import { NotFoundError } from "@/server/lib/errors";
 import { requireAnyModule } from "@/server/rbac/guard";
 import { bacaKebutuhanEdukasi, bacaKeluarSimrs, bacaTriaseSimrs } from "@/server/modules/form-rm/form-rm.service";
 import { aktorHalaman } from "@/server/modules/form-rm/isian.jaga";
-import { ID_RE } from "@/server/modules/form-rm/isian.schema";
-import { bacaIsian, identitasIsian, tertautTerkini } from "@/server/modules/form-rm/isian.service";
+import { ID_RE, nopenSchema } from "@/server/modules/form-rm/isian.schema";
+import { bacaIsian, episodeSimrsIsian, identitasIsian, tertautTerkini } from "@/server/modules/form-rm/isian.service";
+import type { EpisodeRingkas } from "@/server/modules/form-rm/rantai.inti";
+import { konteksIsian, ringkasEpisode } from "@/server/modules/form-rm/rantai.service";
 import type { BacaKeluarSimrs, FormRmHeader, KebutuhanEdukasiSimrs, TriaseSimrs } from "@/server/modules/form-rm/form-rm.types";
 import type { IsianForm, IzinIsian } from "@/server/modules/form-rm/isian.types";
 
@@ -30,10 +33,17 @@ export const dynamic = "force-dynamic";
  * Halaman isian — satu URL per isian (PRD §8.4). Pembukaan dicatat di audit;
  * hak dicek per kategori form (kategori tak terlihat → 404 seragam).
  */
-export default async function IsianPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function IsianPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ dari?: string | string[] }>;
+}) {
   const user = await requireAnyModule(MODUL_AKSES_FORM_RM);
   const { id } = await params;
   if (!ID_RE.test(id)) notFound();
+  const { dari } = await searchParams;
 
   const aktor = await aktorHalaman(user);
   const tersimpan = await bacaIsian(id, aktor).catch((e: unknown) => {
@@ -42,20 +52,28 @@ export default async function IsianPage({ params }: { params: Promise<{ id: stri
   });
   if (!tersimpan) notFound();
 
+  // Form berlanjut IGD → RI: konteks (episode tempat isian dibuka) hanya anggota rantai;
+  // rujukan & kolom tertaut SIMRS dari episode terakhir rantai (rawat inap).
+  const [rantai, nopenSimrs] = await Promise.all([
+    konteksIsian(tersimpan, typeof dari === "string" && nopenSchema.safeParse(dari).success ? dari : null),
+    episodeSimrsIsian(tersimpan),
+  ]);
+
   // Rujukan SIMRS baca-saja (bukan isi isian): dibaca langsung tiap halaman dibuka.
   // Isian belum tertaut belum punya pendaftaran → tanpa rujukan.
   const tanpaRujukan: RujukanSimrs = { triase: null, edukasi: null, keluar: null };
-  const [header, rujukan] = await Promise.all([
+  const [header, rujukan, episodeRantai] = await Promise.all([
     identitasIsian(tersimpan),
     !tersimpan.tertaut
       ? tanpaRujukan
       : tersimpan.kode === "RM.04"
-        ? bacaTriaseSimrs(tersimpan.nopen).then((triase) => ({ ...tanpaRujukan, triase }))
+        ? bacaTriaseSimrs(nopenSimrs).then((triase) => ({ ...tanpaRujukan, triase }))
         : tersimpan.kode === "RM.21"
-          ? bacaKebutuhanEdukasi(tersimpan.nopen).then((edukasi) => ({ ...tanpaRujukan, edukasi }))
+          ? bacaKebutuhanEdukasi(nopenSimrs).then((edukasi) => ({ ...tanpaRujukan, edukasi }))
           : tersimpan.kode === "RM.01"
-            ? bacaKeluarSimrs(tersimpan.nopen).then((keluar) => ({ ...tanpaRujukan, keluar }))
+            ? bacaKeluarSimrs(nopenSimrs).then((keluar) => ({ ...tanpaRujukan, keluar }))
             : tanpaRujukan,
+    rantai.lanjutan.length > 0 ? ringkasEpisode([tersimpan.nopen, ...rantai.lanjutan.map((l) => l.nopen)]) : null,
   ]);
   // Kolom tertaut SIMRS (mis. Keadaan Keluar RM.01) berisi nilai SIMRS terkini selama DRAF.
   const isian = await tertautTerkini(tersimpan, header);
@@ -79,7 +97,7 @@ export default async function IsianPage({ params }: { params: Promise<{ id: stri
         </Link>
         {isian.tertaut && (
           <Link
-            href={`/form-rm/pasien/${isian.nopen}`}
+            href={`/form-rm/pasien/${rantai.konteks}`}
             className="inline-flex items-center gap-1.5 text-fg-muted transition-colors hover:text-fg"
           >
             <UserRound className="size-4" />
@@ -93,8 +111,44 @@ export default async function IsianPage({ params }: { params: Promise<{ id: stri
           isian.tertaut ? `No. RM ${header.norm}` : "belum tertaut ke pasien terdaftar"
         }`}
       />
+      {episodeRantai && <PitaBerlanjut episode={episodeRantai} konteks={rantai.konteks} />}
       <TampilanForm isian={isian} header={header} izin={izin} rujukan={rujukan} />
     </FadeIn>
+  );
+}
+
+/** Jam dinding SIMGOS di field UTC → buang "Z" agar tak digeser zona waktu. */
+const jamMasuk = (e: EpisodeRingkas) => (e.masuk ? formatDateTime(e.masuk.slice(0, 19)) : "—");
+
+/**
+ * Pita isian bersama IGD → rawat inap (PRD Berlanjut §5.1–5.2). `episode[0]` =
+ * episode akar (IGD), sisanya episode lanjutan (rawat inap).
+ */
+function PitaBerlanjut({ episode, konteks }: { episode: EpisodeRingkas[]; konteks: string }) {
+  const [akar, ...lanjutan] = episode;
+  const dariRi = konteks !== akar.nopen;
+  return (
+    <section
+      aria-label="Isian bersama IGD dan rawat inap"
+      className="flex items-start gap-3 rounded-[var(--radius-lg)] border border-brand/25 bg-brand-soft/60 px-4 py-3 text-sm"
+    >
+      <GitMerge className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden />
+      <div className="min-w-0 space-y-0.5 text-fg-muted">
+        <p className="font-semibold text-fg">Isian bersama IGD → Rawat Inap</p>
+        <p>
+          Dimulai di IGD {akar.ruang} · masuk {jamMasuk(akar)} (NOPEN <span className="font-mono">{akar.nopen}</span>), dilanjutkan
+          di{" "}
+          {lanjutan.map((l, i) => (
+            <span key={l.nopen}>
+              {i > 0 ? ", " : ""}
+              {l.ruang} · masuk {jamMasuk(l)} (NOPEN <span className="font-mono">{l.nopen}</span>)
+            </span>
+          ))}
+          . Perubahan dari kedua unit tersimpan di dokumen ini.
+        </p>
+        <p className="text-xs">Anda membuka dari {dariRi ? "rawat inap" : "IGD"}.</p>
+      </div>
+    </section>
   );
 }
 

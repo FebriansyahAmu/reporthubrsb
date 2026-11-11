@@ -10,7 +10,7 @@ import { ToastProvider } from "@/components/ui/Toast";
 // yang sama persis dengan sajian Google Fonts.
 
 // Geist Sans — font bawaan template shadcn/ui (Next.js), pasangan Geist Mono.
-// Menggantikan Figtree (11 Nov 2026); berkas Figtree masih di `fonts/`.
+// Menggantikan Figtree sejak 11 Nov 2026.
 const geist = localFont({
   src: "./fonts/geist-latin-wght.woff2",
   variable: "--font-geist",

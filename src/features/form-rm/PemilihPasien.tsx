@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, DoorOpen, Info, RefreshCw, Search, UsersRound } from "lucide-react";
+import { ArrowRight, ArrowRightLeft, DoorOpen, GitMerge, Info, RefreshCw, Search, Split, UsersRound } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { InputWithIcon, Label } from "@/components/ui/Field";
 import { NumberedPagination } from "@/components/ui/NumberedPagination";
@@ -15,6 +15,7 @@ import { cn } from "@/lib/cn";
 import { formatDateTime, formatJam } from "@/lib/format";
 import { useAsyncData } from "@/lib/useAsyncData";
 import { useDebounce } from "@/lib/useDebounce";
+import { urlIsian } from "./berlanjut";
 import { MIN_CARI, tafsirCari } from "./cari";
 import { statusPasien } from "./kelengkapan";
 import { jenisDariLayanan, LAYANAN, layananDariJenis, TITIK_LAYANAN, type KunciLayanan } from "./layanan";
@@ -345,6 +346,7 @@ function BarisPasien({
             <span className={cn("size-1.5 rounded-full", p.dirawat ? "bg-success" : "bg-fg-subtle")} aria-hidden />
             {p.dirawat ? "Masih dilayani" : "Sudah keluar"}
           </span>
+          {p.rantai && <ChipRantai rantai={p.rantai} />}
         </div>
         <p className="flex min-w-0 items-start gap-1.5 text-fg">
           <DoorOpen className="mt-0.5 size-3.5 shrink-0 text-fg-subtle" aria-hidden />
@@ -377,7 +379,7 @@ function BarisPasien({
           )}
           {p.isian ? (
             <Link
-              href={`/form-rm/isian/${p.isian.id}`}
+              href={urlIsian(kode, p.isian.id, p.nopen)}
               className={cn(
                 KELAS_TOMBOL,
                 st === "FINAL"
@@ -396,6 +398,25 @@ function BarisPasien({
         </div>
       )}
     </div>
+  );
+}
+
+/** Rantai IGD → rawat inap episode RI (form berlanjut): ikon + teks, bukan warna saja. */
+function ChipRantai({ rantai }: { rantai: NonNullable<PasienSasaran["rantai"]> }) {
+  const { Ikon, teks, judul } =
+    rantai.status === "terpisah"
+      ? { Ikon: Split, teks: "Isian terpisah dari IGD", judul: "Petugas memilih dokumen sendiri untuk rawat inap ini" }
+      : rantai.status === "konfirmasi"
+        ? { Ikon: ArrowRightLeft, teks: "Asal IGD perlu konfirmasi", judul: `Episode IGD NOPEN ${rantai.akar} — dikonfirmasi saat form dibuka` }
+        : { Ikon: GitMerge, teks: "Berlanjut dari IGD", judul: `Memakai dokumen episode IGD NOPEN ${rantai.akar}` };
+  return (
+    <span
+      title={judul}
+      className="inline-flex items-center gap-1 rounded-full bg-brand-soft px-2 text-[11px] font-medium leading-5 text-brand-soft-fg"
+    >
+      <Ikon className="size-3" aria-hidden />
+      {teks}
+    </span>
   );
 }
 

@@ -15,6 +15,7 @@ import type {
   StatusFormPasien,
 } from "./form-rm.types";
 import { isianAktifPerNopen } from "./isian.cari";
+import { isianAktifPerEpisode, ringkasRantai } from "./rantai.service";
 
 /**
  * DAFTAR PASIEN FORM RM (PRD §6.1–6.2) — pemilih pasien per form dan daftar per
@@ -62,8 +63,15 @@ export async function daftarPasienForm(def: DefinisiForm, a: PasienFormArgs): Pr
   for (const e of episode) perLayanan[e.jenis] = (perLayanan[e.jenis] ?? 0) + 1;
   const sesuaiLayanan = a.jenis ? episode.filter((e) => e.jenis === a.jenis) : episode;
 
-  const isian = await isianAktifPerNopen(sesuaiLayanan.map((e) => e.nopen), [def.kode]);
-  const semua: PasienSasaran[] = sesuaiLayanan.map((e) => ({ ...e, isian: isian.get(e.nopen)?.[def.kode] ?? null }));
+  // Form berlanjut: episode rawat inap memakai isian episode IGD asalnya (PRD Berlanjut §5.2).
+  const nopens = sesuaiLayanan.map((e) => e.nopen);
+  const rantai = def.berlanjut ? await ringkasRantai(sesuaiLayanan.filter((e) => e.jenis === 3).map((e) => e.nopen)) : null;
+  const isian = rantai ? await isianAktifPerEpisode(nopens, [def.kode], rantai) : await isianAktifPerNopen(nopens, [def.kode]);
+  const semua: PasienSasaran[] = sesuaiLayanan.map((e) => ({
+    ...e,
+    isian: isian.get(e.nopen)?.[def.kode] ?? null,
+    rantai: rantai?.get(e.nopen) ?? null,
+  }));
   for (const p of semua) ringkas[statusPasien(p.isian)]++;
   const tersaring = a.status ? semua.filter((p) => statusPasien(p.isian) === a.status) : semua;
 

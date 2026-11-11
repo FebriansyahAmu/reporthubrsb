@@ -136,3 +136,58 @@ CREATE TABLE IF NOT EXISTS form_rm_perangkat_ttd (
   UNIQUE KEY uq_form_rm_perangkat_ttd_token (token_hash),
   KEY idx_form_rm_perangkat_ttd_lama (token_hash_lama)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Tautan episode RAWAT INAP (lanjutan) → episode IGD asal (akar) untuk form
+-- berlanjut (RM.03/RM.21/RM.01; docs/PRD_Form_RM_Berlanjut_IGD_RI.md §8.2).
+-- SIMGOS memberi NOPEN baru saat pasien IGD dirawat inap; isian bersama disimpan
+-- di episode akar. dasar: SPRI (otomatis) / WAKTU (pendaftaran IGD ≤ 24 jam,
+-- dikonfirmasi petugas) / TANPA (petugas memilih isian terpisah, nopen_akar NULL).
+-- aktif_kunci = nopen_lanjutan selama aktif, NULL setelah dilepas → paling banyak
+-- satu tautan aktif per episode lanjutan (MariaDB tanpa indeks unik parsial).
+-- Baris tak pernah dihapus: pelepasan dicatat (oleh, kapan, alasan).
+CREATE TABLE IF NOT EXISTS form_rm_tautan_episode (
+  id                 VARCHAR(30)  NOT NULL PRIMARY KEY,
+  nopen_lanjutan     VARCHAR(20)  NOT NULL,                       -- episode RI
+  nopen_akar         VARCHAR(20)  NULL,                           -- episode IGD; NULL bila dasar = TANPA
+  norm               VARCHAR(20)  NOT NULL,                       -- snapshot, sama di kedua episode
+  dasar              VARCHAR(10)  NOT NULL,                       -- SPRI / WAKTU / TANPA
+  aktif_kunci        VARCHAR(20)  NULL,
+  dibuat_oleh_id     VARCHAR(191) NULL,
+  dibuat_oleh_nama   VARCHAR(191) NULL,
+  created_at         DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  dilepas_at         DATETIME(3)  NULL,
+  dilepas_oleh_id    VARCHAR(191) NULL,
+  dilepas_oleh_nama  VARCHAR(191) NULL,
+  alasan_lepas       VARCHAR(500) NULL,
+  UNIQUE KEY uq_form_rm_tautan_episode_aktif (aktif_kunci),
+  KEY idx_form_rm_tautan_episode_akar (nopen_akar),
+  KEY idx_form_rm_tautan_episode_lanjutan (nopen_lanjutan)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Log perubahan isian per kolom (form berlanjut; PRD §8.4). Satu entri per simpan
+-- yang benar-benar mengubah kolom; entri TERAKHIR boleh digabung (orang & konteks
+-- sama, ≤ 5 menit) → nilai sebelum paling awal tetap tercatat. perubahan =
+-- [{ p: path, s: sebelum, j: sesudah }] (TTD = referensi "ttd:<id>"). hash =
+-- HMAC-SHA256 berantai per isian (kunci FORM_RM_KUNCI_INTEGRITAS, domain terpisah
+-- dari segel revisi). created_at/updated_at diisi aplikasi karena ikut disegel.
+CREATE TABLE IF NOT EXISTS form_rm_isian_log (
+  id             VARCHAR(30)  NOT NULL PRIMARY KEY,
+  isian_id       VARCHAR(30)  NOT NULL,
+  urut           INT          NOT NULL,
+  rev_awal       INT          NOT NULL,
+  rev_akhir      INT          NOT NULL,
+  aksi           VARCHAR(20)  NOT NULL,                           -- SIMPAN / TIMPA / MUAT_SIMRS / BEKU_TERTAUT
+  oleh_id        VARCHAR(191) NULL,
+  oleh_nama      VARCHAR(191) NULL,
+  konteks_nopen  VARCHAR(20)  NOT NULL,
+  konteks_unit   VARCHAR(3)   NOT NULL,                           -- IGD / RI / RJ
+  konteks_ruang  VARCHAR(191) NULL,
+  perubahan      JSON         NOT NULL,
+  hash           CHAR(64)     NOT NULL,
+  hash_sebelum   CHAR(64)     NULL,
+  created_at     DATETIME(3)  NOT NULL,
+  updated_at     DATETIME(3)  NOT NULL,
+  UNIQUE KEY uq_form_rm_isian_log (isian_id, urut),
+  KEY idx_form_rm_isian_log_waktu (isian_id, created_at),
+  CONSTRAINT fk_form_rm_isian_log_isian FOREIGN KEY (isian_id) REFERENCES form_rm_isian(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

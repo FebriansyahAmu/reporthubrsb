@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { ArrowRight, ChevronRight, CircleDashed, Eye, Lock, PencilLine, type LucideIcon } from "lucide-react";
+import { ArrowRight, ChevronRight, CircleAlert, CircleDashed, Eye, GitMerge, Lock, PencilLine, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/cn";
 import { formatDateTime } from "@/lib/format";
+import { urlIsian } from "@/features/form-rm/berlanjut";
 import { BukaIsianButton } from "@/features/form-rm/isian/BukaIsianButton";
 import { LABEL_STATUS } from "@/features/form-rm/isian/StatusIsianBadge";
 import { statusPasien } from "@/features/form-rm/kelengkapan";
@@ -154,6 +155,7 @@ export function KartuForm({
   bolehBuat: boolean;
 }) {
   const status = statusPasien(isian);
+  const href = isian ? urlIsian(def.kode, isian.id, nopen) : "";
   return (
     <BingkaiKartu def={def} status={status} wajib={wajib}>
       <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -162,15 +164,36 @@ export function KartuForm({
           <span className="text-xs text-fg-muted">Diperbarui {formatDateTime(isian.updatedAt)}</span>
         )}
       </div>
+      {isian?.dariNopen && (
+        <p className="mt-2 flex items-start gap-1.5 text-xs text-fg-muted">
+          <GitMerge className="mt-0.5 size-3.5 shrink-0 text-brand" aria-hidden />
+          <span>
+            Dokumen bersama dari IGD (NOPEN <span className="font-mono">{isian.dariNopen}</span>) — perubahan di sini tersimpan di
+            dokumen yang sama.
+          </span>
+        </p>
+      )}
+      {isian?.ganda && (
+        <p role="note" className="mt-2 flex items-start gap-1.5 text-xs text-warning">
+          <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <span>
+            Ada dua isian untuk perawatan ini: isian episode ini dan{" "}
+            <Link href={urlIsian(def.kode, isian.ganda.id, isian.ganda.nopen)} className="font-semibold underline underline-offset-2">
+              isian IGD
+            </Link>
+            . Pengelola rekam medis perlu membatalkan salah satu.
+          </span>
+        </p>
+      )}
       <div className="mt-auto pt-4">
         {isian && status === "DRAF" ? (
-          <Link href={`/form-rm/isian/${isian.id}`} className={cn(TOMBOL, TOMBOL_UTAMA)}>
+          <Link href={href} className={cn(TOMBOL, TOMBOL_UTAMA)}>
             <PencilLine className="size-4" aria-hidden />
             Lanjutkan isian
             <ArrowRight className="size-4" aria-hidden />
           </Link>
         ) : isian && status === "FINAL" ? (
-          <Link href={`/form-rm/isian/${isian.id}`} className={cn(TOMBOL, TOMBOL_KEDUA)}>
+          <Link href={href} className={cn(TOMBOL, TOMBOL_KEDUA)}>
             <Eye className="size-4" aria-hidden />
             Lihat isian
           </Link>

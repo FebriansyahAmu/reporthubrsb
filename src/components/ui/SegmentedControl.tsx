@@ -55,7 +55,8 @@ export function SegmentedControl<T extends string>({
             aria-pressed={aktif}
             onClick={() => onChange(it.value)}
             className={cn(
-              "inline-flex h-9 items-center justify-center gap-1 whitespace-nowrap rounded-lg px-2 text-[13px] font-medium transition-colors sm:h-8 sm:gap-1.5 sm:px-3",
+              // px-1.5 di layar sempit: 5 segmen ber-angka tetap muat di 360 px dengan Geist (lebih lebar dari Figtree).
+              "inline-flex h-9 items-center justify-center gap-1 whitespace-nowrap rounded-lg px-1.5 text-[13px] font-medium transition-colors sm:h-8 sm:gap-1.5 sm:px-3",
               penuh && "flex-auto sm:flex-none",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-ring",
               aktif

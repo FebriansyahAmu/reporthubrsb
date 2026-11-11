@@ -6,7 +6,7 @@ import { definisiDariJenisLama } from "@/features/form-rm/registry";
 import { requireAnyModule } from "@/server/rbac/guard";
 import { hakFormRm } from "@/server/modules/form-rm/form-rm.akses";
 import { nopenSchema } from "@/server/modules/form-rm/isian.schema";
-import { cariIsianAktif } from "@/server/modules/form-rm/isian.cari";
+import { cariIsianAktifEpisode } from "@/server/modules/form-rm/rantai.service";
 
 export const metadata = { title: "Cetak Form RM · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ export default async function CetakRuteLama({ params }: { params: Promise<{ jeni
   const hak = await hakFormRm(user);
   if (!hak.boleh(def.kategori, "view")) notFound();
   if (!hak.boleh(def.kategori, "print")) redirect("/403");
-  const id = await cariIsianAktif(def.kode, nopen);
+  const id = await cariIsianAktifEpisode(def.kode, nopen);
   if (id) redirect(`/print/form-rm/isian/${id}`);
 
   return (

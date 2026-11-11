@@ -5,6 +5,7 @@
 import type { PageMeta } from "@/lib/types";
 import type { JenisKunjungan, KodeForm } from "@/features/form-rm/registry";
 import type { RingkasIsian } from "./isian.types";
+import type { RantaiRingkas } from "./rantai.inti";
 
 /** Status satu form untuk pasien: isian aktif DRAF/FINAL, atau belum ada. */
 export type StatusFormPasien = "KOSONG" | "DRAF" | "FINAL";
@@ -56,7 +57,11 @@ export type FormRmListResult = {
 };
 
 /** Satu baris pemilih pasien sebuah form: episode + isian aktif form itu (bila ada). */
-export type PasienSasaran = EpisodeSasaran & { isian: RingkasIsian | null };
+export type PasienSasaran = EpisodeSasaran & {
+  isian: RingkasIsian | null;
+  /** Rantai IGD → RI episode rawat inap (form berlanjut); null = tanpa rantai. */
+  rantai: RantaiRingkas | null;
+};
 
 export type DaftarPasienForm = {
   data: PasienSasaran[];

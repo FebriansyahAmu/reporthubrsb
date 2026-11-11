@@ -4,7 +4,7 @@ import { definisiDariJenisLama } from "@/features/form-rm/registry";
 import { requireAnyModule } from "@/server/rbac/guard";
 import { hakFormRm } from "@/server/modules/form-rm/form-rm.akses";
 import { nopenSchema } from "@/server/modules/form-rm/isian.schema";
-import { cariIsianAktif } from "@/server/modules/form-rm/isian.cari";
+import { cariIsianAktifEpisode } from "@/server/modules/form-rm/rantai.service";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +18,6 @@ export default async function RuteLamaForm({ params }: { params: Promise<{ nopen
   const { nopen, jenis } = await params;
   const def = definisiDariJenisLama(jenis);
   if (!def || !nopenSchema.safeParse(nopen).success) notFound();
-  const id = (await hakFormRm(user)).boleh(def.kategori, "view") ? await cariIsianAktif(def.kode, nopen) : null;
+  const id = (await hakFormRm(user)).boleh(def.kategori, "view") ? await cariIsianAktifEpisode(def.kode, nopen) : null;
   redirect(id ? `/form-rm/isian/${id}` : `/form-rm/pasien/${nopen}`);
 }

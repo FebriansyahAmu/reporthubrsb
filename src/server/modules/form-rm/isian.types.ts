@@ -43,7 +43,17 @@ export type IsianForm = {
  * Ringkasan isian aktif satu form untuk daftar / profil pasien. `jumlah` =
  * banyaknya isian aktif form itu untuk pasien (> 1 hanya pada form berulang).
  */
-export type RingkasIsian = { id: string; status: StatusIsian; rev: number; updatedAt: string; jumlah: number };
+export type RingkasIsian = {
+  id: string;
+  status: StatusIsian;
+  rev: number;
+  updatedAt: string;
+  jumlah: number;
+  /** Isian bersama milik episode lain dalam rantai IGD → RI (NOPEN episode akar). */
+  dariNopen?: string;
+  /** Episode ini punya isian sendiri DAN episode akarnya juga (data lama) — perlu dibereskan pengelola RM. */
+  ganda?: { id: string; nopen: string };
+};
 
 /** Satu isian form berulang di profil pasien (mis. RM.22 per tindakan). */
 export type IsianBerulang = RingkasIsian & {

@@ -28,6 +28,8 @@ import type { FormRmHeader } from "./form-rm.types";
 import { auditIsian } from "./isian.audit";
 import { pindahkanBarisLama } from "./isian.lama";
 import { isiOtomatis, isiTertaut, type HasilTertaut } from "./isian.prefill";
+import { episodeSimrs, subjekBerlanjut } from "./rantai.service";
+import type { KonfirmasiRantai } from "./rantai.inti";
 import { kanonik, periksaRantai, segel, type IsiSegel } from "./isian.segel";
 import type { AksiIsianInput, BuatIsianInput, SimpanIsianInput, TerapkanSimrsInput } from "./isian.schema";
 import { pisahkanTtd, rujukanTtd, sidikTtd, sisipkanTtd } from "./isian.ttd";
@@ -165,16 +167,25 @@ export async function cariIsianBoleh(id: string, hak: HakForm, aksi: AksiForm): 
  * lambat): permintaan bersamaan menghitung urutan yang sama → bentrok di kunci
  * unik → yang kalah membuka isian pemenang. Form tidak berulang tak pernah
  * punya dua isian aktif.
+ *
+ * Form BERLANJUT (PRD Berlanjut IGD → RI §5.2): dibuka dari episode rawat inap
+ * yang berasal dari IGD → isian episode IGD asal (subjek = NOPEN akar); kandidat
+ * yang butuh keputusan petugas dikembalikan sebagai `perluKonfirmasi`.
  */
-export async function bukaAtauBuatIsian(
-  input: BuatIsianInput,
-  aktor: AktorForm,
-): Promise<{ isian: IsianForm; baru: boolean }> {
+export type HasilBukaIsian = { isian: IsianForm; baru: boolean } | { perluKonfirmasi: KonfirmasiRantai };
+
+export async function bukaAtauBuatIsian(input: BuatIsianInput, aktor: AktorForm): Promise<HasilBukaIsian> {
   const def = definisiForm(input.kode);
   if (!def) throw new NotFoundError("Form tidak dikenal");
   if (!aktor.hak.boleh(def.kategori, "create")) throw new ForbiddenError();
   const db = getAppDb();
-  const subjek = input.nopen; // semua form saat ini bercakupan EPISODE
+  // Semua form saat ini bercakupan EPISODE: subjek = NOPEN (akar rantai untuk form berlanjut).
+  let subjek = input.nopen;
+  if (def.berlanjut) {
+    const r = await subjekBerlanjut(def, input.nopen, aktor);
+    if ("konfirmasi" in r) return { perluKonfirmasi: r.konfirmasi };
+    subjek = r.subjek;
+  }
 
   const terakhir = () =>
     db.formRmIsian.findFirst({ where: { formKode: def.kode, subjek }, orderBy: { urutan: "desc" }, include: SERTA_SEMENTARA });
@@ -190,7 +201,7 @@ export async function bukaAtauBuatIsian(
 
   // Data tabel lama hanya ada untuk 4 form awal (punya `jenisLama`).
   if (!awal && def.jenisLama) {
-    const lama = await db.formRm.findUnique({ where: { nopen_jenis: { nopen: input.nopen, jenis: def.jenisLama } } });
+    const lama = await db.formRm.findUnique({ where: { nopen_jenis: { nopen: subjek, jenis: def.jenisLama } } });
     if (lama) {
       const h = await pindahkanBarisLama(lama, aktor);
       if (h.hasil === "dipindah") return { isian: keDto(await cariIsian(h.isianId)), baru: true };
@@ -201,14 +212,17 @@ export async function bukaAtauBuatIsian(
     }
   }
 
-  const [header, legs] = await Promise.all([
-    getFormRmHeader(input.nopen),
-    def.sasaran.ruangan ? legEpisode(input.nopen) : null,
+  const [header, legs, nopenSimrs] = await Promise.all([
+    getFormRmHeader(subjek),
+    def.sasaran.ruangan ? legEpisode(subjek) : null,
+    episodeSimrs(def, subjek),
   ]);
   if (!header) throw new NotFoundError("Pendaftaran tidak ditemukan atau tidak aktif");
   // Form berbatas ruangan (mis. partograf): hanya episode yang pernah di ruang itu.
   if (legs && !cocokSasaran(def.sasaran, legs)) throw new BusinessRuleError(pesanBukanSasaran(def.sasaran));
-  const { data, asal } = await isiOtomatis(def, input.nopen, header);
+  // Form berlanjut: isi otomatis dari episode terakhir rantai (RI), identitas tetap episode akar.
+  const headerSimrs = nopenSimrs === subjek ? header : ((await getFormRmHeader(nopenSimrs)) ?? header);
+  const { data, asal } = await isiOtomatis(def, nopenSimrs, headerSimrs);
 
   const buat = (urutan: number) =>
     db.formRmIsian.create({
@@ -216,7 +230,7 @@ export async function bukaAtauBuatIsian(
         formKode: def.kode,
         formVersi: def.versi,
         subjek,
-        nopen: input.nopen,
+        nopen: subjek,
         urutan,
         norm: header.norm,
         namaPasien: header.nama,
@@ -394,16 +408,26 @@ function tempelTertaut(def: DefinisiForm, data: unknown, asalLama: AsalIsian, se
 export async function tertautTerkini(isian: IsianForm, header: FormRmHeader): Promise<IsianForm> {
   const def = definisiForm(isian.kode);
   if (!def?.tertaut?.length || isian.status !== "DRAF" || !isian.tertaut) return isian;
-  const segar = await isiTertaut(def, isian.nopen, header).catch(() => null);
+  // Form berlanjut: kolom tertaut (mis. Keadaan keluar RM.01) mengikuti episode RI — kepulangan akhir.
+  const segar = await episodeSimrs(def, isian.nopen)
+    .then((nopen) => isiTertaut(def, nopen, header))
+    .catch(() => null);
   if (!segar) return isian;
   return { ...isian, ...tempelTertaut(def, isian.data, isian.asal, segar) };
 }
 
-/** Nilai SIMRS terkini untuk isian (identitas dibaca ulang dari SIMGOS). */
-async function isiSimrsTerkini(def: DefinisiForm, nopen: string) {
+/** Nilai SIMRS terkini untuk isian (episode SIMRS rantai; identitas dibaca ulang dari SIMGOS). */
+async function isiSimrsTerkini(def: DefinisiForm, nopenIsian: string) {
+  const nopen = await episodeSimrs(def, nopenIsian);
   const header = await getFormRmHeader(nopen);
   if (!header) throw new BusinessRuleError("Pendaftaran pasien ini tidak lagi aktif di SIMRS");
   return isiOtomatis(def, nopen, header);
+}
+
+/** Episode SIMRS isian (form berlanjut → episode RI terakhir) — rujukan baca-saja halaman isian. */
+export async function episodeSimrsIsian(isian: Pick<IsianForm, "kode" | "nopen">): Promise<string> {
+  const def = definisiForm(isian.kode);
+  return def ? episodeSimrs(def, isian.nopen) : isian.nopen;
 }
 
 /**
@@ -498,11 +522,12 @@ export async function terapkanSimrs(
  */
 async function bekukanTertaut(def: DefinisiForm, row: BarisIsian) {
   const gagal = new ServiceUnavailableError("Data SIMRS untuk kolom tertaut (mis. keadaan keluar) tidak dapat dibaca. Coba finalkan lagi sebentar lagi.");
-  const header = await getFormRmHeader(row.nopen).catch(() => {
+  const nopen = await episodeSimrs(def, row.nopen);
+  const header = await getFormRmHeader(nopen).catch(() => {
     throw gagal;
   });
   if (!header) return null;
-  const segar = await isiTertaut(def, row.nopen, header).catch(() => null);
+  const segar = await isiTertaut(def, nopen, header).catch(() => null);
   if (!segar) throw gagal;
   const hasil = tempelTertaut(def, row.data, normalkanAsal(row.asal), segar);
   return { data: hasil.data as Prisma.JsonObject, asal: hasil.asal };

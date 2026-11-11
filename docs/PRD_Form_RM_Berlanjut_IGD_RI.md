@@ -166,7 +166,7 @@ Laci **Riwayat** isian mendapat tab **Perubahan**:
 | `server/modules/form-rm/isian.log.ts` (+ test inti)           | tulis/gabung entri log, segel berantai, baca + periksa integritas                                         |
 | `server/modules/form-rm/isian.hub.ts`                         | hub SSE per isian (globalThis), kehadiran, batas                                                          |
 | `app/api/form-rm/isian/[id]/aliran`, `/terkini`, `/log`        | rute SSE, isi terkini untuk rebase, log perubahan                                                         |
-| `app/api/form-rm/tautan-episode` (+ `[id]`)                   | konfirmasi `WAKTU`/`TANPA`, lepas tautan                                                                   |
+| `app/api/form-rm/tautan-episode` (+ `[id]/lepas`)             | konfirmasi `WAKTU`/`TANPA`, lepas tautan                                                                   |
 | `features/form-rm/isian/useIsian.ts`                          | mode berlanjut: dasar, kirim ubah, rebase, konflik, aliran                                                 |
 | `features/form-rm/isian/` (komponen baru)                     | `PitaBerlanjut`, `KehadiranIsian`, `PanelKonflik`, `DialogLanjutkanIgd`, tab Perubahan di `RiwayatIsianDrawer` |
 | `scripts/db/form-rm.sql`, `scripts/db/migrate-form-rm.mjs`    | DDL dua tabel baru (idempoten)                                                                             |
@@ -301,7 +301,7 @@ Kunci baris hanya dipegang selama satu transaksi (milidetik). Tidak ada kunci ya
 | `/api/form-rm/isian/[id]/aliran`             | GET    | `view` kategori, asal sama, batas §8.5                                     |
 | `/api/form-rm/isian/[id]/log`                | GET    | `view` kategori, 404 seragam, diaudit                                      |
 | `/api/form-rm/tautan-episode`                | POST   | `create` pada kategori salah satu form berlanjut, `jagaTulis`, verifikasi §6 |
-| `/api/form-rm/tautan-episode/[id]`           | DELETE | `hak.kelola`, `jagaTulis`, alasan wajib (≥ 10 karakter)                    |
+| `/api/form-rm/tautan-episode/[id]/lepas`     | POST   | `hak.kelola`, `jagaTulis`, alasan wajib (≥ 10 karakter)                    |
 
 Semua masukan: Zod `strictObject`, batas body (`readJsonTerbatas`), NOPEN `^\d{1,20}$`.
 
@@ -432,7 +432,30 @@ Tidak ada modul baru. Hak per kategori form (`form-rm.<kategori>`) dan `form-rm.
 
 ## 15. Status implementasi
 
-_Belum dimulai. Diisi per langkah._
+### Langkah 1 — Rantai episode ✅ (11 Nov 2026)
+
+**Data.** `form_rm_tautan_episode` dan `form_rm_isian_log` (yang kedua dipakai L2) di `scripts/db/form-rm.sql`, idempoten. Migrasi: `node scripts/db/migrate-form-rm.mjs` (produksi: `docker compose run --rm migrate scripts/db/migrate-form-rm.mjs`). Model Prisma `FormRmTautanEpisode`, `FormRmIsianLog`.
+
+**Kode.**
+- Registri: `berlanjut: "igd-ri"` di RM.21/RM.01/RM.03, sasaran IGD + RI, wajib tetap IGD (K5).
+- `rantai.inti.ts` (murni, teruji unit): `putuskanRantai`, `cekKonfirmasi`, `ringkasKeputusan`.
+- `rantai.dal.ts`: `queryKandidatAkar` (batch, SIMGOS read-only) — kini sumber tunggal aturan asal IGD; `queryIgdAsal` isi otomatis memakainya.
+- `rantai.service.ts`: subjek isian berlanjut (SPRI otomatis, konfirmasi, terpisah), konfirmasi & lepas tautan, episode SIMRS, konteks, isian per episode (`dariNopen`, `ganda`), audit `form-rm.tautan.{otomatis,konfirmasi,terpisah,lepas}`.
+- `isian.service.ts`: `bukaAtauBuatIsian` lewat rantai (jawaban `perluKonfirmasi`); isi otomatis, muat ulang SIMRS, kolom tertaut, dan pembekuan saat FINALKAN memakai episode SIMRS rantai.
+- Rute: `POST /api/form-rm/tautan-episode`, `POST /api/form-rm/tautan-episode/[id]/lepas`. Rute lama `/form-rm/<nopen>/<jenis>` dan `/print/form-rm/<jenis>/<nopen>` mengikuti rantai.
+- UI: dialog **Lanjutkan isian dari IGD?**, pita isian bersama di halaman isian (`?dari=` divalidasi server), panel rantai + **Lepas tautan** di profil pasien, penanda "Dokumen bersama dari IGD" & "dua isian" di kartu form, chip rantai di pemilih pasien.
+
+**Hasil uji (build produksi :3100).**
+
+| Uji | Hasil |
+| --- | --- |
+| Unit (total) | 664/664 (13 baru: rantai & registri) |
+| E2E L1 (`berlanjut-l1-e2e.mjs`): §9.5 no. 1–6, 20–22, rute lama, audit | 49/49 |
+| Oracle: rantai setiap baris RI pemilih RM.03 vs SQL independen | 62/62 cocok |
+| UI L1 (`berlanjut-l1-ui.mjs`): dialog, pita, panel, lepas tautan, chip | 23/23, tanpa galat konsol/CSP |
+| Regresi Form RM: E2E detail 38/38, riwayat 61/61, Via HP 67/67; UI detail 27/27, riwayat 47/47 | lulus (setelah segmen status dirapatkan untuk font Geist: `SegmentedControl` `px-2` → `px-1.5` di layar sempit) |
+
+Data uji dibersihkan terarah; isian 42 dan tautan 0 kembali seperti semula.
 
 ## 16. Keputusan terbuka
 

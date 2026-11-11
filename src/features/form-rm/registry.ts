@@ -144,6 +144,12 @@ export type DefinisiForm<T extends object = object> = {
    * terdaftar di `simrs` (sumbernya).
    */
   readonly tertaut?: readonly string[];
+  /**
+   * Ada = isian BERLANJUT lintas episode (docs/PRD_Form_RM_Berlanjut_IGD_RI.md).
+   * "igd-ri": episode rawat inap yang berasal dari IGD memakai isian episode IGD
+   * asalnya — satu dokumen per perawatan (tautan di `form_rm_tautan_episode`).
+   */
+  readonly berlanjut?: "igd-ri";
   readonly skema: z.ZodType<T>;
   /** Isian baru tanpa data SIMRS (sudah lolos skema). */
   kosong(): T;
@@ -173,16 +179,16 @@ const kosongBila = (kondisi: boolean, pesan: string) => (kondisi ? [pesan] : [])
 const belumDiisi = (s: string) => s.trim() === "";
 
 /*
- * SIMGOS membuat NOPEN BARU untuk rawat inap (552 dari 566 episode RI dalam 90
- * hari berasal dari episode IGD ber-NOPEN lain; tak satu pun berbagi NOPEN).
- * Praktik saat ini: keempat form diisi admisi pada episode IGD (keputusan K8
- * terbuka). Bila diisi pada episode rawat inap, sumber asesmen (triase,
- * edukasi) otomatis diambil dari episode IGD asalnya (PRD §6.4).
+ * SIMGOS membuat NOPEN BARU untuk rawat inap (514 dari 560 episode RI dalam 90
+ * hari punya SPRI dari IGD; tak satu pun berbagi NOPEN dengan leg IGD). RM.21,
+ * RM.01, dan RM.03 diisi admisi di episode IGD lalu DILANJUTKAN di rawat inap
+ * sebagai dokumen yang sama (`berlanjut`, K8 PRD Form RM Terpadu dijawab PRD
+ * Berlanjut IGD → RI). Wajib tetap dihitung untuk episode IGD (K5 sementara).
  */
 /** Triase: pasien yang baru tiba di IGD. */
 const SASARAN_TRIASE: SasaranPasien = { jenis: [2], jendelaJam: 24 };
-/** Dokumen episode admisi IGD; jendela 7 hari = bawaan daftar lama. */
-const SASARAN_ADMISI_IGD: SasaranPasien = { jenis: [2], jendelaJam: 24 * 7 };
+/** Dokumen admisi IGD yang berlanjut ke rawat inap; jendela 7 hari = bawaan daftar lama. */
+const SASARAN_ADMISI_IGD_RI: SasaranPasien = { jenis: [2, 3], jendelaJam: 24 * 7 };
 
 /*
  * Kolom isi otomatis per form. Kolom tanpa data di SIMGOS (penanggung jawab,
@@ -372,7 +378,8 @@ const edukasi: DefinisiForm<z.output<typeof edukasiFormSchema>> = {
   kategori: "edukasi",
   cakupan: "EPISODE",
   berulang: false,
-  sasaran: SASARAN_ADMISI_IGD,
+  sasaran: SASARAN_ADMISI_IGD_RI,
+  berlanjut: "igd-ri",
   wajibUntuk: [2],
   kertas: { ukuran: "F4", orientasi: "lanskap" },
   simrs: SIMRS_EDUKASI,
@@ -401,7 +408,8 @@ const ringkasan: DefinisiForm<z.output<typeof ringkasanFormSchema>> = {
   kategori: "ringkasan-pemulangan",
   cakupan: "EPISODE",
   berulang: false,
-  sasaran: SASARAN_ADMISI_IGD,
+  sasaran: SASARAN_ADMISI_IGD_RI,
+  berlanjut: "igd-ri",
   wajibUntuk: [2],
   kertas: { ukuran: "A4", orientasi: "potret" },
   simrs: SIMRS_RINGKASAN,
@@ -435,7 +443,8 @@ const consent: DefinisiForm<z.output<typeof consentFormSchema>> = {
   kategori: "administrasi-persetujuan",
   cakupan: "EPISODE",
   berulang: false,
-  sasaran: SASARAN_ADMISI_IGD,
+  sasaran: SASARAN_ADMISI_IGD_RI,
+  berlanjut: "igd-ri",
   wajibUntuk: [2],
   kertas: { ukuran: "A4", orientasi: "potret" },
   simrs: SIMRS_CONSENT,

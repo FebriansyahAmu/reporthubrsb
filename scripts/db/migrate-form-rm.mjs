@@ -25,6 +25,8 @@ const TABLES = [
   "form_rm_identitas_sementara",
   "form_rm_ttd_petugas",
   "form_rm_perangkat_ttd",
+  "form_rm_tautan_episode",
+  "form_rm_isian_log",
 ];
 
 // Env: utamakan process.env (env_file Docker), fallback baca .env dari root.

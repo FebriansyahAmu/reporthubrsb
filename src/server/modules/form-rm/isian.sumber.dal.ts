@@ -1,6 +1,7 @@
 import "server-only";
 import { getSimgos } from "@/server/db/simgos.client";
 import { SIMGOS_DB } from "@/server/db/simgos-databases";
+import { queryKandidatAkar } from "./rantai.dal";
 
 /**
  * QUERY SUMBER ISI OTOMATIS Form RM (PRD §8.3) — SIMGOS READ-ONLY: hanya SELECT
@@ -339,34 +340,11 @@ export async function queryObstetri(nopen: string): Promise<ObstetriRow | null> 
 export type IgdAsalRow = { NOPEN_SPRI: string | null; NOPEN_WAKTU: string | null };
 
 /**
- * Hanya untuk episode RAWAT INAP tanpa leg IGD (SIMGOS membuat NOPEN baru saat
- * pasien IGD dirawat inap). Utama: SPRI (`perencanaan_rawat_inap`) yang
- * dipakai pendaftaran RI ini → kunjungan IGD pembuatnya. Cadangan (pola fungsi
- * SIMGOS `getNopenIRD`): pendaftaran IGD pasien yang sama ≤ 24 jam sebelumnya.
+ * Hanya untuk episode RAWAT INAP tanpa leg IGD. Aturannya (SPRI, lalu
+ * pendaftaran IGD ≤ 24 jam, NORM sama) ada di satu tempat:
+ * `rantai.dal.ts` → `queryKandidatAkar`.
  */
 export async function queryIgdAsal(nopen: string): Promise<IgdAsalRow | null> {
-  const sql = `
-    SELECT ${CAP}
-      (SELECT k.NOPEN FROM ${MR}.perencanaan_rawat_inap s
-         JOIN ${P}.kunjungan k ON k.NOMOR = s.KUNJUNGAN
-         JOIN ${M}.ruangan r ON r.ID = k.RUANGAN
-         JOIN ${P}.pendaftaran p2 ON p2.NOMOR = k.NOPEN
-         WHERE s.PENDAFTARAN_RI_NOMOR = pp.NOMOR AND s.STATUS <> 0 AND k.STATUS <> 0
-           AND r.JENIS_KUNJUNGAN = 2 AND p2.STATUS = 1 AND p2.NORM = pp.NORM
-         ORDER BY s.ID DESC LIMIT 1) AS NOPEN_SPRI,
-      (SELECT p2.NOMOR FROM ${P}.pendaftaran p2
-         WHERE p2.NORM = pp.NORM AND p2.STATUS = 1 AND p2.NOMOR <> pp.NOMOR
-           AND p2.TANGGAL < pp.TANGGAL AND p2.TANGGAL >= pp.TANGGAL - INTERVAL 24 HOUR
-           AND EXISTS (SELECT 1 FROM ${P}.kunjungan k2 JOIN ${M}.ruangan r2 ON r2.ID = k2.RUANGAN
-                        WHERE k2.NOPEN = p2.NOMOR AND k2.STATUS <> 0 AND r2.JENIS_KUNJUNGAN = 2)
-         ORDER BY p2.TANGGAL DESC LIMIT 1) AS NOPEN_WAKTU
-    FROM ${P}.pendaftaran pp
-    WHERE pp.NOMOR = ? AND pp.STATUS = 1
-      AND EXISTS (SELECT 1 FROM ${P}.kunjungan k JOIN ${M}.ruangan r ON r.ID = k.RUANGAN
-                   WHERE k.NOPEN = pp.NOMOR AND k.STATUS <> 0 AND r.JENIS_KUNJUNGAN = 3)
-      AND NOT EXISTS (SELECT 1 FROM ${P}.kunjungan k JOIN ${M}.ruangan r ON r.ID = k.RUANGAN
-                       WHERE k.NOPEN = pp.NOMOR AND k.STATUS <> 0 AND r.JENIS_KUNJUNGAN = 2)
-    LIMIT 1`;
-  const rows = await getSimgos().$queryRawUnsafe<IgdAsalRow[]>(sql, nopen);
-  return rows[0] ?? null;
+  const k = (await queryKandidatAkar([nopen])).get(nopen)?.kandidat;
+  return k ? { NOPEN_SPRI: k.spri, NOPEN_WAKTU: k.waktu } : null;
 }

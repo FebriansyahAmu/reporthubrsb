@@ -14,16 +14,6 @@ const SUDAH_TERTAUT = { nopen: { not: "" } } as const;
  * dipakai katalog, pemilih pasien, daftar & profil pasien, dan rute lama.
  */
 
-/** id isian aktif (bukan BATAL, urutan terakhir) untuk (form, NOPEN), atau null. */
-export async function cariIsianAktif(kode: KodeForm, nopen: string): Promise<string | null> {
-  const row = await getAppDb().formRmIsian.findFirst({
-    where: { formKode: kode, subjek: nopen, status: { not: "BATAL" } },
-    orderBy: { urutan: "desc" },
-    select: { id: true },
-  });
-  return row?.id ?? null;
-}
-
 /** Isian aktif per NOPEN per form — satu query untuk banyak NOPEN (daftar & profil pasien). */
 export async function isianAktifPerNopen(
   nopens: readonly string[],

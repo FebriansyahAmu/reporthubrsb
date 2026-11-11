@@ -207,6 +207,17 @@ export const POST = withPermission("master.pengguna", "create", async (req, _ctx
 - Endpoint "milik sendiri" (mis. `change-password`) tetap butuh **login** tapi
   tak butuh izin modul.
 
+### 5.2 Form RM berlanjut IGD → rawat inap
+
+[PRD_Form_RM_Berlanjut_IGD_RI.md](../PRD_Form_RM_Berlanjut_IGD_RI.md). Semua rute butuh login, permintaan tulis dijaga
+`jagaTulis` (asal sama + laju), dan tanpa modul baru:
+
+| Rute | Hak |
+| --- | --- |
+| `POST /api/form-rm/isian` | `create` pada kategori form. Form berlanjut dari episode RI bisa menjawab `perluKonfirmasi` (tanpa menulis). |
+| `POST /api/form-rm/tautan-episode` | `create` pada kategori salah satu form berlanjut. Akar diverifikasi ulang terhadap kandidat SIMGOS (NORM sama, IGD, SPRI / ≤ 24 jam); selain itu 409. |
+| `POST /api/form-rm/tautan-episode/<id>/lepas` | `form-rm.kelola` (`update`), alasan ≥ 10 karakter. Baris tidak dihapus. |
+
 ---
 
 ## 6. Peran `proxy.ts` (tak berubah banyak)

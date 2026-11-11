@@ -15,7 +15,9 @@ import { jenisDariLeg } from "@/server/modules/form-rm/form-rm.episode";
 import { legEpisode } from "@/server/modules/form-rm/form-rm.pasien";
 import { getFormRmHeader } from "@/server/modules/form-rm/form-rm.service";
 import { nopenSchema } from "@/server/modules/form-rm/isian.schema";
-import { isianAktifPerNopen, isianBerulangPerNopen } from "@/server/modules/form-rm/isian.cari";
+import { isianBerulangPerNopen } from "@/server/modules/form-rm/isian.cari";
+import { detailRantai, isianAktifPerEpisode, lanjutanAktif, ringkasEpisode } from "@/server/modules/form-rm/rantai.service";
+import { PanelRantai } from "@/features/form-rm/PanelRantai";
 
 export const metadata = { title: "Formulir Pasien · Form RM · AuditTrail RS BOLTIM" };
 export const dynamic = "force-dynamic";
@@ -50,8 +52,17 @@ export default async function ProfilPasienFormRm({ params }: { params: Promise<{
 
   const hak = await hakFormRm(user);
   const boleh = formBoleh(hak);
+  // Form berlanjut IGD → RI (PRD Berlanjut §5.2): episode RI memakai isian episode IGD asalnya.
+  const adaBerlanjut = boleh.some((d) => d.berlanjut);
+  const [detail, lanjutan] = adaBerlanjut
+    ? await Promise.all([detailRantai(nopen), lanjutanAktif(nopen).then((l) => ringkasEpisode(l.map((x) => x.nopen)))])
+    : [null, []];
   const [isian, berulang, legs] = await Promise.all([
-    isianAktifPerNopen([nopen], boleh.map((d) => d.kode)).then((m) => m.get(nopen) ?? {}),
+    isianAktifPerEpisode(
+      [nopen],
+      boleh.map((d) => d.kode),
+      new Map(detail ? [[nopen, detail.ringkas]] : []),
+    ).then((m) => m.get(nopen) ?? {}),
     isianBerulangPerNopen(nopen, boleh),
     legEpisode(nopen),
   ]);
@@ -95,6 +106,7 @@ export default async function ProfilPasienFormRm({ params }: { params: Promise<{
         </div>
       </Card>
 
+      <PanelRantai detail={detail} lanjutan={lanjutan} kelola={hak.kelola} />
       {kategori.map(({ kat, forms: daftar }) => {
         const KatIkon = KATEGORI_FORM[kat].ikon;
         return (

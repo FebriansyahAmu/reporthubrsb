@@ -187,6 +187,7 @@ model FormRmIsian {
 
   ttd                FormRmTtd[]
   revisi             FormRmRevisi[]
+  log                FormRmIsianLog[]
   /// Ada = isian dibuat sebelum pasien terdaftar (nopen "" sampai ditautkan).
   identitasSementara FormRmIdentitasSementara?
 
@@ -273,6 +274,62 @@ model FormRmIdentitasSementara {
   isian             FormRmIsian @relation(fields: [isianId], references: [id], onDelete: Restrict, map: "fk_form_rm_identitas_sementara_isian")
 
   @@map("form_rm_identitas_sementara")
+}
+
+/// Tautan episode RI (lanjutan) → episode IGD asal (akar) untuk form berlanjut
+/// (docs/PRD_Form_RM_Berlanjut_IGD_RI.md §8.2). `aktifKunci` = nopenLanjutan
+/// selama aktif, null setelah dilepas (satu tautan aktif per lanjutan). Tak pernah
+/// dihapus. DDL manual: scripts/db/form-rm.sql.
+model FormRmTautanEpisode {
+  id              String    @id @default(cuid()) @db.VarChar(30)
+  nopenLanjutan   String    @map("nopen_lanjutan") @db.VarChar(20)
+  /// null bila dasar = TANPA (petugas memilih isian terpisah).
+  nopenAkar       String?   @map("nopen_akar") @db.VarChar(20)
+  norm            String    @db.VarChar(20)
+  /// SPRI | WAKTU | TANPA
+  dasar           String    @db.VarChar(10)
+  aktifKunci      String?   @unique(map: "uq_form_rm_tautan_episode_aktif") @map("aktif_kunci") @db.VarChar(20)
+  dibuatOlehId    String?   @map("dibuat_oleh_id") @db.VarChar(191)
+  dibuatOlehNama  String?   @map("dibuat_oleh_nama") @db.VarChar(191)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  dilepasAt       DateTime? @map("dilepas_at")
+  dilepasOlehId   String?   @map("dilepas_oleh_id") @db.VarChar(191)
+  dilepasOlehNama String?   @map("dilepas_oleh_nama") @db.VarChar(191)
+  alasanLepas     String?   @map("alasan_lepas") @db.VarChar(500)
+
+  @@index([nopenAkar], map: "idx_form_rm_tautan_episode_akar")
+  @@index([nopenLanjutan], map: "idx_form_rm_tautan_episode_lanjutan")
+  @@map("form_rm_tautan_episode")
+}
+
+/// Log perubahan isian per kolom (PRD Berlanjut §8.4). Append-only kecuali entri
+/// terakhir yang boleh digabung; `hash` HMAC berantai per isian.
+model FormRmIsianLog {
+  id           String      @id @default(cuid()) @db.VarChar(30)
+  isianId      String      @map("isian_id") @db.VarChar(30)
+  urut         Int
+  revAwal      Int         @map("rev_awal")
+  revAkhir     Int         @map("rev_akhir")
+  /// SIMPAN | TIMPA | MUAT_SIMRS | BEKU_TERTAUT
+  aksi         String      @db.VarChar(20)
+  olehId       String?     @map("oleh_id") @db.VarChar(191)
+  olehNama     String?     @map("oleh_nama") @db.VarChar(191)
+  konteksNopen String      @map("konteks_nopen") @db.VarChar(20)
+  /// IGD | RI | RJ
+  konteksUnit  String      @map("konteks_unit") @db.VarChar(3)
+  konteksRuang String?     @map("konteks_ruang") @db.VarChar(191)
+  /// [{ p, s, j }] = path, sebelum, sesudah.
+  perubahan    Json
+  hash         String      @db.Char(64)
+  hashSebelum  String?     @map("hash_sebelum") @db.Char(64)
+  /// Diisi aplikasi (ikut disegel), bukan default DB.
+  createdAt    DateTime    @map("created_at")
+  updatedAt    DateTime    @map("updated_at")
+  isian        FormRmIsian @relation(fields: [isianId], references: [id], onDelete: Restrict, map: "fk_form_rm_isian_log_isian")
+
+  @@unique([isianId, urut], map: "uq_form_rm_isian_log")
+  @@index([isianId, createdAt], map: "idx_form_rm_isian_log_waktu")
+  @@map("form_rm_isian_log")
 }
 
 /// Perangkat TTD siaga (tablet/HP RS) — docs/PRD_TTD_Perangkat_Siaga.md §7.5.

@@ -115,6 +115,21 @@ describe("registri form RM", () => {
     for (const d of DEFINISI_FORM) if (d.berulang) expect(TAMPILAN_FORM[d.kode].berulang?.satuan, d.kode).toBeTruthy();
   });
 
+  it("form berlanjut IGD → RI (PRD Berlanjut K1, K5): tepat RM.21/RM.01/RM.03, IGD + RI, wajib tetap IGD", () => {
+    const berlanjut = DEFINISI_FORM.filter((d) => d.berlanjut);
+    expect(berlanjut.map((d) => d.kode)).toEqual(["RM.21", "RM.01", "RM.03"]);
+    for (const d of berlanjut) {
+      expect(d.berlanjut, d.kode).toBe("igd-ri");
+      // Satu dokumen per perawatan: tidak berulang, bercakupan episode, tanpa batas ruangan.
+      expect([d.berulang, d.cakupan, d.sasaran.ruangan], d.kode).toEqual([false, "EPISODE", undefined]);
+      expect(d.sasaran.jenis, d.kode).toEqual([2, 3]);
+      expect(d.wajibUntuk, d.kode).toEqual([2]);
+    }
+    // Persetujuan tindakan (per tindakan) & triase tidak ikut.
+    expect(definisiForm("RM.22")?.berlanjut).toBeUndefined();
+    expect(definisiForm("RM.04")?.berlanjut).toBeUndefined();
+  });
+
   it("label sasaran: daftar jenis kunjungan dibaca wajar", () => {
     expect(labelSasaran({ jenis: [2], jendelaJam: 24 })).toBe("Pasien IGD");
     expect(labelSasaran({ jenis: [2, 3], jendelaJam: 24 })).toBe("Pasien IGD & Rawat Inap");
