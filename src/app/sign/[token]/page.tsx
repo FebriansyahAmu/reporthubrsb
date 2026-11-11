@@ -1,5 +1,6 @@
 import { Clock } from "lucide-react";
-import { getSignView } from "@/server/modules/sign/sign.store";
+import { SIGN_TOKEN_RE } from "@/server/modules/sign/sign.inti";
+import { signTtd } from "@/server/modules/sign/sign.store";
 import { MobileSignView } from "@/features/sign/MobileSignView";
 
 export const runtime = "nodejs";
@@ -14,14 +15,17 @@ export const viewport = {
   userScalable: false,
 };
 
-/** Halaman publik TTD jarak jauh (dibuka via QR di HP). Token = kapabilitas. */
+/**
+ * Halaman publik TTD jarak jauh (dibuka via QR di HP). Token = hak MENGIRIM
+ * satu TTD — status & PNG hanya untuk PC pembuat sesi.
+ */
 export default async function SignPage({
   params,
 }: {
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const v = getSignView(token);
+  const v = SIGN_TOKEN_RE.test(token) ? signTtd.publik(token) : null;
 
   if (!v || v.status === "expired") {
     return (
@@ -38,7 +42,7 @@ export default async function SignPage({
     );
   }
 
-  if (v.status === "signed") {
+  if (v.status === "signed" || v.status === "taken") {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center bg-bg px-6 text-center">
         <h1 className="text-lg font-semibold text-fg">Tanda tangan sudah terkirim</h1>
@@ -49,5 +53,5 @@ export default async function SignPage({
     );
   }
 
-  return <MobileSignView token={v.token} label={v.label} context={v.context} />;
+  return <MobileSignView token={token} label={v.label} context={v.context} />;
 }

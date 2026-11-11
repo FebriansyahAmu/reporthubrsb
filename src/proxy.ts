@@ -12,24 +12,34 @@ const LOGIN_PATH = "/";
 const DEFAULT_HOME = JALUR_BERANDA;
 
 /**
- * Rute publik (tanpa login): halaman TTD jarak jauh yang dibuka pasien/keluarga
- * lewat HP + endpoint token-nya. Kapabilitas dijaga oleh token acak, bukan sesi.
- * `POST /api/sign/create` tetap wajib login — dijaga di dalam handler-nya sendiri.
- * `/api/desktop`: manifest pembaruan & installer aplikasi desktop (updater tak
- * membawa cookie; tanpa data pasien; paket diverifikasi tanda tangan di klien).
+ * Rute publik (tanpa login) tanpa penjaga halaman: `/api/desktop` — manifest
+ * pembaruan & installer aplikasi desktop (updater tak membawa cookie; tanpa
+ * data pasien; paket diverifikasi tanda tangan di klien).
  */
-const PUBLIC_PREFIXES = ["/sign", "/api/sign", "/api/desktop"];
+const PUBLIC_PREFIXES = ["/api/desktop"];
+
+/** Halaman TTD jarak jauh yang dibuka pasien/keluarga lewat QR di HP (`/sign/<token>`). */
+const HALAMAN_SIGN = "/sign";
+
+/**
+ * Satu-satunya API "Via HP" yang publik: HP MENGIRIM TTD (`POST
+ * /api/sign/<token>`; token di QR = hak mengirim, bukan membaca). Buat sesi,
+ * status, dan ambil PNG milik sesi PC pembuat → dijaga proxy seperti API lain.
+ */
+const KIRIM_TTD_HP = /^\/api\/sign\/[A-Za-z0-9_-]{32}$/;
 
 const cocokPrefiks = (pathname: string, p: string) => pathname === p || pathname.startsWith(`${p}/`);
 
 /**
- * Halaman publik daftar barang ruangan (QR inventaris, `/ruang/<token>`) —
+ * Halaman publik bertoken — daftar barang ruangan (QR inventaris,
+ * `/ruang/<token>`) dan TTD via HP (`/sign/<token>`, memuat nama pasien) —
  * tanpa login, jadi dijaga berlapis di sini sebelum halaman dirender:
  * hanya GET/HEAD, pembatas laju per IP + global (redam tebak token &
  * penyedotan data), CSP ber-nonce + header keamanan (noindex, no-referrer,
- * tanpa iframe, tanpa cache).
+ * tanpa iframe, tanpa cache). Kuota laju per halaman terpisah.
  */
 const lajuPublikPerIp = buatPembatasLaju({ batas: 60, jendelaMs: 60_000 });
+const lajuSignPerIp = buatPembatasLaju({ batas: 60, jendelaMs: 60_000 });
 const lajuPublikGlobal = buatPembatasLaju({ batas: 1200, jendelaMs: 60_000, maksKunci: 1 });
 
 function tolakPublik(status: number, pesan: string, ekstra: Record<string, string> = {}): NextResponse {
@@ -39,11 +49,11 @@ function tolakPublik(status: number, pesan: string, ekstra: Record<string, strin
   return res;
 }
 
-function halamanPublikInventaris(req: NextRequest): NextResponse {
+function halamanPublik(req: NextRequest, lajuPerIp: typeof lajuPublikPerIp): NextResponse {
   if (req.method !== "GET" && req.method !== "HEAD") {
     return tolakPublik(405, "Metode tidak diizinkan.", { Allow: "GET, HEAD" });
   }
-  const laju = lajuPublikPerIp(kunciIpKlien(req.headers));
+  const laju = lajuPerIp(kunciIpKlien(req.headers));
   const hasil = laju.izin ? lajuPublikGlobal("*") : laju;
   if (!hasil.izin) {
     return tolakPublik(429, `Terlalu banyak permintaan. Coba lagi dalam ${hasil.ulangDetik} detik.`, {
@@ -124,9 +134,11 @@ function jagaTtdSiaga(req: NextRequest): NextResponse {
 export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
-  if (cocokPrefiks(pathname, RUTE_PUBLIK_RUANG)) return halamanPublikInventaris(req);
+  if (cocokPrefiks(pathname, RUTE_PUBLIK_RUANG)) return halamanPublik(req, lajuPublikPerIp);
+  if (cocokPrefiks(pathname, HALAMAN_SIGN)) return halamanPublik(req, lajuSignPerIp);
   if (diBawahTtdSiaga(pathname)) return jagaTtdSiaga(req);
   if (PUBLIC_PREFIXES.some((p) => cocokPrefiks(pathname, p))) return NextResponse.next();
+  if (req.method === "POST" && KIRIM_TTD_HP.test(pathname)) return NextResponse.next();
 
   const access = req.cookies.get(ACCESS_COOKIE)?.value;
   const user = access ? await verifyAccessToken(access) : null;

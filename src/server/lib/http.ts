@@ -31,6 +31,40 @@ export async function readJsonTerbatas(req: Request, maksByte: number): Promise<
 }
 
 /**
+ * Baca body teks dengan batas keras: berhenti membaca begitu melewati
+ * `maksByte` (413) — body raksasa tak pernah ditampung utuh di memori.
+ * Dipakai endpoint publik bermuatan PNG (tablet siaga, TTD via HP).
+ */
+export async function bacaTeksTerbatas(req: Request, maksByte: number): Promise<string> {
+  const panjang = Number(req.headers.get("content-length"));
+  if (Number.isFinite(panjang) && panjang > maksByte) throw new PayloadTooLargeError();
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const potongan: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maksByte) {
+      await reader.cancel().catch(() => {});
+      throw new PayloadTooLargeError();
+    }
+    potongan.push(value);
+  }
+  return Buffer.concat(potongan).toString("utf8");
+}
+
+/** JSON dari teks body yang sudah dibaca; rusak → 422 (bukan 500). */
+export function parseJson(teks: string): unknown {
+  try {
+    return JSON.parse(teks);
+  } catch {
+    throw jsonRusak();
+  }
+}
+
+/**
  * Tandai response berisi data pasien: tak boleh disimpan cache mana pun, dan
  * browser tak boleh menebak tipe isinya.
  */

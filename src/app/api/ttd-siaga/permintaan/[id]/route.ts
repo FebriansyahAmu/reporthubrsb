@@ -1,11 +1,11 @@
 import type { NextRequest } from "next/server";
-import { NotFoundError, ValidationError } from "@/server/lib/errors";
-import { fail, ok, tanpaCache } from "@/server/lib/http";
+import { NotFoundError } from "@/server/lib/errors";
+import { bacaTeksTerbatas, fail, ok, parseJson, tanpaCache } from "@/server/lib/http";
 import { clientIp } from "@/server/lib/request";
 import { bacaTokenPerangkat } from "@/server/modules/ttd-siaga/kredensial";
 import { autentikasiPerangkat } from "@/server/modules/ttd-siaga/perangkat.sesi";
 import { kirimTtdSchema, PERMINTAAN_ID_RE } from "@/server/modules/ttd-siaga/permintaan.schema";
-import { bacaTeksTerbatas, BATAS_BODY_TTD, kirimTtdTablet, milikPerangkat } from "@/server/modules/ttd-siaga/permintaan.tablet";
+import { BATAS_BODY_TTD, kirimTtdTablet, milikPerangkat } from "@/server/modules/ttd-siaga/permintaan.tablet";
 import { jagaAsalPerangkat } from "@/server/modules/ttd-siaga/ttd-siaga.jaga";
 
 export const runtime = "nodejs";
@@ -25,14 +25,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     if (!PERMINTAAN_ID_RE.test(id)) throw new NotFoundError();
     const { perangkat } = await autentikasiPerangkat(bacaTokenPerangkat(req), { ip, rotasi: false });
     milikPerangkat(id, perangkat);
-    const teks = await bacaTeksTerbatas(req, BATAS_BODY_TTD);
-    let json: unknown;
-    try {
-      json = JSON.parse(teks);
-    } catch {
-      throw new ValidationError({ formErrors: ["Body permintaan harus JSON yang valid"], fieldErrors: {} });
-    }
-    const { png } = kirimTtdSchema.parse(json);
+    const { png } = kirimTtdSchema.parse(parseJson(await bacaTeksTerbatas(req, BATAS_BODY_TTD)));
     kirimTtdTablet(id, perangkat, png, ip);
     return tanpaCache(ok({ diterima: true }));
   } catch (err) {

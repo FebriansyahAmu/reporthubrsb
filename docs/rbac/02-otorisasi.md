@@ -197,8 +197,13 @@ export const POST = withPermission("master.pengguna", "create", async (req, _ctx
 
 - `/api/auth/*` — sudah dikecualikan proxy; **tidak** pakai `withPermission`
   (login/refresh harus jalan sebelum ada peran).
-- `/api/sign/*` & `/sign/*` — publik (dijaga token acak, lihat `PUBLIC_PREFIXES`
-  di `proxy.ts`); tetap dikecualikan.
+- TTD "Via HP" — tanpa izin modul (dipakai Form RM, BCKH, Master, Berkas Klaim):
+  - publik: halaman `/sign/<token>` (penjaga halaman publik di `proxy.ts`: CSP
+    ber-nonce, laju per IP) dan `POST /api/sign/<token>` (HP mengirim TTD; token
+    = hak mengirim saja);
+  - butuh **login** + sesi pembuat: `POST /api/sign/create`,
+    `GET /api/sign/<token>` (status), `POST /api/sign/<token>/ambil` (PNG,
+    sekali). Pengguna lain, termasuk superadmin → 404.
 - Endpoint "milik sendiri" (mis. `change-password`) tetap butuh **login** tapi
   tak butuh izin modul.
 

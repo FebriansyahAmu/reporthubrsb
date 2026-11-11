@@ -729,6 +729,60 @@ Jalur lain di bawah prefiks itu → 404, metode lain → 405. Laju per IP per ru
 
 **Uji keamanan §8.6 yang tercakup di langkah ini:** no. 5 (permintaan aktif dibatalkan saat cabut), 8, 9, 10, 12, 13, 15 (rute petugas & tablet baru), 17, 18, 19, 20, 22, 23, 26 (rute baru).
 
+### Langkah 4 — Pengerasan dan kesiapan produksi ✅ (11 Nov 2026)
+
+**Pengerasan "Via HP"** (TTD jarak jauh PC → QR → HP):
+- inti murni `server/modules/sign/sign.inti.ts` (jam disuntikkan, teruji unit) + penyimpanan `globalThis` `sign.store.ts` + penjaga `sign.jaga.ts`;
+- sesi **terikat pembuat**: status (`GET /api/sign/<token>`) dan PNG (`POST /api/sign/<token>/ambil`, baru) hanya untuk akun pembuat. Pengguna lain, termasuk superadmin → 404 seragam. Dulu GET publik mengembalikan PNG ke siapa pun pemegang token;
+- token di QR kini hanya hak **mengirim**: `POST /api/sign/<token>` publik, asal-sama, laju 20/mnt/IP + 600/mnt global, body ≤ 512 KB dibaca sebelum di-parse, `strictObject`, hanya data-URL PNG, `normalkanPng`, **sekali kirim** (kedua → 409);
+- PNG diambil **sekali** lalu dibuang dari memori (status `taken`);
+- memori terbatas: ≤ 10 sesi per pengguna (yang tertua digeser), ≤ 500 total (→ 503);
+- buat sesi: asal-sama, laju 30/mnt/pengguna, body ≤ 4 KB, `strictObject`, `no-store`;
+- proxy: hanya halaman `/sign/*` dan `POST /api/sign/<token>` yang publik; buat/status/ambil dijaga sesi seperti API lain (termasuk penyegaran token otomatis);
+- halaman `/sign/*` memakai penjaga halaman publik yang sama dengan `/ruang` (hanya GET/HEAD, laju 60/mnt/IP, CSP ber-nonce, `X-Frame-Options: DENY`, `no-referrer`, `noindex`, `no-store`). Halaman ini memuat nama pasien, jadi tidak boleh dibingkai atau di-cache;
+- klien: `SignaturePad` mem-poll status lalu memanggil `ambil` sekali (poll tidak tumpang tindih) dengan pesan jelas untuk sesi hilang/kedaluwarsa/sudah diambil/login berakhir; `MobileSignView` memperlakukan 409 "sudah terkirim" sebagai selesai;
+- `bacaTeksTerbatas` dan `parseJson` dipindah ke `server/lib/http.ts`, dipakai bersama endpoint tablet.
+
+**Galat DB tiruan (§8.6 no. 21).** Server produksi kedua (:3101, build yang sama) tersambung ke DB lewat proksi TCP lokal yang diputus/disambung saat uji. Tanpa flag atau cabang kode khusus uji; SIMGOS diarahkan ke port tertutup. Hasil:
+- semua cek kredensial tablet (segarkan, aliran, tampil, kirim, token palsu) → **503**, cookie **tidak** dihapus;
+- halaman `/ttd-siaga` tetap menampilkan layar siaga;
+- aliran yang sudah terbuka tetap hidup dan menerima detak;
+- rute petugas/pengelola gagal tertutup dengan **500 seragam** "Terjadi kesalahan" (penangan global `fail()`, RBAC melempar saat DB tak terjangkau);
+- aliran yang putus saat DB mati tidak menjatuhkan server;
+- DB pulih → normal tanpa restart;
+- log tanpa kata sandi DB maupun token.
+
+Waktu tunggu 503 ±10 dtk (batas `acquireTimeout` pool); tablet menyambung ulang bertahap.
+
+**Uji beban (§8.6 no. 25, §9)** — 300 perangkat uji, 300 aliran serentak:
+- batas per IP: ke-13 per menit → 429;
+- tepat **200** diterima dalam 0,9 dtk, sisanya **503** "Server sedang penuh";
+- detak 20 dtk sampai ke semua aliran (sebaran 10 ms);
+- dorongan permintaan di bawah beban sampai di tablet tujuan dalam **48 ms**, tablet lain tidak menerima apa pun;
+- halaman tablet tetap responsif (43 ms);
+- semua putus → slot hub bebas;
+- putaran kedua sama persis;
+- memori proses: dasar 74 MB → +126 MB saat 200 aliran → turun ke 144 MB setelah putaran kedua ditutup (tidak tumbuh antar-putaran).
+
+**Anti-backdoor §8.5:** 0 temuan. `NODE_ENV` hanya melonggarkan CSP saat dev (pola `/ruang`); dua cookie yang dipasang `HttpOnly`; log tanpa png/token/kode; `package.json` & `package-lock.json` tidak berubah sejak sebelum Langkah 1.
+
+**Tinjauan keamanan** (diff Langkah 4 + ulasan ulang seluruh fitur): tanpa temuan terbuka. Temuan konsistensi (halaman `/sign/*` belum memakai penjaga halaman publik) langsung diperbaiki di langkah ini.
+
+**Dokumentasi:** panduan IT [`docs/ttd-perangkat-siaga.md`](./ttd-perangkat-siaga.md) (deploy + migrasi, env, RBAC, nginx `X-Real-IP` + blok SSE + HTTP/2, sertifikat CA tablet, Fully Kiosk, pemasangan, batas, pemecahan masalah, audit, Via HP, daftar periksa); `docs/rbac/02-otorisasi.md` §5.1 (rute Via HP).
+
+**Catatan deploy:** **perlu migrasi** tabel `form_rm_perangkat_ttd` (dari Langkah 1): `docker compose run --rm migrate scripts/db/migrate-form-rm.mjs`. Langkah 2–4 tidak menambah migrasi. `PUBLIC_APP_ORIGIN` wajib diisi. nginx wajib menimpa `X-Real-IP`.
+
+**Uji (build produksi :3100):**
+- unit 651/651 (11 baru: inti Via HP — alur, IDOR, tampilan publik, sekali kirim, normalisasi, kedaluwarsa, jeda ambil, batas memori — serta skema);
+- `tsc` + ESLint 0;
+- E2E `scratchpad/ttd-viahp-e2e.mjs` **67/67** (proxy, CSRF, strict, IDOR pengguna lain & superadmin, polyglot, sekali kirim/ambil, header & CSP halaman HP, laju buat/kirim/pantau/halaman, batas per pengguna);
+- UI `scratchpad/ttd-viahp-ui.mjs` **18/18** (RM.22 nyata + HP 390 px: slot terisi ±0,5 dtk setelah HP kirim, simpan otomatis, ambil tepat sekali, sha256 PNG = `form_rm_ttd`, poll berhenti, HP tanpa sesi → 401, sesi hilang → pesan + QR baru, tanpa pelanggaran CSP);
+- E2E `scratchpad/ttd-galat-db-e2e.mjs` **24/24**; E2E `scratchpad/ttd-beban-e2e.mjs` **18/18**;
+- seluruh suite §8.6 dijalankan ulang di build ini: Langkah 1 E2E 93/93 + UI 28/28, Langkah 2 E2E 70/70 + UI 28/28, Langkah 3 E2E 117/117 + UI 39/39. UI Langkah 3 dijalankan lagi setelah penjaga halaman `/sign` dipasang: 39/39, termasuk regresi `/sign` yang kini memakai `ambil`;
+- data uji bersih (0 sisa).
+
+**Uji keamanan §8.6:** kini **semua 26 tercakup** — no. 21 dan 25 diselesaikan di langkah ini.
+
 ## 16. Sumber
 
 - MDN — Screen Wake Lock API: https://developer.mozilla.org/docs/Web/API/Screen_Wake_Lock_API

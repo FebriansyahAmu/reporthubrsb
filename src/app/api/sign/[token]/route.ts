@@ -1,41 +1,45 @@
 import { NextRequest } from "next/server";
-import { ok, fail } from "@/server/lib/http";
-import { NotFoundError } from "@/server/lib/errors";
-import { signSubmitSchema } from "@/server/modules/sign/sign.schema";
-import { getSignView, submitSignature } from "@/server/modules/sign/sign.store";
+import { getCurrentUser } from "@/server/auth/session";
+import { UnauthorizedError } from "@/server/lib/errors";
+import { bacaTeksTerbatas, fail, ok, parseJson, tanpaCache } from "@/server/lib/http";
+import { jagaKirimSign, jagaPantauSign, tokenDariParam } from "@/server/modules/sign/sign.jaga";
+import { BATAS_BODY_SIGN, signSubmitSchema } from "@/server/modules/sign/sign.schema";
+import { PNG_DATA_URL_PREFIX, signTtd } from "@/server/modules/sign/sign.store";
 
 export const runtime = "nodejs";
 
+type Ctx = { params: Promise<{ token: string }> };
+
 /**
- * GET — status sesi (dipakai PC untuk poll & HP untuk menampilkan konteks).
- * Publik: token acak adalah kapabilitasnya. Mengembalikan payload bila sudah
- * ditandatangani agar PC bisa mengisi field.
+ * GET — status sesi untuk PC PEMBUATNYA saja (sesi login; proxy menjaga rute
+ * ini seperti API lain). Tanpa PNG — PNG diambil lewat `POST …/ambil`.
+ * Pengguna lain / token salah → 404 seragam.
  */
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ token: string }> },
-) {
+export async function GET(req: NextRequest, { params }: Ctx) {
   try {
-    const { token } = await params;
-    const v = getSignView(token);
-    if (!v) throw new NotFoundError("Sesi tanda tangan tidak ditemukan");
-    return ok(v);
+    const user = await getCurrentUser();
+    if (!user) throw new UnauthorizedError();
+    jagaPantauSign(req, user.id);
+    const token = tokenDariParam((await params).token);
+    return tanpaCache(ok({ status: signTtd.status(token, user.id) }));
   } catch (err) {
-    return fail(err);
+    return tanpaCache(fail(err));
   }
 }
 
-/** POST — kirim TTD dari HP (publik, token-gated). */
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ token: string }> },
-) {
+/**
+ * POST `{ payload }` — HP mengirim TTD (PUBLIK; token di QR = hak mengirim,
+ * BUKAN hak membaca). Asal-sama + laju per IP, body ≤ 512 KB dibaca sebelum
+ * di-parse, PNG saja (disusun ulang server), sekali kirim (kedua → 409).
+ */
+export async function POST(req: NextRequest, { params }: Ctx) {
   try {
-    const { token } = await params;
-    const { payload } = signSubmitSchema.parse(await req.json());
-    const v = submitSignature(token, payload);
-    return ok(v);
+    jagaKirimSign(req);
+    const token = tokenDariParam((await params).token);
+    const { payload } = signSubmitSchema.parse(parseJson(await bacaTeksTerbatas(req, BATAS_BODY_SIGN.kirim)));
+    signTtd.kirim(token, Buffer.from(payload.slice(PNG_DATA_URL_PREFIX.length), "base64"));
+    return tanpaCache(ok({ status: "signed" as const }));
   } catch (err) {
-    return fail(err);
+    return tanpaCache(fail(err));
   }
 }

@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { ConflictError, NotFoundError, PayloadTooLargeError, ValidationError } from "@/server/lib/errors";
+import { ConflictError, NotFoundError, ValidationError } from "@/server/lib/errors";
 import { normalkanPng } from "@/server/lib/png";
 import type { PerangkatSesi } from "./perangkat.sesi";
 import { permintaanTtd } from "./permintaan.hub";
@@ -47,28 +47,4 @@ export function kirimTtdTablet(id: string, perangkat: PerangkatSesi, dataUrl: st
 
   const t = permintaanTtd.denganIp(ip, () => permintaanTtd.inti.terapkan(id, "ttd", { png: hasil.png, sha256 }));
   if (!t.ok) throw new ConflictError("Tanda tangan untuk permintaan ini sudah diterima atau ditutup.");
-}
-
-/**
- * Baca body teks dengan batas keras: berhenti membaca begitu melewati
- * `maksByte` (413) — body raksasa tak pernah ditampung utuh di memori.
- */
-export async function bacaTeksTerbatas(req: Request, maksByte: number): Promise<string> {
-  const panjang = Number(req.headers.get("content-length"));
-  if (Number.isFinite(panjang) && panjang > maksByte) throw new PayloadTooLargeError();
-  if (!req.body) return "";
-  const reader = req.body.getReader();
-  const potongan: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maksByte) {
-      await reader.cancel().catch(() => {});
-      throw new PayloadTooLargeError();
-    }
-    potongan.push(value);
-  }
-  return Buffer.concat(potongan).toString("utf8");
 }

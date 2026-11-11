@@ -242,7 +242,13 @@ export function SignaturePad({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label, context }),
       });
-      if (!res.ok) throw new Error("gagal");
+      if (!res.ok) {
+        // 429 (terlalu sering) / 503 (penuh) membawa pesan yang bisa ditindaklanjuti.
+        const j = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        const pesan = res.status === 429 || res.status === 503 ? j?.error?.message : undefined;
+        setRemoteErr(pesan || "Tidak bisa membuat sesi TTD. Coba lagi.");
+        return;
+      }
       const { data } = (await res.json()) as { data: RemoteSession };
       setRemote({ token: data.token, qr: data.qr, url: data.url });
     } catch {
@@ -252,28 +258,48 @@ export function SignaturePad({
     }
   }
 
-  // Poll status sesi TTD jarak jauh; saat HP mengirim → isi field otomatis.
+  // Poll status sesi TTD jarak jauh (hanya pembuat sesi yang bisa); saat HP
+  // mengirim → ambil PNG SEKALI (`POST …/ambil`) → isi field otomatis.
   useEffect(() => {
     if (mode !== "remote" || !remote) return;
     let alive = true;
+    let sibuk = false; // ambil = sekali pakai → poll tak boleh tumpang tindih
+    const berhenti = (pesan: string) => {
+      clearInterval(id);
+      if (!alive) return;
+      setRemote(null);
+      setRemoteErr(pesan);
+    };
     const id = setInterval(async () => {
+      if (sibuk) return;
+      sibuk = true;
       try {
-        const res = await fetch(`/api/sign/${remote.token}`);
-        if (!res.ok || !alive) return;
-        const { data } = (await res.json()) as {
-          data: { status: string; payload: string | null };
-        };
+        const res = await fetch(`/api/sign/${remote.token}`, { cache: "no-store" });
         if (!alive) return;
-        if (data.status === "signed" && data.payload) {
-          clearInterval(id);
-          commit(data.payload);
+        if (res.status === 401) return berhenti("Sesi login berakhir. Masuk lagi, lalu buat QR baru.");
+        if (res.status === 404) return berhenti("Sesi tanda tangan tidak ditemukan lagi. Buat QR baru.");
+        if (!res.ok) return;
+        const { data } = (await res.json()) as { data: { status: string } };
+        if (!alive) return;
+        if (data.status === "signed") {
+          const r = await fetch(`/api/sign/${remote.token}/ambil`, { method: "POST" });
+          if (!alive) return;
+          if (r.ok) {
+            const { data: ttd } = (await r.json()) as { data: { png: string } };
+            clearInterval(id);
+            if (alive) commit(ttd.png);
+          } else if (r.status === 404 || r.status === 409) {
+            berhenti("Tanda tangan dari HP tidak bisa diambil lagi. Buat QR baru.");
+          }
+        } else if (data.status === "taken") {
+          berhenti("Tanda tangan ini sudah diambil di layar lain. Buat QR baru bila slot ini belum terisi.");
         } else if (data.status === "expired") {
-          clearInterval(id);
-          setRemote(null);
-          setRemoteErr("Sesi kadaluarsa. Buat QR baru.");
+          berhenti("Sesi kadaluarsa. Buat QR baru.");
         }
       } catch {
         /* abaikan galat sesaat, lanjut poll */
+      } finally {
+        sibuk = false;
       }
     }, 2000);
     return () => {

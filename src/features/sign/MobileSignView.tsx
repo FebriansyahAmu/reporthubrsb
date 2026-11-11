@@ -48,7 +48,12 @@ export function MobileSignView({
         body: JSON.stringify({ payload }),
       });
       if (!res.ok) {
-        const j = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        const j = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
+        // Kiriman sebelumnya sudah sampai (mis. respons pertama hilang) — TTD sekali kirim.
+        if (res.status === 409 && j?.error?.code === "CONFLICT") {
+          setPhase("done");
+          return;
+        }
         throw new Error(j?.error?.message ?? "Gagal mengirim tanda tangan");
       }
       setPhase("done");

@@ -16,7 +16,11 @@ const nextConfig: NextConfig = {
    * runtime): Prisma client + driver adapter mariadb. Wajib agar driver adapter
    * & query engine ikut ter-trace ke output standalone dengan benar.
    */
-  serverExternalPackages: ["@prisma/client", "@prisma/adapter-mariadb", "mariadb"],
+  serverExternalPackages: [
+    "@prisma/client",
+    "@prisma/adapter-mariadb",
+    "mariadb",
+  ],
 
   /**
    * Optimizer gambar (`/_next/image`, publik tanpa login) HANYA menerima logo
@@ -36,7 +40,12 @@ const nextConfig: NextConfig = {
    * TTD jarak jauh) — tanpa ini, dari IP LAN halaman ter-render tapi JS client
    * tak jalan (tidak ter-hydrate). Samakan dengan SIGN_PUBLIC_ORIGIN di .env.
    */
-  allowedDevOrigins: ["10.202.100.127", "10.10.102.20"],
+  allowedDevOrigins: [
+    "10.202.100.127",
+    "10.10.102.20",
+    "10.202.101.25",
+    "10.202.101.248",
+  ],
 
   /**
    * Service worker PWA: selalu dicek ulang (pembaruan langsung berlaku) dan
@@ -47,8 +56,14 @@ const nextConfig: NextConfig = {
       {
         source: "/sw.js",
         headers: [
-          { key: "Cache-Control", value: "no-cache, max-age=0, must-revalidate" },
-          { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self'" },
+          {
+            key: "Cache-Control",
+            value: "no-cache, max-age=0, must-revalidate",
+          },
+          {
+            key: "Content-Security-Policy",
+            value: "default-src 'self'; script-src 'self'",
+          },
           { key: "X-Content-Type-Options", value: "nosniff" },
         ],
       },
