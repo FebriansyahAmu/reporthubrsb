@@ -32,7 +32,7 @@ export async function getRl41(input: Rl41Query): Promise<Rl41Result> {
   if (!isSimgosConfigured()) {
     return {
       data: [],
-      summary: { jenisDiag: 0, totalKasus: 0, totalLk: 0, totalPr: 0, totalMati: 0 },
+      summary: { jenisDiag: 0, totalKasus: 0, totalLk: 0, totalPr: 0, totalMati: 0, totalDariGrouper: 0 },
       instansi: null,
       ...base,
     };
@@ -60,6 +60,7 @@ export async function getRl41(input: Rl41Query): Promise<Rl41Result> {
       mati: num(raw.mati),
       matiLk: num(raw.matiLk),
       matiPr: num(raw.matiPr),
+      dariGrouper: num(raw.dariGrouper),
       umur,
     };
   });
@@ -70,6 +71,7 @@ export async function getRl41(input: Rl41Query): Promise<Rl41Result> {
     totalLk: data.reduce((s, d) => s + d.lk, 0),
     totalPr: data.reduce((s, d) => s + d.pr, 0),
     totalMati: data.reduce((s, d) => s + d.mati, 0),
+    totalDariGrouper: data.reduce((s, d) => s + d.dariGrouper, 0),
   };
 
   const instansi: Rl41Instansi | null = instansiRow

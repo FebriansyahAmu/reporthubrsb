@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/Button";
 import { DatePicker } from "@/components/ui/DatePicker";
 import { Label } from "@/components/ui/Field";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Switch } from "@/components/ui/Switch";
 import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/Table";
 import { EmptyState, ErrorState } from "@/components/feedback/States";
 import { cn } from "@/lib/cn";
@@ -24,6 +25,7 @@ import { useAsyncData } from "@/lib/useAsyncData";
 import { downloadFromEndpoint } from "@/lib/download";
 import { formatDate, formatJam, formatNumber } from "@/lib/format";
 import { MENULAR_MODE_LABEL, type MenularMode } from "@/server/lib/icd-menular";
+import { kelompokUmurTerisi } from "@/server/lib/rl-kelompok-umur";
 import type { Rl51Result } from "@/server/modules/rl51/rl51.types";
 
 /* ------------------------------------------------------------------ helpers */
@@ -78,6 +80,8 @@ export function Rl51View() {
   const [preset, setPreset] = useState<PresetKey | "">("bulan-ini");
   const [menular, setMenular] = useState<MenularMode>("all");
   const [exporting, setExporting] = useState<"" | "xlsx" | "pdf">("");
+  /** Opsi Excel: sembunyikan kelompok umur yang bernilai 0 (bawaan: 25 kelompok, format resmi). */
+  const [umurTerisi, setUmurTerisi] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
   const rangeInvalid = !!from && !!to && from > to;
@@ -88,6 +92,7 @@ export function Rl51View() {
   );
 
   const rows = result?.data ?? [];
+  const jumlahUmurTerisi = useMemo(() => kelompokUmurTerisi(result?.data ?? []).length, [result]);
   const summary = result?.summary ?? null;
   const updatedAt = result?.updatedAt ?? null;
   const hasFilter = preset !== "bulan-ini" || menular !== "all";
@@ -110,6 +115,7 @@ export function Rl51View() {
     try {
       const p = new URLSearchParams({ from, to, menular });
       if (format === "pdf") p.set("format", "pdf");
+      else if (umurTerisi) p.set("umur", "terisi");
       await downloadFromEndpoint(
         `/api/laporan/rl51/export?${p.toString()}`,
         `RL-5.1.${format}`,
@@ -135,7 +141,18 @@ export function Rl51View() {
             <span>Memuat…</span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <label
+            htmlFor="rl51-umur-terisi"
+            className="flex cursor-pointer items-center gap-2 pr-1 text-xs font-medium text-fg-muted"
+            title="Bila aktif, Export Excel hanya memuat kelompok umur yang punya data; bila mati, ke-25 kelompok umur (termasuk yang 0) tetap tampil"
+          >
+            <Switch id="rl51-umur-terisi" checked={umurTerisi} onChange={setUmurTerisi} />
+            <span>
+              Excel: hanya umur terisi
+              {summary && !loading ? <span className="tabular"> ({jumlahUmurTerisi}/25)</span> : null}
+            </span>
+          </label>
           <Button
             variant="secondary"
             size="sm"
@@ -339,10 +356,14 @@ export function Rl51View() {
 
       <p className="text-xs text-fg-subtle">
         Sumber: SIMGOS (read-only) · kunjungan rawat jalan &amp; gawat darurat dengan diagnosa
-        klinis (ICD-10), dihitung pada tanggal kunjungan. &quot;Baru&quot; = kasus baru
-        (<span className="font-mono">md.BARU</span>); kolom kelompok umur di Excel = kasus baru.
-        Logika di-port dari SP <span className="font-mono">LaporanRL51Revisi</span> dengan 25
-        kelompok umur diperbaiki.
+        ICD-10, dihitung pada tanggal kunjungan. Diagnosa = diagnosa klinis; bila kunjungan tidak
+        punya diagnosa klinis, dipakai diagnosa grouper INA-CBG
+        {summary && summary.totalKunjungan > 0
+          ? ` (${formatNumber(summary.totalDariGrouper)} dari ${formatNumber(summary.totalKunjungan)} kunjungan pada periode ini)`
+          : ""}
+        . &quot;Baru&quot; = kode diagnosa belum pernah tercatat pada kunjungan pasien sebelumnya;
+        kolom kelompok umur di Excel = kasus baru. Logika di-port dari SP{" "}
+        <span className="font-mono">LaporanRL51Revisi</span> dengan 25 kelompok umur diperbaiki.
       </p>
     </div>
   );

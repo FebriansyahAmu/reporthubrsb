@@ -2,6 +2,8 @@ import "server-only";
 import ExcelJS from "exceljs";
 import { stampWita } from "@/server/lib/excel";
 import { MENULAR_DEFINISI, MENULAR_MODE_LABEL } from "@/server/lib/icd-menular";
+import { catatanSumberDiagnosa } from "@/server/lib/diagnosa-sumber";
+import { catatanKelompokUmur, kelompokUmurTampil, type UmurMode } from "@/server/lib/rl-kelompok-umur";
 import { RL41_AGE_GROUPS } from "./rl41.constants";
 import type { Rl41Result } from "./rl41.types";
 
@@ -10,6 +12,9 @@ import type { Rl41Result } from "./rl41.types";
  * jenis kelamin + kematian). Header dua baris bertingkat (grup umur menaungi
  * kolom L/P). Dibuat bespoke (bukan buildReportWorkbook) karena butuh header
  * ber-merge; gaya visual dijaga konsisten (teal, zebra, border).
+ *
+ * Opsi `umur: "terisi"` menyembunyikan kelompok umur yang L+P-nya 0 di seluruh
+ * laporan; kolom sesudah blok umur bergeser mengikuti jumlah kelompok tampil.
  */
 
 const TEAL = "FF0F766E";
@@ -23,18 +28,10 @@ const TOTAL_BG = "FFE8EEF0";
 
 const idNum = new Intl.NumberFormat("id-ID");
 
-// Tata letak kolom (1-indexed).
 const AGE_START = 4;
-const AGE_END = AGE_START + 25 * 2 - 1; // 53
-const COL_L = 54;
-const COL_P = 55;
-const COL_TOT = 56;
-const COL_ML = 57;
-const COL_MP = 58;
-const COL_MT = 59;
-const LAST = COL_MT;
 
 export type Rl41ExcelMeta = { generatedAt: Date; by?: string };
+export type Rl41ExcelOpsi = { umur?: UmurMode };
 
 function borderAll(argb: string) {
   return {
@@ -45,7 +42,23 @@ function borderAll(argb: string) {
   };
 }
 
-export async function buildRl41Excel(result: Rl41Result, meta: Rl41ExcelMeta): Promise<Buffer> {
+export async function buildRl41Excel(
+  result: Rl41Result,
+  meta: Rl41ExcelMeta,
+  opsi: Rl41ExcelOpsi = {},
+): Promise<Buffer> {
+  // Kelompok umur yang ditampilkan (indeks 0..24) & tata letak kolom (1-indexed).
+  const tampil = kelompokUmurTampil(result.data, opsi.umur ?? "semua", RL41_AGE_GROUPS.length);
+  const AGE_END = AGE_START + tampil.length * 2 - 1;
+  const COL_L = AGE_END + 1;
+  const COL_P = AGE_END + 2;
+  const COL_TOT = AGE_END + 3;
+  const COL_ML = AGE_END + 4;
+  const COL_MP = AGE_END + 5;
+  const COL_MT = AGE_END + 6;
+  const LAST = COL_MT;
+  const catatanUmur = catatanKelompokUmur(tampil.length, RL41_AGE_GROUPS.length);
+
   const wb = new ExcelJS.Workbook();
   wb.creator = "AuditTrail RS BOLTIM";
   wb.created = meta.generatedAt;
@@ -86,6 +99,7 @@ export async function buildRl41Excel(result: Rl41Result, meta: Rl41ExcelMeta): P
   const metaLines = [
     `Periode: ${result.periode.from} s/d ${result.periode.to}   ·   Bulan: ${result.bulan} ${result.tahun}   ·   Kelompok penyakit: ${MENULAR_MODE_LABEL[result.menular]}`,
     `Total kasus: ${idNum.format(result.summary.totalKasus)}   ·   Jenis diagnosa (ICD-10): ${idNum.format(result.summary.jenisDiag)}   ·   Laki-laki: ${idNum.format(result.summary.totalLk)}   ·   Perempuan: ${idNum.format(result.summary.totalPr)}   ·   Meninggal: ${idNum.format(result.summary.totalMati)}`,
+    `${catatanSumberDiagnosa(result.summary.totalDariGrouper, result.summary.totalKasus, "kasus")}.${catatanUmur ? ` ${catatanUmur}.` : ""}`,
     `Dibuat: ${stampWita(meta.generatedAt)}${meta.by ? ` oleh ${meta.by}` : ""}   ·   Sumber: SIMGOS (read-only) · di-port dari SP LaporanRL41Revisi${result.menular !== "all" ? `   ·   ${MENULAR_DEFINISI}` : ""}`,
   ];
   metaLines.forEach((line, i) => {
@@ -124,8 +138,9 @@ export async function buildRl41Excel(result: Rl41Result, meta: Rl41ExcelMeta): P
   vmerge(3, "Golongan Penyebab Penyakit (Diagnosa)");
 
   // Grup umur: h1 (nama grup, merge 2 kolom) + h2 (L / P)
-  RL41_AGE_GROUPS.forEach((g, i) => {
-    const cL = AGE_START + i * 2;
+  tampil.forEach((gi, j) => {
+    const g = RL41_AGE_GROUPS[gi];
+    const cL = AGE_START + j * 2;
     ws.mergeCells(h1, cL, h1, cL + 1);
     const gc = ws.getCell(h1, cL);
     gc.value = g.label;
@@ -193,8 +208,9 @@ export async function buildRl41Excel(result: Rl41Result, meta: Rl41ExcelMeta): P
     put(1, row.rank, { align: "center", dim: true });
     put(2, row.kode, { align: "center", text: true, bold: true });
     put(3, row.diagnosa);
-    row.umur.forEach((u, i) => {
-      const cL = AGE_START + i * 2;
+    tampil.forEach((gi, j) => {
+      const u = row.umur[gi] ?? { lk: 0, pr: 0 };
+      const cL = AGE_START + j * 2;
       put(cL, u.lk, { align: "center", dim: u.lk === 0 });
       put(cL + 1, u.pr, { align: "center", dim: u.pr === 0 });
     });
@@ -232,9 +248,9 @@ export async function buildRl41Excel(result: Rl41Result, meta: Rl41ExcelMeta): P
     };
     ws.mergeCells(totalRowIdx, 1, totalRowIdx, 3);
     putTot(1, "TOTAL", "center");
-    ageTot.forEach((u, i) => {
-      putTot(AGE_START + i * 2, u.lk, "center");
-      putTot(AGE_START + i * 2 + 1, u.pr, "center");
+    tampil.forEach((gi, j) => {
+      putTot(AGE_START + j * 2, ageTot[gi].lk, "center");
+      putTot(AGE_START + j * 2 + 1, ageTot[gi].pr, "center");
     });
     putTot(COL_L, result.summary.totalLk);
     putTot(COL_P, result.summary.totalPr);

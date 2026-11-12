@@ -5,6 +5,7 @@ import { buildRl51Excel } from "@/server/modules/rl51/rl51.excel";
 import { buildRl51Pdf } from "@/server/modules/rl51/rl51.pdf";
 import { authorize } from "@/server/rbac/guard";
 import { fail } from "@/server/lib/http";
+import { rlEksporOpsiSchema } from "@/server/lib/rl-kelompok-umur";
 
 export const runtime = "nodejs";
 
@@ -15,7 +16,7 @@ function stamp(now: Date): string {
 }
 
 /**
- * GET /api/laporan/rl51/export?from&to[&menular&format]
+ * GET /api/laporan/rl51/export?from&to[&menular&format&umur]
  * Export RL 5.1: `format=pdf` → PDF ringkas (rapi), selain itu → .xlsx (matriks
  * 25 kelompok umur × L/P kasus baru + kunjungan). Read-only SIMGOS.
  */
@@ -23,6 +24,8 @@ export async function GET(req: NextRequest) {
   try {
     const user = await authorize("laporan", "view");
     const input = rl51QuerySchema.parse(Object.fromEntries(req.nextUrl.searchParams));
+    // Kolom umur Excel: `semua` (bawaan, 25 kelompok) | `terisi` (sembunyikan kelompok bernilai 0).
+    const opsi = rlEksporOpsiSchema.parse({ umur: req.nextUrl.searchParams.get("umur") ?? undefined });
     const isPdf = req.nextUrl.searchParams.get("format") === "pdf";
     const result = await getRl51(input);
     const generatedAt = new Date();
@@ -41,12 +44,12 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const buf = await buildRl51Excel(result, { generatedAt, by: user.name });
+    const buf = await buildRl51Excel(result, { generatedAt, by: user.name }, { umur: opsi.umur });
     return new Response(new Uint8Array(buf), {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="${base}.xlsx"`,
+        "Content-Disposition": `attachment; filename="${base}${opsi.umur === "terisi" ? "_umur-terisi" : ""}.xlsx"`,
         "Content-Length": String(buf.length),
         "Cache-Control": "no-store",
       },

@@ -15,7 +15,8 @@ function bulanDari(from: string): string {
 /**
  * RL 5.1 — Data Morbiditas Pasien Rawat Jalan pada periode. Read-only SIMGOS;
  * logika di-port dari SP `LaporanRL51Revisi` dengan kelompok umur diperbaiki ke
- * 25 batas resmi (SP asli memakai getKelompokUmur 9-kelompok yang salah).
+ * 25 batas resmi (SP asli memakai getKelompokUmur 9-kelompok yang salah), kasus
+ * baru dari riwayat diagnosa, dan sumber diagnosa klinis→grouper (lihat rl51.dal).
  */
 export async function getRl51(input: Rl51Query): Promise<Rl51Result> {
   const filter: Rl51Filter = { from: input.from, to: input.to, menular: input.menular };
@@ -30,7 +31,7 @@ export async function getRl51(input: Rl51Query): Promise<Rl51Result> {
   if (!isSimgosConfigured()) {
     return {
       data: [],
-      summary: { jenisDiag: 0, totalKunjungan: 0, totalBaru: 0, totalLk: 0, totalPr: 0 },
+      summary: { jenisDiag: 0, totalKunjungan: 0, totalBaru: 0, totalLk: 0, totalPr: 0, totalDariGrouper: 0 },
       instansi: null,
       ...base,
     };
@@ -58,6 +59,7 @@ export async function getRl51(input: Rl51Query): Promise<Rl51Result> {
       baru: num(raw.baru),
       baruLk: num(raw.baruLk),
       baruPr: num(raw.baruPr),
+      dariGrouper: num(raw.dariGrouper),
       umur,
     };
   });
@@ -68,6 +70,7 @@ export async function getRl51(input: Rl51Query): Promise<Rl51Result> {
     totalBaru: data.reduce((s, d) => s + d.baru, 0),
     totalLk: data.reduce((s, d) => s + d.lk, 0),
     totalPr: data.reduce((s, d) => s + d.pr, 0),
+    totalDariGrouper: data.reduce((s, d) => s + d.dariGrouper, 0),
   };
 
   const instansi: Rl51Instansi | null = instansiRow

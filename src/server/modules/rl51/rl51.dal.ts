@@ -2,6 +2,7 @@ import "server-only";
 import { getSimgos } from "@/server/db/simgos.client";
 import { SIMGOS_DB } from "@/server/db/simgos-databases";
 import { menularWhereFragment } from "@/server/lib/icd-menular";
+import { diagnosaSumberSql } from "@/server/lib/diagnosa-sumber";
 import type { MenularMode, Rl51Filter } from "./rl51.types";
 
 const PEND = SIMGOS_DB.PENDAFTARAN;
@@ -48,15 +49,38 @@ const KLP = `CASE
 export type Rl51MatrixRow = Record<string, string | number | bigint | null>;
 
 /**
- * SQL agregat RL 5.1. Sub-query dalam = SATU baris per kasus (NOPEN,KODE):
- * jenis kelamin & kelompok umur konstan per kunjungan (MAX), status kasus baru
- * `md.BARU` (MAX). Agregat luar per kode ICD: total kunjungan, L/P, kasus baru
- * (+ L/P), dan 50 sel (25 kelompok × L/P) KHUSUS kasus baru.
+ * Kasus baru dihitung dari RIWAYAT, bukan dari kolom `md.BARU`: kode ICD-10
+ * kasus `k` belum pernah tercatat (diagnosa STATUS=1, klinis maupun grouper)
+ * pada pendaftaran LAIN pasien yang sama yang lebih awal. Definisinya sama
+ * dengan trigger SIMGOS `onBeforeInsertDiagnosa` yang mengisi `BARU`, tetapi
+ * tidak bergantung pada urutan simpan.
+ *
+ * Kenapa: trigger itu juga memeriksa baris kunjungan yang SAMA, sehingga
+ * `BARU = 1` jatuh ke baris yang tersimpan lebih dulu. Sejak 10 Mei 2026
+ * baris grouper tersimpan lebih dulu → baris klinis selalu `BARU = 0` → kasus
+ * baru & seluruh kolom umur RL 5.1 = 0. Divalidasi Jan–Apr 2026 (saat `BARU`
+ * masih benar): cocok ±99,5%.
+ */
+const BARU_RIWAYAT = `NOT EXISTS (
+          SELECT 1 FROM ${PEND}.pendaftaran p2
+            JOIN ${MED}.diagnosa d2 ON d2.NOPEN = p2.NOMOR
+          WHERE p2.NORM = k.norm AND p2.NOMOR <> k.nopen AND p2.TANGGAL < k.tgl
+            AND d2.KODE = k.kode AND d2.\`STATUS\` = 1)`;
+
+/**
+ * SQL agregat RL 5.1, tiga lapis:
+ *  1. `k` = SATU baris per kasus (NOPEN,KODE): jenis kelamin, kelompok umur,
+ *     NORM & tanggal kunjungan (konstan per kunjungan → MAX), dan penanda
+ *     diagnosa grouper;
+ *  2. `c` = `k` + status kasus baru dari riwayat (`BARU_RIWAYAT`);
+ *  3. agregat per kode ICD: total kunjungan, L/P, kasus baru (+ L/P), kasus
+ *     dari diagnosa grouper, dan 50 sel (25 kelompok × L/P) KHUSUS kasus baru.
  *
  * Dedup lewat grain (NOPEN,KODE) menangani baris diagnosa duplikat & fan-out
  * multi-leg. Rawat Jalan + Gawat Darurat (JENIS_KUNJUNGAN IN (1,2)); tanggal
- * pakai `pp.TANGGAL` (kunjungan). Join kosmetik SP (referensi, penjamin,
- * pasien_pulang, instansi cross-join) dibuang.
+ * pakai `pp.TANGGAL` (kunjungan). Sumber diagnosa per kunjungan: klinis, atau
+ * grouper bila tak ada klinis (`diagnosaSumberSql`). Join kosmetik SP
+ * (referensi, penjamin, pasien_pulang, instansi cross-join) dibuang.
  */
 function buildMatrixSql(menular: MenularMode): string {
   const age: string[] = [];
@@ -75,23 +99,29 @@ function buildMatrixSql(menular: MenularMode): string {
            SUM(c.baru = 1) AS baru,
            SUM(c.jk = 1 AND c.baru = 1) AS baruLk,
            SUM(c.jk = 2 AND c.baru = 1) AS baruPr,
+           SUM(c.grouper = 1) AS dariGrouper,
            ${age.join(",\n           ")}
     FROM (
-      SELECT md.NOPEN AS nopen, md.KODE AS kode,
-             MAX(ps.JENIS_KELAMIN) AS jk,
-             MAX(md.BARU) AS baru,
-             MAX(${KLP}) AS klp
-      FROM ${PEND}.kunjungan pk
-        JOIN ${MASTER}.ruangan r
-          ON pk.RUANGAN = r.ID AND r.JENIS = 5 AND r.JENIS_KUNJUNGAN IN (1, 2)
-        JOIN ${PEND}.pendaftaran pp ON pk.NOPEN = pp.NOMOR
-        JOIN ${PEND}.tujuan_pasien tp ON pp.NOMOR = tp.NOPEN AND pk.RUANGAN = tp.RUANGAN
-        JOIN ${MED}.diagnosa md
-          ON pk.NOPEN = md.NOPEN AND md.\`STATUS\` = 1 AND md.INA_GROUPER = 0
-        LEFT JOIN ${MASTER}.pasien ps ON pp.NORM = ps.NORM
-      WHERE md.KODE IS NOT NULL AND md.KODE <> ''${menularWhere}
-        AND pp.TANGGAL BETWEEN ? AND ?
-      GROUP BY md.NOPEN, md.KODE
+      SELECT k.kode, k.jk, k.klp, k.grouper, ${BARU_RIWAYAT} AS baru
+      FROM (
+        SELECT md.NOPEN AS nopen, md.KODE AS kode,
+               MAX(pp.NORM) AS norm,
+               MAX(pp.TANGGAL) AS tgl,
+               MAX(ps.JENIS_KELAMIN) AS jk,
+               MAX(md.INA_GROUPER) AS grouper,
+               MAX(${KLP}) AS klp
+        FROM ${PEND}.kunjungan pk
+          JOIN ${MASTER}.ruangan r
+            ON pk.RUANGAN = r.ID AND r.JENIS = 5 AND r.JENIS_KUNJUNGAN IN (1, 2)
+          JOIN ${PEND}.pendaftaran pp ON pk.NOPEN = pp.NOMOR
+          JOIN ${PEND}.tujuan_pasien tp ON pp.NOMOR = tp.NOPEN AND pk.RUANGAN = tp.RUANGAN
+          JOIN ${MED}.diagnosa md
+            ON pk.NOPEN = md.NOPEN AND md.\`STATUS\` = 1 AND ${diagnosaSumberSql("md", MED)}
+          LEFT JOIN ${MASTER}.pasien ps ON pp.NORM = ps.NORM
+        WHERE md.KODE IS NOT NULL AND md.KODE <> ''${menularWhere}
+          AND pp.TANGGAL BETWEEN ? AND ?
+        GROUP BY md.NOPEN, md.KODE
+      ) k
     ) c
     GROUP BY c.kode
     ORDER BY total DESC, c.kode`;

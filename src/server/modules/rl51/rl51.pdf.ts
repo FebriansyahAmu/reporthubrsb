@@ -2,6 +2,7 @@ import "server-only";
 import { buildReportPdf, type PdfTableSpec } from "@/server/lib/pdf";
 import { stampWita } from "@/server/lib/excel";
 import { MENULAR_DEFINISI, MENULAR_MODE_LABEL } from "@/server/lib/icd-menular";
+import { catatanSumberDiagnosa } from "@/server/lib/diagnosa-sumber";
 import { RL41_AGE_GROUPS } from "@/server/modules/rl41/rl41.constants";
 import type { Rl51Result } from "./rl51.types";
 
@@ -73,6 +74,7 @@ export async function buildRl51Pdf(result: Rl51Result, meta: Rl51PdfMeta): Promi
   const metaLines = [
     `Periode: ${result.periode.from} s/d ${result.periode.to}   ·   Bulan: ${result.bulan} ${result.tahun}   ·   Kelompok penyakit: ${MENULAR_MODE_LABEL[result.menular]}`,
     `Total kunjungan: ${idNum.format(s.totalKunjungan)}   ·   Kasus baru: ${idNum.format(s.totalBaru)}   ·   Jenis diagnosa (ICD-10): ${idNum.format(s.jenisDiag)}   ·   L: ${idNum.format(s.totalLk)}   ·   P: ${idNum.format(s.totalPr)}`,
+    `${catatanSumberDiagnosa(s.totalDariGrouper, s.totalKunjungan, "kunjungan")}. Kasus baru = kode diagnosa belum pernah tercatat pada kunjungan pasien sebelumnya.`,
     `Kolom kelompok umur = kasus baru. Dibuat: ${stampWita(meta.generatedAt)}${meta.by ? ` oleh ${meta.by}` : ""}`,
   ];
   if (result.menular !== "all") metaLines.push(MENULAR_DEFINISI);

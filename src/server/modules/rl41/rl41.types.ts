@@ -9,8 +9,10 @@
  * umur di sini dihitung sendiri (lihat rl41.constants & rl41.dal).
  *
  * Inklusi baris (mengikuti SP): kunjungan Rawat Inap (ruangan JENIS_KUNJUNGAN=3),
- * diagnosa klinis manual (STATUS=1 & INA_GROUPER=0), pasien pulang dalam periode
- * (`layanan.pasien_pulang.TANGGAL`). Kematian = cara keluar (`CARA`) 6/7.
+ * pasien pulang dalam periode (`layanan.pasien_pulang.TANGGAL`). Kematian = cara
+ * keluar (`CARA`) 6/7. Diagnosa STATUS=1 per kunjungan: klinis (INA_GROUPER=0),
+ * atau grouper INA-CBG bila kunjungan tak punya diagnosa klinis — beda dari SP
+ * yang hanya membaca klinis (lihat `server/lib/diagnosa-sumber`).
  */
 
 import type { MenularMode } from "@/server/lib/icd-menular";
@@ -39,6 +41,8 @@ export type Rl41Row = {
   matiLk: number;
   /** Meninggal perempuan. */
   matiPr: number;
+  /** Kasus yang diagnosanya dari grouper INA-CBG (kunjungan tanpa diagnosa klinis). */
+  dariGrouper: number;
   /** 25 sel kelompok umur; index 0 = kelompok 1 (< 1 jam). */
   umur: Rl41AgeCell[];
 };
@@ -55,6 +59,8 @@ export type Rl41Summary = {
   totalPr: number;
   /** Total kematian. */
   totalMati: number;
+  /** Total kasus yang diagnosanya dari grouper INA-CBG. */
+  totalDariGrouper: number;
 };
 
 /** Identitas instansi (untuk header laporan resmi). */

@@ -2,6 +2,7 @@ import "server-only";
 import { getSimgos } from "@/server/db/simgos.client";
 import { SIMGOS_DB } from "@/server/db/simgos-databases";
 import { menularWhereFragment } from "@/server/lib/icd-menular";
+import { diagnosaSumberSql } from "@/server/lib/diagnosa-sumber";
 import type { MenularMode, Rl41Filter } from "./rl41.types";
 
 const PEND = SIMGOS_DB.PENDAFTARAN;
@@ -55,7 +56,10 @@ export type Rl41MatrixRow = Record<string, string | number | bigint | null>;
  *
  * Dedup lewat grain (NOPEN,KODE) menangani baris diagnosa duplikat & fan-out
  * multi-leg — sejalan penghitungan `COUNT(DISTINCT NOPEN)` di modul penyakit.
- * Join kosmetik SP (referensi label, penjamin, instansi cross-join) dibuang.
+ * Sumber diagnosa per kunjungan: klinis, atau grouper INA-CBG bila kunjungan
+ * tak punya diagnosa klinis (`diagnosaSumberSql`; SP hanya membaca klinis →
+ * kurang hitung sejak Mei 2026). Join kosmetik SP (referensi label, penjamin,
+ * instansi cross-join) dibuang.
  */
 function buildMatrixSql(menular: MenularMode): string {
   const age: string[] = [];
@@ -74,11 +78,13 @@ function buildMatrixSql(menular: MenularMode): string {
            SUM(c.mati) AS mati,
            SUM(c.jk = 1 AND c.mati) AS matiLk,
            SUM(c.jk = 2 AND c.mati) AS matiPr,
+           SUM(c.grouper = 1) AS dariGrouper,
            ${age.join(",\n           ")}
     FROM (
       SELECT md.NOPEN AS nopen, md.KODE AS kode,
              MAX(ps.JENIS_KELAMIN) AS jk,
              MAX(${KLP}) AS klp,
+             MAX(md.INA_GROUPER) AS grouper,
              MAX(IF(lpp.CARA IN (6, 7), 1, 0)) AS mati
       FROM ${PEND}.kunjungan pk
         JOIN ${MASTER}.ruangan r
@@ -86,7 +92,7 @@ function buildMatrixSql(menular: MenularMode): string {
         JOIN ${PEND}.pendaftaran pp ON pk.NOPEN = pp.NOMOR
         JOIN ${PEND}.tujuan_pasien tp ON pp.NOMOR = tp.NOPEN AND pk.RUANGAN = tp.RUANGAN
         JOIN ${MED}.diagnosa md
-          ON pk.NOPEN = md.NOPEN AND md.\`STATUS\` = 1 AND md.INA_GROUPER = 0
+          ON pk.NOPEN = md.NOPEN AND md.\`STATUS\` = 1 AND ${diagnosaSumberSql("md", MED)}
         JOIN ${LAY}.pasien_pulang lpp
           ON lpp.KUNJUNGAN = pk.NOMOR AND lpp.\`STATUS\` <> 0
         LEFT JOIN ${MASTER}.pasien ps ON pp.NORM = ps.NORM

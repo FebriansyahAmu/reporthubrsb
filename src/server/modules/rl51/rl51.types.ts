@@ -11,8 +11,12 @@
  * dengan 25 batas resmi (lihat rl41.constants — dipakai bersama).
  *
  * Inklusi baris (mengikuti SP): kunjungan Rawat Jalan/Gawat Darurat (ruangan
- * JENIS_KUNJUNGAN IN (1,2)), diagnosa klinis manual (STATUS=1 & INA_GROUPER=0),
- * tanggal kunjungan (`pendaftaran.TANGGAL`) dalam periode.
+ * JENIS_KUNJUNGAN IN (1,2)), tanggal kunjungan (`pendaftaran.TANGGAL`) dalam
+ * periode. Dua perbedaan dari SP (12 Nov 2026, lihat rl51.dal):
+ *  - diagnosa STATUS=1 per kunjungan: klinis (INA_GROUPER=0), atau grouper
+ *    INA-CBG bila kunjungan tak punya diagnosa klinis (`server/lib/diagnosa-sumber`);
+ *  - kasus baru dihitung dari riwayat diagnosa pasien, bukan kolom `md.BARU`
+ *    (yang sejak 10 Mei 2026 selalu 0 pada baris klinis).
  */
 
 import type { MenularMode } from "@/server/lib/icd-menular";
@@ -35,12 +39,14 @@ export type Rl51Row = {
   lk: number;
   /** Kunjungan perempuan. */
   pr: number;
-  /** Jumlah kasus baru (md.BARU=1). */
+  /** Jumlah kasus baru (kode belum pernah tercatat pada kunjungan pasien sebelumnya). */
   baru: number;
   /** Kasus baru laki-laki. */
   baruLk: number;
   /** Kasus baru perempuan. */
   baruPr: number;
+  /** Kunjungan yang diagnosanya dari grouper INA-CBG (tanpa diagnosa klinis). */
+  dariGrouper: number;
   /** 25 sel kelompok umur untuk KASUS BARU; index 0 = kelompok 1 (< 1 jam). */
   umur: Rl51AgeCell[];
 };
@@ -57,6 +63,8 @@ export type Rl51Summary = {
   totalLk: number;
   /** Total kunjungan perempuan. */
   totalPr: number;
+  /** Total kunjungan yang diagnosanya dari grouper INA-CBG. */
+  totalDariGrouper: number;
 };
 
 /** Identitas instansi (untuk header laporan resmi). */

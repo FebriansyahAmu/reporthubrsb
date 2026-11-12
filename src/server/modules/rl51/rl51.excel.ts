@@ -2,6 +2,8 @@ import "server-only";
 import ExcelJS from "exceljs";
 import { stampWita } from "@/server/lib/excel";
 import { MENULAR_DEFINISI, MENULAR_MODE_LABEL } from "@/server/lib/icd-menular";
+import { catatanSumberDiagnosa } from "@/server/lib/diagnosa-sumber";
+import { catatanKelompokUmur, kelompokUmurTampil, type UmurMode } from "@/server/lib/rl-kelompok-umur";
 import { RL41_AGE_GROUPS } from "@/server/modules/rl41/rl41.constants";
 import type { Rl51Result } from "./rl51.types";
 
@@ -9,6 +11,9 @@ import type { Rl51Result } from "./rl51.types";
  * Workbook Excel RL 5.1 — matriks lebar (per ICD-10 × 25 kelompok umur × L/P
  * untuk KASUS BARU + blok Kasus Baru + blok Jumlah Kunjungan). Header dua baris
  * bertingkat. Gaya konsisten dengan RL 4.1 (teal, zebra, border).
+ *
+ * Opsi `umur: "terisi"` menyembunyikan kelompok umur yang L+P-nya 0 di seluruh
+ * laporan; kolom sesudah blok umur bergeser mengikuti jumlah kelompok tampil.
  */
 
 const TEAL = "FF0F766E";
@@ -23,16 +28,9 @@ const TOTAL_BG = "FFE8EEF0";
 const idNum = new Intl.NumberFormat("id-ID");
 
 const AGE_START = 4;
-const AGE_END = AGE_START + 25 * 2 - 1; // 53
-const COL_BL = 54; // baru L
-const COL_BP = 55; // baru P
-const COL_BT = 56; // baru total
-const COL_KL = 57; // kunjungan L
-const COL_KP = 58; // kunjungan P
-const COL_KT = 59; // kunjungan total
-const LAST = COL_KT;
 
 export type Rl51ExcelMeta = { generatedAt: Date; by?: string };
+export type Rl51ExcelOpsi = { umur?: UmurMode };
 
 function borderAll(argb: string) {
   return {
@@ -43,7 +41,23 @@ function borderAll(argb: string) {
   };
 }
 
-export async function buildRl51Excel(result: Rl51Result, meta: Rl51ExcelMeta): Promise<Buffer> {
+export async function buildRl51Excel(
+  result: Rl51Result,
+  meta: Rl51ExcelMeta,
+  opsi: Rl51ExcelOpsi = {},
+): Promise<Buffer> {
+  // Kelompok umur yang ditampilkan (indeks 0..24) & tata letak kolom (1-indexed).
+  const tampil = kelompokUmurTampil(result.data, opsi.umur ?? "semua", RL41_AGE_GROUPS.length);
+  const AGE_END = AGE_START + tampil.length * 2 - 1;
+  const COL_BL = AGE_END + 1; // baru L
+  const COL_BP = AGE_END + 2; // baru P
+  const COL_BT = AGE_END + 3; // baru total
+  const COL_KL = AGE_END + 4; // kunjungan L
+  const COL_KP = AGE_END + 5; // kunjungan P
+  const COL_KT = AGE_END + 6; // kunjungan total
+  const LAST = COL_KT;
+  const catatanUmur = catatanKelompokUmur(tampil.length, RL41_AGE_GROUPS.length);
+
   const wb = new ExcelJS.Workbook();
   wb.creator = "AuditTrail RS BOLTIM";
   wb.created = meta.generatedAt;
@@ -80,7 +94,8 @@ export async function buildRl51Excel(result: Rl51Result, meta: Rl51ExcelMeta): P
   const metaLines = [
     `Periode: ${result.periode.from} s/d ${result.periode.to}   ·   Bulan: ${result.bulan} ${result.tahun}   ·   Kelompok penyakit: ${MENULAR_MODE_LABEL[result.menular]}`,
     `Total kunjungan: ${idNum.format(result.summary.totalKunjungan)}   ·   Kasus baru: ${idNum.format(result.summary.totalBaru)}   ·   Jenis diagnosa (ICD-10): ${idNum.format(result.summary.jenisDiag)}   ·   L: ${idNum.format(result.summary.totalLk)}   ·   P: ${idNum.format(result.summary.totalPr)}`,
-    `Kolom kelompok umur = KASUS BARU. Dibuat: ${stampWita(meta.generatedAt)}${meta.by ? ` oleh ${meta.by}` : ""}   ·   Sumber: SIMGOS (read-only) · di-port dari SP LaporanRL51Revisi${result.menular !== "all" ? `   ·   ${MENULAR_DEFINISI}` : ""}`,
+    `${catatanSumberDiagnosa(result.summary.totalDariGrouper, result.summary.totalKunjungan, "kunjungan")}. Kasus baru = kode diagnosa belum pernah tercatat pada kunjungan pasien sebelumnya.`,
+    `Kolom kelompok umur = KASUS BARU${catatanUmur ? ` · ${catatanUmur}` : ""}. Dibuat: ${stampWita(meta.generatedAt)}${meta.by ? ` oleh ${meta.by}` : ""}   ·   Sumber: SIMGOS (read-only) · di-port dari SP LaporanRL51Revisi${result.menular !== "all" ? `   ·   ${MENULAR_DEFINISI}` : ""}`,
   ];
   metaLines.forEach((line, i) => {
     mergeAcross(r);
@@ -115,8 +130,9 @@ export async function buildRl51Excel(result: Rl51Result, meta: Rl51ExcelMeta): P
   vmerge(3, "Golongan Penyebab Penyakit (Diagnosa)");
 
   // Grup umur (kasus baru): h1 label grup (merge 2 kolom) + h2 L/P
-  RL41_AGE_GROUPS.forEach((g, i) => {
-    const cL = AGE_START + i * 2;
+  tampil.forEach((gi, j) => {
+    const g = RL41_AGE_GROUPS[gi];
+    const cL = AGE_START + j * 2;
     ws.mergeCells(h1, cL, h1, cL + 1);
     const gc = ws.getCell(h1, cL);
     gc.value = g.label;
@@ -183,8 +199,9 @@ export async function buildRl51Excel(result: Rl51Result, meta: Rl51ExcelMeta): P
     put(1, row.rank, { align: "center", dim: true });
     put(2, row.kode, { align: "center", text: true, bold: true });
     put(3, row.diagnosa);
-    row.umur.forEach((uu, i) => {
-      const cL = AGE_START + i * 2;
+    tampil.forEach((gi, j) => {
+      const uu = row.umur[gi] ?? { lk: 0, pr: 0 };
+      const cL = AGE_START + j * 2;
       put(cL, uu.lk, { align: "center", dim: uu.lk === 0 });
       put(cL + 1, uu.pr, { align: "center", dim: uu.pr === 0 });
     });
@@ -221,9 +238,9 @@ export async function buildRl51Excel(result: Rl51Result, meta: Rl51ExcelMeta): P
     };
     ws.mergeCells(totalRowIdx, 1, totalRowIdx, 3);
     putTot(1, "TOTAL", "center");
-    ageTot.forEach((uu, i) => {
-      putTot(AGE_START + i * 2, uu.lk, "center");
-      putTot(AGE_START + i * 2 + 1, uu.pr, "center");
+    tampil.forEach((gi, j) => {
+      putTot(AGE_START + j * 2, ageTot[gi].lk, "center");
+      putTot(AGE_START + j * 2 + 1, ageTot[gi].pr, "center");
     });
     putTot(COL_BL, baruLk);
     putTot(COL_BP, baruPr);
