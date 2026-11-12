@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { ApiError, apiPatch, apiPost, pesanGalat } from "@/lib/api-client";
+import { ApiError, apiGet, apiPatch, apiPost, pesanGalat } from "@/lib/api-client";
 import { EVENT_SEBELUM_KELUAR, keluarBerjalan, type DetailSebelumKeluar } from "@/lib/sesi";
+import { bentukIsian, daunBeda, denganNilai, nilaiDi, rebase, susunUbah, tumpang } from "@/features/form-rm/gabung";
+import { daftarLabel } from "@/features/form-rm/label-kolom";
 import { definisiForm, type DefinisiForm } from "@/features/form-rm/registry";
 import type { AksiIsian } from "@/features/form-rm/isian.status";
-import type { IsianForm, IzinIsian } from "@/server/modules/form-rm/isian.types";
+import type { IsianForm, IzinIsian, KonflikKolom, RincianKonflik } from "@/server/modules/form-rm/isian.types";
+import { useKonteksIsian } from "./KonteksIsian";
 import { petaTtdBaru } from "./petaTtd";
 
 /**
@@ -15,17 +18,28 @@ import { petaTtdBaru } from "./petaTtd";
  * permintaan sekaligus), transisi status, penanda perubahan belum disimpan, dan
  * penggantian TTD baru dengan referensi server. Perubahan terakhir juga disimpan
  * saat tab disembunyikan, saat pindah halaman, dan sebelum keluar (idle / Keluar).
+ *
+ * Form BERLANJUT IGD → RI (PRD Berlanjut §8.6) memakai mode GABUNG: hanya kolom
+ * yang berubah terhadap `dasar` (isi server terakhir) yang dikirim; isi server
+ * hasil gabung dipindah ke layar tanpa menghapus ketikan yang belum terkirim
+ * (rebase). Kolom yang sama diubah petugas lain → `bentrok` (panel konflik),
+ * simpan otomatis jeda sampai semua dipilih.
  */
 
 export const JEDA_SIMPAN_OTOMATIS_MS = 3_000;
 
 export type GalatIsian = {
   pesan: string;
-  /** 409 rev usang — isian diubah di tempat lain; perlu muat ulang. */
+  /** 409 rev usang — isian diubah di tempat lain; perlu muat ulang (mode lama saja). */
   konflik: boolean;
   /** Kekurangan syarat FINAL dari server. */
   kurang: string[];
 };
+
+/** Kolom yang baru saja diubah petugas lain dan ikut dimuat ke layar (mode gabung). */
+export type DariLain = { kolom: string[]; waktu: string };
+
+export type PilihanBentrok = "saya" | "mereka";
 
 export type KendaliIsian<T> = {
   /** Metadata isian terbaru dari server (isi form ada di `form`). */
@@ -53,22 +67,48 @@ export type KendaliIsian<T> = {
    * berjalan & sisa perubahan, lalu kembalikan rev terbaru (null bila simpan gagal).
    */
   rampungkan: () => Promise<number | null>;
+  /** Form berlanjut: simpan per kolom (gabung). */
+  gabung: boolean;
+  /** Episode tempat isian dibuka (anggota rantai; label unit di log). */
+  konteks: string;
+  /** Kolom bentrok yang menunggu pilihan petugas (mode gabung). */
+  bentrok: readonly KonflikKolom[];
+  pilihBentrok: (p: string, pakai: PilihanBentrok) => void;
+  pilihSemuaBentrok: (pakai: PilihanBentrok) => void;
+  dariLain: DariLain | null;
+  tutupDariLain: () => void;
 };
 
-/** Isi form + nomor versinya, selalu berpasangan: data yang dikirim = versi yang ditandai tersimpan. */
-type StateForm<T> = { data: T; versi: number };
+/**
+ * Isi form + nomor versinya, selalu berpasangan: data yang dikirim = versi yang
+ * ditandai tersimpan. Mode gabung: `dasar` = isi server yang terakhir dilihat
+ * (kolom bentrok tetap memakai dasar lama), `timpa` = kolom yang dipilih "milik saya".
+ */
+type StateForm<T> = { data: T; versi: number; dasar: T; bentrok: readonly KonflikKolom[]; timpa: readonly string[] };
 
-function galatDari(e: unknown): GalatIsian {
+function galatDari(e: unknown, gabung: boolean): GalatIsian {
   if (e instanceof ApiError) {
     const kurang = (e.details as { kurang?: unknown } | undefined)?.kurang;
     return {
       pesan: pesanGalat(e),
-      konflik: e.code === "CONFLICT",
+      konflik: !gabung && e.code === "CONFLICT",
       kurang: Array.isArray(kurang) ? kurang.filter((k): k is string => typeof k === "string") : [],
     };
   }
   return { pesan: "Tidak dapat terhubung ke server. Periksa jaringan lalu coba lagi.", konflik: false, kurang: [] };
 }
+
+/** 409 simpan gabung berisi kolom bentrok + isi terkini; selain itu null. */
+function rincianKonflik(e: unknown): RincianKonflik | null {
+  if (!(e instanceof ApiError) || e.code !== "CONFLICT") return null;
+  const d = e.details as Partial<RincianKonflik> | undefined;
+  return d && Array.isArray(d.konflik) && d.isian && typeof d.isian === "object" ? (d as RincianKonflik) : null;
+}
+
+const pesanSegar = (e: unknown) =>
+  e instanceof ApiError && e.code === "CONFLICT"
+    ? "Isian baru saja diubah petugas lain. Isi terbaru sudah dimuat — periksa lalu ulangi."
+    : null;
 
 function definisiWajib(kode: string): DefinisiForm {
   const def = definisiForm(kode);
@@ -83,15 +123,27 @@ export function useIsian<T extends object>(
   siapkan: (data: unknown) => T,
 ): KendaliIsian<T> {
   const def = definisiWajib(awal.kode);
+  const gabung = def.berlanjut !== undefined;
+  const konteks = useKonteksIsian() ?? awal.nopen;
+  /** Mode gabung: bentuk baku yang SAMA dengan server (path kolom identik). */
+  const siap = (data: unknown): T => (gabung ? siapkan(bentukIsian(def, data)) : siapkan(data));
+  const bukanTertaut = (p: string) => !(def.tertaut ?? []).some((t) => tumpang(t, p));
 
   const [isian, setIsian] = useState(awal);
-  const [state, setState] = useState<StateForm<T>>(() => ({ data: siapkan(awal.data), versi: 0 }));
+  const [state, setState] = useState<StateForm<T>>(() => ({
+    data: siap(awal.data),
+    versi: 0,
+    dasar: siap(awal.data),
+    bentrok: [],
+    timpa: [],
+  }));
   const [versiTersimpan, setVersiTersimpan] = useState(0);
   /** Versi yang simpannya gagal — simpan otomatis tidak mengulang sebelum ada perubahan baru. */
   const [versiGagal, setVersiGagal] = useState<number | null>(null);
   const [sibuk, setSibuk] = useState<KendaliIsian<T>["sibuk"]>(null);
   const [menyimpanOtomatis, setMenyimpanOtomatis] = useState(false);
   const [galat, setGalat] = useState<GalatIsian | null>(null);
+  const [dariLain, setDariLain] = useState<DariLain | null>(null);
 
   // Dibaca setelah `await` (closure bisa usang) → ref.
   const rev = useRef(awal.rev);
@@ -105,13 +157,13 @@ export function useIsian<T extends object>(
 
   const terkunci = isian.status !== "DRAF" || !izin.ubah;
   const kotor = state.versi !== versiTersimpan;
-  const tertunda = kotor && !terkunci && !galat?.konflik && versiGagal !== state.versi;
+  const tertunda = kotor && !terkunci && !galat?.konflik && versiGagal !== state.versi && state.bentrok.length === 0;
 
   // Pengaman kedua (selain <fieldset disabled>): isian terkunci tak pernah berubah di klien.
   const setForm: Dispatch<SetStateAction<T>> = (u) => {
     if (terkunci) return;
     const versi = ++penghitung.current;
-    setState((s) => ({ data: typeof u === "function" ? (u as (p: T) => T)(s.data) : u, versi }));
+    setState((s) => ({ ...s, data: typeof u === "function" ? (u as (p: T) => T)(s.data) : u, versi }));
   };
 
   const terima = (baru: IsianForm) => {
@@ -122,14 +174,23 @@ export function useIsian<T extends object>(
     tersimpan.current = versi;
     setVersiTersimpan(versi);
   };
-
-  async function kirimSimpan(otomatis: boolean): Promise<boolean> {
-    const { data: kirim, versi: versiKirim } = terkini.current;
+  const mulai = (otomatis: boolean) => {
     if (otomatis) setMenyimpanOtomatis(true);
     else {
       setSibuk("simpan");
       setGalat(null);
     }
+  };
+  const selesai = (otomatis: boolean) => {
+    if (otomatis) setMenyimpanOtomatis(false);
+    else setSibuk(null);
+  };
+
+  /* ------------------------------------------------------- mode lama */
+
+  async function kirimUtuh(otomatis: boolean): Promise<boolean> {
+    const { data: kirim, versi: versiKirim } = terkini.current;
+    mulai(otomatis);
     try {
       const baru = await apiPatch<IsianForm>(`/api/form-rm/isian/${isian.id}`, { rev: rev.current, data: kirim });
       // Edit selama menyimpan dipertahankan; hanya TTD baru yang diganti referensinya.
@@ -140,14 +201,170 @@ export function useIsian<T extends object>(
       if (otomatis) setGalat((g) => (g?.konflik ? g : null));
       return true;
     } catch (e) {
-      setGalat(galatDari(e));
+      setGalat(galatDari(e, false));
       setVersiGagal(versiKirim);
       return false;
     } finally {
-      if (otomatis) setMenyimpanOtomatis(false);
-      else setSibuk(null);
+      selesai(otomatis);
     }
   }
+
+  /* ------------------------------------------------------ mode gabung */
+
+  /** 409 kolom bentrok: isi terkini dipindah ke layar, kolom bentrok menunggu pilihan. */
+  function terapkanKonflik(r: RincianKonflik) {
+    const server = siap(r.isian.data);
+    const versi = ++penghitung.current;
+    setState((cur) => {
+      const h = rebase(cur.dasar, cur.data, server);
+      // Kolom yang dinyatakan bentrok oleh server tapi tak terdeteksi rebase tetap ditahan
+      // (dasar lama) — mencegah simpan otomatis mengulang 409 yang sama terus-menerus.
+      const paths = [...h.bentrok];
+      for (const k of r.konflik) {
+        if (paths.some((b) => tumpang(b, k.p))) continue;
+        if (denganDasarLama(h, cur, k.p)) paths.push(k.p);
+      }
+      const bentrok = paths.map((p): KonflikKolom => {
+        const m = r.konflik.find((k) => k.p === p) ?? r.konflik.find((k) => tumpang(k.p, p));
+        return { p, mereka: nilaiDi(server, p) ?? null, oleh: m?.oleh ?? null, unit: m?.unit ?? null, ruang: m?.ruang ?? null, waktu: m?.waktu ?? null };
+      });
+      return { data: h.lokal, dasar: h.dasar, versi, bentrok, timpa: cur.timpa.filter((t) => !paths.some((b) => tumpang(b, t))) };
+    });
+    terima(r.isian);
+  }
+
+  /** Tahan kolom `p` sebagai bentrok pada hasil rebase: layar = lokal, dasar = dasar lama. */
+  function denganDasarLama(h: { lokal: T; dasar: T }, cur: StateForm<T>, p: string): boolean {
+    const lokal = nilaiDi(cur.data, p);
+    const dasar = nilaiDi(cur.dasar, p);
+    if (lokal === undefined || dasar === undefined) return false;
+    h.lokal = denganNilai(h.lokal, p, lokal);
+    h.dasar = denganNilai(h.dasar, p, dasar);
+    return true;
+  }
+
+  /**
+   * Ambil isi terkini (setelah aksi ditolak karena rev usang, atau isian
+   * difinalkan/dibatalkan di tempat lain) lalu rebase. Isian tak lagi DRAF →
+   * isi server; kolom yang belum tersimpan disebutkan di pesan.
+   */
+  async function segarkan(pesan: string | null): Promise<void> {
+    let baru: IsianForm;
+    try {
+      baru = await apiGet<IsianForm>(`/api/form-rm/isian/${isian.id}`);
+    } catch {
+      return;
+    }
+    const server = siap(baru.data);
+    const s = terkini.current;
+    const draf = baru.status === "DRAF";
+    const hilang = draf ? [] : daunBeda(s.dasar, s.data).filter((p) => p !== "" && bukanTertaut(p));
+    const versi = ++penghitung.current;
+    setState((cur) => {
+      if (!draf) return { data: server, dasar: structuredClone(server), versi, bentrok: [], timpa: [] };
+      const h = rebase(cur.dasar, cur.data, server);
+      return { ...cur, data: h.lokal, dasar: h.dasar, versi };
+    });
+    terima(baru);
+    if (!draf) {
+      tandaiTersimpan(versi);
+      const status = baru.status === "FINAL" ? "difinalkan" : "dibatalkan";
+      setGalat({
+        pesan:
+          hilang.length > 0
+            ? `Isian sudah ${status} di tempat lain. Perubahan Anda yang belum tersimpan: ${daftarLabel(def.kode, hilang, s.data).join(", ")}.`
+            : `Isian sudah ${status} di tempat lain.`,
+        konflik: false,
+        kurang: [],
+      });
+    } else if (pesan) {
+      setGalat({ pesan, konflik: false, kurang: [] });
+    }
+  }
+
+  async function kirimGabung(otomatis: boolean): Promise<boolean> {
+    const s = terkini.current;
+    if (s.bentrok.length > 0) {
+      if (!otomatis) setGalat({ pesan: "Pilih isi kolom yang bentrok lebih dulu.", konflik: false, kurang: [] });
+      return false;
+    }
+    const ubah = susunUbah(s.dasar, s.data, def.tertaut ?? []);
+    if (ubah.length === 0) {
+      tandaiTersimpan(s.versi);
+      return true;
+    }
+    const timpa = ubah.filter((u) => s.timpa.some((t) => tumpang(t, u.p))).map((u) => u.p);
+    mulai(otomatis);
+    try {
+      const baru = await apiPatch<IsianForm>(`/api/form-rm/isian/${isian.id}`, {
+        revDasar: rev.current,
+        konteks,
+        ubah,
+        ...(timpa.length > 0 ? { timpa } : {}),
+      });
+      const server = siap(baru.data);
+      // TTD baru (PNG) → referensi server, pada isi yang dikirim maupun isi layar terbaru.
+      const peta = petaTtdBaru(def, s.data, baru.data as object);
+      const ganti = (x: T): T => (peta.size > 0 ? (def.petaTtd(x, (v) => peta.get(v) ?? v) as T) : x);
+      const kirim = ganti(s.data);
+      const lain = daunBeda(kirim, server).filter((p) => p !== "" && bukanTertaut(p));
+      const versiBaru = ++penghitung.current;
+      setState((cur) => {
+        const h = rebase(kirim, ganti(cur.data), server);
+        return {
+          data: h.lokal,
+          dasar: h.dasar,
+          // Tanpa ketikan baru selama menyimpan → bersih; selain itu sisa perubahan menunggu simpan berikutnya.
+          versi: cur.versi === s.versi ? s.versi : versiBaru,
+          bentrok: cur.bentrok,
+          timpa: cur.timpa.filter((t) => !ubah.some((u) => tumpang(t, u.p))),
+        };
+      });
+      terima(baru);
+      tandaiTersimpan(s.versi);
+      if (lain.length > 0) setDariLain({ kolom: daftarLabel(def.kode, lain, server), waktu: baru.updatedAt });
+      if (otomatis) setGalat(null);
+      return true;
+    } catch (e) {
+      const r = rincianKonflik(e);
+      if (r) {
+        terapkanKonflik(r);
+        setGalat(
+          otomatis ? null : { pesan: "Ada kolom yang juga diubah petugas lain. Pilih isinya lebih dulu.", konflik: false, kurang: [] },
+        );
+        return false;
+      }
+      setGalat(galatDari(e, true));
+      setVersiGagal(s.versi);
+      // Status berubah di tempat lain (FINAL/BATAL) → muat status terbaru.
+      if (e instanceof ApiError && e.code === "BUSINESS_RULE") void segarkan(null);
+      return false;
+    } finally {
+      selesai(otomatis);
+    }
+  }
+
+  function pilihBentrok(p: string, pakai: PilihanBentrok) {
+    if (terkunci) return;
+    // Pesan "pilih isinya lebih dulu" dari simpan yang ditolak tak berlaku lagi.
+    setGalat(null);
+    const versi = ++penghitung.current;
+    setState((s) => {
+      const b = s.bentrok.find((x) => x.p === p);
+      if (!b) return s;
+      const sisa = s.bentrok.filter((x) => x.p !== p);
+      // Dasar kolom = nilai mereka: "milik mereka" → layar ikut; "milik saya" → dikirim sebagai TIMPA.
+      const dasar = denganNilai(s.dasar, p, b.mereka);
+      return pakai === "mereka"
+        ? { ...s, data: denganNilai(s.data, p, b.mereka), dasar, bentrok: sisa, versi }
+        : { ...s, dasar, bentrok: sisa, timpa: [...s.timpa.filter((t) => t !== p), p], versi };
+    });
+  }
+  const pilihSemuaBentrok = (pakai: PilihanBentrok) => {
+    for (const b of terkini.current.bentrok) pilihBentrok(b.p, pakai);
+  };
+
+  /* ------------------------------------------------------------ umum */
 
   /** Satu permintaan simpan sekaligus: bila ada yang berjalan, tunggu lalu kirim sisa perubahan. */
   function simpan(otomatis = false): Promise<boolean> {
@@ -160,7 +377,7 @@ export function useIsian<T extends object>(
         ok && terkini.current.versi === tersimpan.current ? true : simpanTerbaru.current(otomatis),
       );
     }
-    const p = kirimSimpan(otomatis).finally(() => {
+    const p = (gabung ? kirimGabung(otomatis) : kirimUtuh(otomatis)).finally(() => {
       proses.current = null;
     });
     proses.current = p;
@@ -190,11 +407,14 @@ export function useIsian<T extends object>(
           aksi,
           rev: rev.current,
           ...(alasan ? { alasan } : {}),
+          ...(gabung ? { konteks } : {}),
         }),
       );
       return true;
     } catch (e) {
-      setGalat(galatDari(e));
+      const segar = gabung ? pesanSegar(e) : null;
+      if (segar) await segarkan(segar);
+      else setGalat(galatDari(e, gabung));
       return false;
     } finally {
       transisi.current = false;
@@ -213,14 +433,17 @@ export function useIsian<T extends object>(
       const r = await apiPost<{ isian: IsianForm; diterapkan: string[] }>(`/api/form-rm/isian/${isian.id}/simrs`, {
         rev: rev.current,
         kolom,
+        ...(gabung ? { konteks } : {}),
       });
       const versi = ++penghitung.current;
-      setState({ data: siapkan(r.isian.data), versi });
+      setState({ data: siap(r.isian.data), versi, dasar: siap(r.isian.data), bentrok: [], timpa: [] });
       tandaiTersimpan(versi);
       terima(r.isian);
       return r.diterapkan;
     } catch (e) {
-      setGalat(galatDari(e));
+      const segar = gabung ? pesanSegar(e) : null;
+      if (segar) await segarkan(segar);
+      else setGalat(galatDari(e, gabung));
       return null;
     } finally {
       transisi.current = false;
@@ -296,5 +519,12 @@ export function useIsian<T extends object>(
     jalankan,
     terapkanSimrs,
     rampungkan: async () => ((await tuntaskanSimpan()) ? rev.current : null),
+    gabung,
+    konteks,
+    bentrok: state.bentrok,
+    pilihBentrok,
+    pilihSemuaBentrok,
+    dariLain,
+    tutupDariLain: () => setDariLain(null),
   };
 }

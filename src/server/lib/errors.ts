@@ -47,8 +47,8 @@ export class BusinessRuleError extends AppError {
 
 /** Data sudah diubah pihak lain sejak dibaca (optimistic locking / unik bentrok). */
 export class ConflictError extends AppError {
-  constructor(msg = "Data sudah diubah pengguna lain. Muat ulang lalu coba lagi.") {
-    super(msg, "CONFLICT", 409);
+  constructor(msg = "Data sudah diubah pengguna lain. Muat ulang lalu coba lagi.", details?: unknown) {
+    super(msg, "CONFLICT", 409, details);
   }
 }
 

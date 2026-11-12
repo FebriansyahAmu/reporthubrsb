@@ -14,6 +14,7 @@ import { Rm41FormView } from "@/features/form-rm/Rm41FormView";
 import { Rm50FormView } from "@/features/form-rm/Rm50FormView";
 import { Rm70FormView } from "@/features/form-rm/Rm70FormView";
 import { TriaseFormView } from "@/features/form-rm/TriaseFormView";
+import { KonteksIsianProvider } from "@/features/form-rm/isian/KonteksIsian";
 import { KATEGORI_FORM, MODUL_AKSES_FORM_RM } from "@/features/form-rm/kategori";
 import { NotFoundError } from "@/server/lib/errors";
 import { requireAnyModule } from "@/server/rbac/guard";
@@ -112,7 +113,9 @@ export default async function IsianPage({
         }`}
       />
       {episodeRantai && <PitaBerlanjut episode={episodeRantai} konteks={rantai.konteks} />}
-      <TampilanForm isian={isian} header={header} izin={izin} rujukan={rujukan} />
+      <KonteksIsianProvider konteks={rantai.konteks}>
+        <TampilanForm isian={isian} header={header} izin={izin} rujukan={rujukan} />
+      </KonteksIsianProvider>
     </FadeIn>
   );
 }

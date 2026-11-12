@@ -44,6 +44,8 @@ export function ConsentFormView({
   const setArr = (key: "pelepasanInfo" | "permintaanKhusus", i: number, value: string) =>
     setForm((f) => {
       const arr = [...f[key]];
+      // Tanpa lubang: mengisi "Pihak 3" lebih dulu tak boleh menjadi [null, null, "…"] (ditolak skema).
+      while (arr.length < i) arr.push("");
       arr[i] = value;
       return { ...f, [key]: arr };
     });

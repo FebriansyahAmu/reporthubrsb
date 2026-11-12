@@ -24,6 +24,7 @@ import {
   PESERTA_OPTS,
   RUDA_PAKSA_OPTS,
   emptyRingkasanForm,
+  lengkapiRingkasan,
 } from "@/features/form-rm/ringkasan.constants";
 import { cn } from "@/lib/cn";
 import type { BacaKeluarSimrs, FormRmHeader, RingkasanForm } from "@/server/modules/form-rm/form-rm.types";
@@ -32,12 +33,7 @@ import type { IsianForm, IzinIsian } from "@/server/modules/form-rm/isian.types"
 const YT = ["Ya", "Tidak"];
 
 /** Data tersimpan → state UI: Sebab Kematian II selalu 3 baris. */
-function siapkan(data: unknown): RingkasanForm {
-  const f: RingkasanForm = { ...emptyRingkasanForm(), ...(data as RingkasanForm) };
-  const skLain = [...(Array.isArray(f.skLain) ? f.skLain : [])];
-  while (skLain.length < 3) skLain.push({ teks: "", lama: "" });
-  return { ...f, skLain };
-}
+const siapkan = (data: unknown): RingkasanForm => lengkapiRingkasan({ ...emptyRingkasanForm(), ...(data as RingkasanForm) });
 
 export function RingkasanFormView({
   isian,

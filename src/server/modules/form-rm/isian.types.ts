@@ -77,6 +77,44 @@ export type RiwayatIsian = {
   integritas: { utuh: boolean; masalah: string[] };
 };
 
+/** Satu entri log perubahan kolom isian berlanjut (PRD Berlanjut IGD → RI §5.6, §8.4). */
+export type EntriLogIsian = {
+  urut: number;
+  /** Rentang rev yang dicakup (entri bisa menggabung beberapa simpan, K7). */
+  revAwal: number;
+  revAkhir: number;
+  /** SIMPAN | TIMPA | MUAT_SIMRS | BEKU_TERTAUT */
+  aksi: string;
+  olehNama: string | null;
+  /** IGD | RI | RJ | "" (tak diketahui) */
+  unit: string;
+  ruang: string | null;
+  konteksNopen: string;
+  /** p = path, s = sebelum, j = sesudah, t = ditimpa eksplisit. TTD berupa referensi `ttd:<id>`. */
+  perubahan: { p: string; s: unknown; j: unknown; t?: true }[];
+  dibuatAt: string;
+  diperbaruiAt: string;
+};
+
+export type LogIsian = {
+  entri: EntriLogIsian[];
+  /** Pemeriksaan segel HMAC berantai log. */
+  integritas: { utuh: boolean; masalah: string[] };
+};
+
+/** Satu kolom bentrok (409 simpan gabung): nilai yang kini tersimpan + siapa terakhir mengubahnya. */
+export type KonflikKolom = {
+  p: string;
+  mereka: unknown;
+  oleh: string | null;
+  unit: string | null;
+  ruang: string | null;
+  waktu: string | null;
+};
+
+/** Rincian 409 simpan gabung: isi terkini (untuk rebase) + kolom bentrok. */
+export type RincianKonflik = { rev: number; isian: IsianForm; konflik: KonflikKolom[] };
+
 /** Ketersediaan nilai SIMRS sebuah kolom saat dibandingkan. */
 export type StatusKolomSimrs = "ada" | "kosong" | "gagal";
 

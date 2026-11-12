@@ -105,3 +105,13 @@ export function emptyRingkasanForm(): RingkasanForm {
     dokterKematianTtd: "",
   };
 }
+
+/** Sebab Kematian II (penyakit lain) selalu tampil 3 baris di form & cetak. */
+export const BARIS_SK_LAIN = 3;
+
+/** Bentuk baku isian RM.01: baris Sebab Kematian II dilengkapi sampai 3. Idempoten. */
+export function lengkapiRingkasan(f: RingkasanForm): RingkasanForm {
+  const skLain = [...(Array.isArray(f.skLain) ? f.skLain : [])];
+  while (skLain.length < BARIS_SK_LAIN) skLain.push({ teks: "", lama: "" });
+  return { ...f, skLain };
+}

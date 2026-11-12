@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PATH_RE } from "@/features/form-rm/asal";
+import { MAKS_UBAH } from "@/features/form-rm/gabung";
 import { MIN_CARI, tafsirCari } from "@/features/form-rm/cari";
 import { KODE_FORM } from "@/features/form-rm/registry";
 import { AKSI_ISIAN } from "@/features/form-rm/isian.status";
@@ -18,17 +19,42 @@ export const buatIsianSchema = z.strictObject({
   nopen: nopenSchema,
 });
 
-export const simpanIsianSchema = z.strictObject({
+/** Mode lama (semua form): seluruh isi + `rev` terakhir; rev usang → 409. */
+export const simpanUtuhSchema = z.strictObject({
   rev: z.number().int().min(1),
   /** Divalidasi skema form yang bersangkutan di service. */
   data: z.unknown(),
 });
+
+/** Path kolom isian (segmen divalidasi lagi & harus ada pada bentuk form — `gabung.ts`). */
+const pathKolomSchema = z.string().min(1).max(160);
+
+/**
+ * Mode GABUNG (form berlanjut, PRD Berlanjut IGD → RI §8.3): hanya kolom yang
+ * berubah, masing-masing dengan nilai dasar yang dilihat klien. `timpa` = path
+ * yang sengaja menimpa nilai petugas lain (harus bagian dari `ubah`).
+ */
+export const simpanGabungSchema = z.strictObject({
+  revDasar: z.number().int().min(1),
+  konteks: nopenSchema,
+  ubah: z
+    .array(z.strictObject({ p: pathKolomSchema, d: z.json(), n: z.json() }))
+    .min(1)
+    .max(MAKS_UBAH, `Paling banyak ${MAKS_UBAH} perubahan per simpan`),
+  timpa: z.array(pathKolomSchema).max(MAKS_UBAH).default([]),
+});
+
+export const simpanIsianSchema = z.union([simpanUtuhSchema, simpanGabungSchema]);
+
+/** Konteks pembukaan isian form berlanjut (opsional pada aksi lain; anggota rantai, dicek service). */
+const konteksOpsional = nopenSchema.optional();
 
 export const aksiIsianSchema = z
   .strictObject({
     aksi: z.enum(AKSI_ISIAN),
     rev: z.number().int().min(1),
     alasan: z.string().trim().max(500).optional(),
+    konteks: konteksOpsional,
   })
   .refine((v) => v.aksi === "FINALKAN" || (v.alasan?.length ?? 0) >= 5, {
     message: "Alasan wajib diisi (minimal 5 karakter)",
@@ -42,6 +68,7 @@ export const terapkanSimrsSchema = z.strictObject({
     .array(z.string().max(80).regex(PATH_RE, "Path kolom tidak valid"))
     .min(1, "Pilih minimal satu kolom")
     .max(100),
+  konteks: konteksOpsional,
 });
 
 /** Isian sebelum pasien terdaftar (form ber-`tanpaPendaftaran`, dicek di service). */
@@ -77,5 +104,6 @@ export type BuatSementaraInput = z.infer<typeof buatSementaraSchema>;
 export type TautkanInput = z.infer<typeof tautkanSchema>;
 export type LepasTautanInput = z.infer<typeof lepasTautanSchema>;
 export type TerapkanSimrsInput = z.infer<typeof terapkanSimrsSchema>;
-export type SimpanIsianInput = z.infer<typeof simpanIsianSchema>;
+export type SimpanUtuhInput = z.infer<typeof simpanUtuhSchema>;
+export type SimpanGabungInput = z.infer<typeof simpanGabungSchema>;
 export type AksiIsianInput = z.infer<typeof aksiIsianSchema>;

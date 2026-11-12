@@ -11,6 +11,7 @@ import {
   ValidationError,
 } from "@/server/lib/errors";
 import { ambilPath, normalkanAsal, pasangPath, samaNilai, type AsalIsian } from "@/features/form-rm/asal";
+import { bentukIsian, daunBeda, nilaiDi, tumpang, type Perubahan } from "@/features/form-rm/gabung";
 import type { AksiForm, HakForm } from "@/features/form-rm/hak";
 import { cocokSasaran, definisiForm, pesanBukanSasaran, type DefinisiForm } from "@/features/form-rm/registry";
 import { pangkasTeksPanjang } from "@/features/form-rm/skema";
@@ -27,13 +28,15 @@ import { getFormRmHeader } from "./form-rm.service";
 import type { FormRmHeader } from "./form-rm.types";
 import { auditIsian } from "./isian.audit";
 import { pindahkanBarisLama } from "./isian.lama";
+import { konteksLog } from "./isian.konteks";
+import { bacaLog, tulisLog } from "./isian.log";
 import { isiOtomatis, isiTertaut, type HasilTertaut } from "./isian.prefill";
 import { episodeSimrs, subjekBerlanjut } from "./rantai.service";
 import type { KonfirmasiRantai } from "./rantai.inti";
 import { kanonik, periksaRantai, segel, type IsiSegel } from "./isian.segel";
-import type { AksiIsianInput, BuatIsianInput, SimpanIsianInput, TerapkanSimrsInput } from "./isian.schema";
+import type { AksiIsianInput, BuatIsianInput, SimpanUtuhInput, TerapkanSimrsInput } from "./isian.schema";
 import { pisahkanTtd, rujukanTtd, sidikTtd, sisipkanTtd } from "./isian.ttd";
-import type { AktorForm, BandingSimrs, IsianForm, RevisiIsian, RiwayatIsian } from "./isian.types";
+import type { AktorForm, BandingSimrs, IsianForm, LogIsian, RevisiIsian, RiwayatIsian } from "./isian.types";
 
 /**
  * LAYANAN ISIAN FORM RM (PRD §6.3, §8). Semua penulisan memakai update
@@ -50,7 +53,7 @@ export type BarisIsian = FormRmIsian & { identitasSementara: FormRmIdentitasSeme
 export const SERTA_SEMENTARA = { identitasSementara: true } as const;
 
 /** JSON isian setelah TTD dipisah (TTD tidak ikut dihitung). */
-const MAKS_DATA_BYTE = 256 * 1024;
+export const MAKS_DATA_BYTE = 256 * 1024;
 
 export const isUnik = (e: unknown) => (e as { code?: string } | null)?.code === "P2002";
 
@@ -61,8 +64,8 @@ export const tertaut = (row: Pick<FormRmIsian, "nopen">): boolean => row.nopen !
 
 let kunciCache: { mentah: string; kunci: Uint8Array } | null = null;
 
-/** Kunci HMAC segel revisi dari env (≥ 32 karakter). Tanpa kunci → 503 (fail-closed). */
-function kunciIntegritas(): Uint8Array {
+/** Kunci HMAC segel revisi & log dari env (≥ 32 karakter). Tanpa kunci → 503 (fail-closed). */
+export function kunciIntegritas(): Uint8Array {
   const mentah = process.env.FORM_RM_KUNCI_INTEGRITAS?.trim() ?? "";
   if (mentah.length < 32) {
     throw new ServiceUnavailableError(
@@ -353,9 +356,25 @@ export function jagaDraf(row: Pick<FormRmIsian, "status">): void {
   );
 }
 
-const ukuranJson = (v: unknown) => new TextEncoder().encode(JSON.stringify(v)).byteLength;
+export const ukuranJson = (v: unknown) => new TextEncoder().encode(JSON.stringify(v)).byteLength;
 
-export async function simpanIsian(id: string, input: SimpanIsianInput, aktor: AktorForm): Promise<IsianForm> {
+/** Kolom tertaut SIMRS (hanya baca) tidak pernah dicatat sebagai perubahan petugas. */
+const bukanTertaut = (def: DefinisiForm) => (p: string) => !(def.tertaut ?? []).some((t) => tumpang(t, p));
+
+/** Perubahan per kolom antara dua isi (bentuk baku) — log simpan mode lama & muat ulang SIMRS. */
+function perubahanKolom(def: DefinisiForm, lama: unknown, baru: unknown, saring = bukanTertaut(def)): Perubahan[] {
+  const a = bentukIsian(def, lama);
+  const b = bentukIsian(def, baru);
+  return daunBeda(a, b)
+    .filter((p) => p !== "" && saring(p))
+    .map((p) => ({ p, s: nilaiDi(a, p) ?? null, j: nilaiDi(b, p) ?? null }));
+}
+
+/**
+ * Simpan mode LAMA `{ rev, data }` (semua form). Form berlanjut juga mencatat
+ * log per kolom (tab yang dibuka sebelum mode gabung tetap tercatat).
+ */
+export async function simpanIsian(id: string, input: SimpanUtuhInput, aktor: AktorForm): Promise<IsianForm> {
   const row = await cariIsianBoleh(id, aktor.hak, "update");
   jagaDraf(row);
   if (row.rev !== input.rev) throw new ConflictError();
@@ -365,6 +384,7 @@ export async function simpanIsian(id: string, input: SimpanIsianInput, aktor: Ak
   for (const p of def.tertaut ?? []) pasangPath(sah, p, ambilPath(row.data, p) ?? ambilPath(def.kosong(), p));
   const tolak = def.cekPerubahan?.(row.data, sah);
   if (tolak) throw new BusinessRuleError(tolak);
+  const log = def.berlanjut ? { kunci: kunciIntegritas(), konteks: await konteksLog(row, undefined) } : null;
 
   const hasil = await getAppDb().$transaction(async (tx) => {
     const data = await pisahkanTtd(tx, id, def, sah, aktor.id);
@@ -374,6 +394,17 @@ export async function simpanIsian(id: string, input: SimpanIsianInput, aktor: Ak
       data: { data: data as Prisma.InputJsonValue, rev: input.rev + 1, diubahOlehId: aktor.id },
     });
     if (n.count === 0) throw new ConflictError();
+    // Baris sudah terkunci oleh UPDATE di atas; `row.data` = isi tepat sebelumnya (rev cocok).
+    if (log) {
+      await tulisLog(tx, log.kunci, {
+        isianId: id,
+        rev: input.rev + 1,
+        aksi: "SIMPAN",
+        aktor,
+        konteks: log.konteks,
+        perubahan: perubahanKolom(def, row.data, data),
+      });
+    }
     return cariIsian(id, tx);
   }).catch((e: unknown) => {
     throw isUnik(e) ? new ConflictError() : e;
@@ -497,18 +528,32 @@ export async function terapkanSimrs(
   if (ukuranJson(sah) > MAKS_DATA_BYTE) throw new PayloadTooLargeError();
   const asal = normalkanAsal(row.asal);
   for (const p of pilih) asal[p] = segar.asal[p];
+  const log = def.berlanjut ? { kunci: kunciIntegritas(), konteks: await konteksLog(row, input.konteks) } : null;
 
-  const n = await getAppDb().formRmIsian.updateMany({
-    where: { id, rev: input.rev, status: "DRAF" },
-    data: {
-      data: sah as Prisma.InputJsonValue,
-      asal: asal as Prisma.InputJsonValue,
-      rev: input.rev + 1,
-      diubahOlehId: aktor.id,
-    },
+  const hasil = await getAppDb().$transaction(async (tx) => {
+    const n = await tx.formRmIsian.updateMany({
+      where: { id, rev: input.rev, status: "DRAF" },
+      data: {
+        data: sah as Prisma.InputJsonValue,
+        asal: asal as Prisma.InputJsonValue,
+        rev: input.rev + 1,
+        diubahOlehId: aktor.id,
+      },
+    });
+    if (n.count === 0) throw new ConflictError();
+    if (log) {
+      const dipilih = new Set(pilih);
+      await tulisLog(tx, log.kunci, {
+        isianId: id,
+        rev: input.rev + 1,
+        aksi: "MUAT_SIMRS",
+        aktor,
+        konteks: log.konteks,
+        perubahan: perubahanKolom(def, row.data, sah, (p) => [...dipilih].some((q) => tumpang(q, p))),
+      });
+    }
+    return cariIsian(id, tx);
   });
-  if (n.count === 0) throw new ConflictError();
-  const hasil = await cariIsian(id);
   await auditIsian(aktor, "muat-ulang-simrs", hasil);
   return { isian: keDto(hasil), diterapkan: pilih };
 }
@@ -572,6 +617,16 @@ export async function aksiIsian(id: string, input: AksiIsianInput, aktor: AktorF
   const kunci = kunciIntegritas();
   const waktu = new Date();
   const alasan = input.aksi === "FINALKAN" ? null : (input.alasan ?? null);
+  // Form berlanjut: konteks harus anggota rantai; nilai kolom tertaut yang dibekukan dicatat di log.
+  const konteks = def.berlanjut ? await konteksLog(row, input.konteks) : null;
+  const beku =
+    konteks && asalBeku
+      ? (def.tertaut ?? []).flatMap((p) => {
+          const s = ambilPath(row.data, p) ?? null;
+          const j = ambilPath(data, p) ?? null;
+          return samaNilai(s, j) ? [] : [{ p, s, j }];
+        })
+      : [];
 
   const hasil = await getAppDb().$transaction(async (tx) => {
     const n = await tx.formRmIsian.updateMany({
@@ -586,6 +641,9 @@ export async function aksiIsian(id: string, input: AksiIsianInput, aktor: AktorF
       },
     });
     if (n.count === 0) throw new ConflictError();
+    if (konteks && beku.length > 0) {
+      await tulisLog(tx, kunci, { isianId: id, rev: input.rev + 1, aksi: "BEKU_TERTAUT", aktor, konteks, perubahan: beku });
+    }
 
     const sebelum = await tx.formRmRevisi.findFirst({ where: { isianId: id }, orderBy: { rev: "desc" }, select: { hash: true } });
     const isi: IsiSegel = {
@@ -626,6 +684,20 @@ export async function aksiIsian(id: string, input: AksiIsianInput, aktor: AktorF
 
   await auditIsian(aktor, LABEL_AUDIT[input.aksi], hasil);
   return keDto(hasil);
+}
+
+/* ------------------------------------------------------------- log kolom */
+
+/**
+ * Log perubahan per kolom (PRD Berlanjut IGD → RI §5.6, §8.4): hak lihat
+ * kategori form (404 seragam), segel diperiksa ulang, pembacaan diaudit (tanpa
+ * isi). Nilai kolom hanya keluar lewat rute ber-hak ini.
+ */
+export async function logIsian(id: string, aktor: AktorForm): Promise<LogIsian> {
+  const row = await cariIsianBoleh(id, aktor.hak, "view");
+  const log = await bacaLog(getAppDb(), id, kunciIntegritas());
+  await auditIsian(aktor, "log-lihat", row, { entri: log.entri.length });
+  return log;
 }
 
 /* ---------------------------------------------------------------- riwayat */

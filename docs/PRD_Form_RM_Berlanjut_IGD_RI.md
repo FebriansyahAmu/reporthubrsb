@@ -225,7 +225,8 @@ Mode lama `{ rev, data }` tetap diterima untuk semua form (form tak berlanjut ti
 **Daun dan path** (`gabung.ts`, dipakai klien dan server):
 - daun = nilai primitif atau larik primitif (mis. `persiapan.bahasa`) — larik primitif digabung **utuh**;
 - larik objek berpanjang sama (mis. `entries` RM.21, 5 kategori tetap) ditelusuri per indeks; panjang berbeda → larik itu satu daun;
-- segmen path: `[A-Za-z][A-Za-z0-9]{0,40}` atau indeks `0–999`; `__proto__`, `prototype`, `constructor` ditolak; path **harus ada** pada bentuk isian (data tersimpan atau `def.kosong()`) — selain itu 422 sebelum objek apa pun diubah;
+- segmen path: `[A-Za-z][A-Za-z0-9]{0,40}` atau indeks `0–999`; `__proto__`, `prototype`, `constructor` ditolak; path **harus ada** pada bentuk isian (data tersimpan atau `def.kosong()`) dan menunjuk **daun** (objek → ditolak) — selain itu 422 sebelum objek apa pun diubah;
+- **bentuk sama di kedua sisi** (`bentukIsian`): kunci yang hilang dilengkapi dari `def.kosong()`, lalu `def.lengkapi` registri (mis. RM.01 Sebab Kematian II selalu 3 baris) — klien dan server menghasilkan path yang identik;
 - paling banyak 500 ubah per permintaan.
 
 **Server, satu transaksi:**
@@ -456,6 +457,30 @@ Tidak ada modul baru. Hak per kategori form (`form-rm.<kategori>`) dan `form-rm.
 | Regresi Form RM: E2E detail 38/38, riwayat 61/61, Via HP 67/67; UI detail 27/27, riwayat 47/47 | lulus (setelah segmen status dirapatkan untuk font Geist: `SegmentedControl` `px-2` → `px-1.5` di layar sempit) |
 
 Data uji dibersihkan terarah; isian 42 dan tautan 0 kembali seperti semula.
+
+### Langkah 2 — Simpan gabung per kolom + log ✅ (12 Nov 2026)
+
+**Kode.**
+- `features/form-rm/gabung.ts` (murni, teruji unit): validasi path, `bentukIsian`, `daunBeda`, `susunUbah`, `gabungkan` (tiga arah), `rebase`. Registri mendapat `lengkapi` (RM.01: Sebab Kematian II selalu 3 baris) agar bentuk isian klien = server.
+- `features/form-rm/label-kolom.ts`: label setiap kolom RM.03/RM.21/RM.01 (diuji: tak ada kolom tanpa label), ringkasan nilai & TTD tanpa gambar.
+- `isian.gabung.ts`: `PATCH /api/form-rm/isian/[id]` mode gabung — transaksi + `SELECT … FOR UPDATE`, 409 berisi isi terkini + kolom bentrok + siapa/unit/ruang/jam terakhir mengubahnya, `timpa` → aksi log `TIMPA`. Mode lama `{ rev, data }` tetap jalan untuk semua form.
+- `isian.log.inti.ts` + `isian.log.ts`: log per kolom, penggabungan ≤ 5 menit (K7), segel HMAC berantai `form-rm.log|`, pemeriksaan integritas. Log juga ditulis oleh simpan mode lama, **Muat ulang dari SIMRS** (`MUAT_SIMRS`), dan FINALKAN yang membekukan kolom tertaut (`BEKU_TERTAUT`).
+- `isian.konteks.ts`: konteks harus anggota rantai (422); unit dari peran rantai (akar = IGD, lanjutan = RI), ruang dibaca server (cache 5 menit).
+- `GET /api/form-rm/isian/[id]/log` (hak lihat, 404 seragam, diaudit `form-rm.isian.log-lihat`). `konteks` opsional pada `…/aksi` dan `…/simrs`.
+- Klien: `useIsian` mode gabung (dasar, rebase setelah simpan, 409 → kolom bentrok, simpan otomatis jeda, aksi yang ditolak karena rev usang memuat isi terbaru tanpa muat ulang halaman), `PanelKonflik` (Pakai milik saya / milik <nama>, juga untuk semua kolom sekaligus), pita "Perubahan petugas lain ikut dimuat", tab **Perubahan** di Riwayat (satu linimasa dengan revisi), `KonteksIsianProvider`.
+- Perbaikan lama: RM.03 "Pihak 3" diisi sebelum Pihak 1–2 menghasilkan larik berlubang yang ditolak skema.
+
+**Hasil uji (build produksi :3100).**
+
+| Uji | Hasil |
+| --- | --- |
+| Unit (total) | 703/703 (39 baru: gabung, label kolom, segel & penggabungan log) |
+| E2E L2 (`berlanjut-l2-e2e.mjs`): §9.5 no. 1–3, 7–16, 19, 22 + K7, mode lama, `MUAT_SIMRS`, `BEKU_TERTAUT`, TTD sebagai referensi | 71/71 |
+| 50 simpan paralel acak (5 pengguna, 2 konteks) | 7 sukses / 43 konflik dalam 0,7 dtk; tiap kolom paling banyak satu pemenang; semua sukses ada di hasil & log; rev naik tepat 7 |
+| UI L2 dua peramban (`berlanjut-l2-ui.mjs`): §5.3 C & D, TIMPA, pakai milik petugas lain, jeda simpan otomatis, 360 px, tab Perubahan | 25/25, tanpa galat konsol/CSP |
+| Regresi: E2E L1 49/49, detail 38/38, riwayat 61/61, Via HP 67/67, permintaan TTD 117/117; UI L1 23/23, detail 27/27, riwayat 47/47, Via HP 18/18, permintaan TTD 39/39 | lulus |
+
+Data uji dibersihkan terarah; isian 42, log 0, tautan 0 seperti semula.
 
 ## 16. Keputusan terbuka
 

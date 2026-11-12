@@ -217,6 +217,9 @@ export const POST = withPermission("master.pengguna", "create", async (req, _ctx
 | `POST /api/form-rm/isian` | `create` pada kategori form. Form berlanjut dari episode RI bisa menjawab `perluKonfirmasi` (tanpa menulis). |
 | `POST /api/form-rm/tautan-episode` | `create` pada kategori salah satu form berlanjut. Akar diverifikasi ulang terhadap kandidat SIMGOS (NORM sama, IGD, SPRI / ≤ 24 jam); selain itu 409. |
 | `POST /api/form-rm/tautan-episode/<id>/lepas` | `form-rm.kelola` (`update`), alasan ≥ 10 karakter. Baris tidak dihapus. |
+| `PATCH /api/form-rm/isian/<id>` mode gabung `{ revDasar, konteks, ubah, timpa }` | `update` pada kategori form (tanpa `view` → 404 seragam), hanya form berlanjut (lainnya 422). `konteks` harus anggota rantai (422), path aman & ada pada bentuk form (422), kolom sama bentrok → 409 berisi isi terkini + kolom bentrok. |
+| `GET /api/form-rm/isian/<id>/log` | `view` pada kategori form (404 seragam). Nilai kolom sebelum → sesudah; pembacaan diaudit `form-rm.isian.log-lihat`. |
+| `konteks` pada `POST …/aksi` & `POST …/simrs` | opsional; bila dikirim untuk form berlanjut harus anggota rantai (422). |
 
 ---
 

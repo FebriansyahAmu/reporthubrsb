@@ -29,6 +29,7 @@ import { TtdPerangkatProvider } from "@/features/form-rm/ttd-siaga/TtdPerangkatP
 import { AksiIsianDialog } from "./AksiIsianDialog";
 import { KunciIsian } from "./kunci";
 import { MuatUlangSimrs } from "./MuatUlangSimrs";
+import { ID_PANEL_KONFLIK, PanelKonflik, PitaDariLain } from "./PanelKonflik";
 import { RiwayatIsianDrawer } from "./RiwayatIsianDrawer";
 import { StatusIsianBadge } from "./StatusIsianBadge";
 import { AsalIsianProvider } from "./TandaAsal";
@@ -84,6 +85,8 @@ export function IsianFrame<T>({
     <AsalIsianProvider value={{ asal: isian.asal, data: k.form }}>
       <div className="space-y-5 pb-28">
         <PemberitahuanStatus kendali={k} onRiwayat={() => setRiwayat(true)} />
+        <PitaDariLain kendali={k} />
+        <PanelKonflik kendali={k} />
         <PitaTautan kendali={k} />
         <RingkasAsal kendali={k} onMuatUlang={bukaSimrs} />
         <KunciIsian terkunci={k.terkunci}>
@@ -97,7 +100,13 @@ export function IsianFrame<T>({
 
         <AksiIsianDialog kendali={k} aksi={dialog} onTutup={() => setDialog(null)} onBerhasil={berhasil} />
         {simrs && <MuatUlangSimrs kendali={k} onTutup={() => setSimrs(false)} />}
-        <RiwayatIsianDrawer open={riwayat} onClose={() => setRiwayat(false)} isianId={isian.id} rev={isian.rev} />
+        <RiwayatIsianDrawer
+          open={riwayat}
+          onClose={() => setRiwayat(false)}
+          isianId={isian.id}
+          rev={isian.rev}
+          kode={k.gabung ? isian.kode : null}
+        />
       </div>
     </AsalIsianProvider>
   );
@@ -246,6 +255,12 @@ function BuatIsianBaru({ isian }: { isian: IsianForm }) {
 
 /* -------------------------------------------------------------- bilah aksi */
 
+/** Gulir ke panel konflik (tanpa animasi bila pengguna memilih gerak dikurangi). */
+function keKonflik() {
+  const halus = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.getElementById(ID_PANEL_KONFLIK)?.scrollIntoView({ behavior: halus ? "smooth" : "auto", block: "start" });
+}
+
 function BilahAksi<T>({
   kendali: k,
   aksen,
@@ -338,6 +353,18 @@ function BilahAksi<T>({
 function TeksSimpan<T>({ kendali: k }: { kendali: KendaliIsian<T> }) {
   const { isian } = k;
   if (k.sibuk === "simpan" || k.menyimpanOtomatis) return <span>Menyimpan…</span>;
+  if (k.bentrok.length > 0) {
+    return (
+      <button
+        type="button"
+        onClick={keKonflik}
+        className="inline-flex items-center gap-1 font-medium text-warning underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+      >
+        <CircleAlert className="size-3.5" />
+        {k.bentrok.length} kolom bentrok — pilih isinya
+      </button>
+    );
+  }
   if (k.sibuk === "simrs") return <span>Menerapkan data SIMRS…</span>;
   if (k.galat && !k.galat.konflik) {
     return (

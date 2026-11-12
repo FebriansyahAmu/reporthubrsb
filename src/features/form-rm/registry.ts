@@ -4,7 +4,7 @@ import { emptyConsentForm, CONSENT_JENIS } from "./consent.constants";
 import type { StrukturDeklaratif } from "./deklaratif";
 import { emptyEdukasiForm, EDUKASI_JENIS } from "./edukasi.constants";
 import { morse } from "./forms/morse";
-import { emptyRingkasanForm, RINGKASAN_JENIS } from "./ringkasan.constants";
+import { emptyRingkasanForm, lengkapiRingkasan, RINGKASAN_JENIS } from "./ringkasan.constants";
 import { cekTtdPernyataan, emptyRm22Form, kekuranganRm22, ringkasRm22, type Rm22Data } from "./rm22.constants";
 import { cekTtdRm33, emptyRm33Form, kekuranganRm33, ringkasRm33, type Rm33Data } from "./rm33.constants";
 import { cekTtdRm41, emptyRm41Form, kekuranganRm41 } from "./rm41.constants";
@@ -153,6 +153,12 @@ export type DefinisiForm<T extends object = object> = {
   readonly skema: z.ZodType<T>;
   /** Isian baru tanpa data SIMRS (sudah lolos skema). */
   kosong(): T;
+  /**
+   * Bentuk baku data yang ditampilkan form (mis. baris tetap), idempoten. Klien
+   * & server membandingkan isian form berlanjut dalam bentuk ini (`gabung.ts`)
+   * sehingga path kolom di kedua sisi selalu sama. Tidak ada = apa adanya.
+   */
+  lengkapi?(data: T): T;
   /** Petakan setiap slot tanda tangan (path stabil, mis. `entries.2.sasaranTtd`). */
   petaTtd(data: T, f: PetaSlotTtd): T;
   /** Kekurangan yang menghalangi FINAL (kosong = boleh difinalkan). */
@@ -417,6 +423,7 @@ const ringkasan: DefinisiForm<z.output<typeof ringkasanFormSchema>> = {
   tertaut: ["keadaanKeluar"],
   skema: ringkasanFormSchema,
   kosong: () => ringkasanFormSchema.parse(emptyRingkasanForm()),
+  lengkapi: lengkapiRingkasan,
   petaTtd: (d, f) => ({
     ...d,
     dokterMerawatTtd: f(d.dokterMerawatTtd, "dokterMerawatTtd"),
