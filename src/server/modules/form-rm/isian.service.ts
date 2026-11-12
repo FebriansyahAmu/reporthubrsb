@@ -27,6 +27,7 @@ import { legEpisode } from "./form-rm.pasien";
 import { getFormRmHeader } from "./form-rm.service";
 import type { FormRmHeader } from "./form-rm.types";
 import { auditIsian } from "./isian.audit";
+import { siarkanBerubah, siarkanStatus } from "./isian.hub";
 import { pindahkanBarisLama } from "./isian.lama";
 import { konteksLog } from "./isian.konteks";
 import { bacaLog, tulisLog } from "./isian.log";
@@ -395,23 +396,18 @@ export async function simpanIsian(id: string, input: SimpanUtuhInput, aktor: Akt
     });
     if (n.count === 0) throw new ConflictError();
     // Baris sudah terkunci oleh UPDATE di atas; `row.data` = isi tepat sebelumnya (rev cocok).
+    const perubahan = log ? perubahanKolom(def, row.data, data) : [];
     if (log) {
-      await tulisLog(tx, log.kunci, {
-        isianId: id,
-        rev: input.rev + 1,
-        aksi: "SIMPAN",
-        aktor,
-        konteks: log.konteks,
-        perubahan: perubahanKolom(def, row.data, data),
-      });
+      await tulisLog(tx, log.kunci, { isianId: id, rev: input.rev + 1, aksi: "SIMPAN", aktor, konteks: log.konteks, perubahan });
     }
-    return cariIsian(id, tx);
+    return { baris: await cariIsian(id, tx), perubahan };
   }).catch((e: unknown) => {
     throw isUnik(e) ? new ConflictError() : e;
   });
 
-  await auditIsian(aktor, "simpan", hasil);
-  return keDto(hasil);
+  await auditIsian(aktor, "simpan", hasil.baris);
+  if (log) siarkanBerubah(hasil.baris, aktor, log.konteks, hasil.perubahan);
+  return keDto(hasil.baris);
 }
 
 /* ----------------------------------------------------- muat ulang SIMRS */
@@ -541,21 +537,15 @@ export async function terapkanSimrs(
       },
     });
     if (n.count === 0) throw new ConflictError();
+    const perubahan = log ? perubahanKolom(def, row.data, sah, (p) => pilih.some((q) => tumpang(q, p))) : [];
     if (log) {
-      const dipilih = new Set(pilih);
-      await tulisLog(tx, log.kunci, {
-        isianId: id,
-        rev: input.rev + 1,
-        aksi: "MUAT_SIMRS",
-        aktor,
-        konteks: log.konteks,
-        perubahan: perubahanKolom(def, row.data, sah, (p) => [...dipilih].some((q) => tumpang(q, p))),
-      });
+      await tulisLog(tx, log.kunci, { isianId: id, rev: input.rev + 1, aksi: "MUAT_SIMRS", aktor, konteks: log.konteks, perubahan });
     }
-    return cariIsian(id, tx);
+    return { baris: await cariIsian(id, tx), perubahan };
   });
-  await auditIsian(aktor, "muat-ulang-simrs", hasil);
-  return { isian: keDto(hasil), diterapkan: pilih };
+  await auditIsian(aktor, "muat-ulang-simrs", hasil.baris);
+  if (log) siarkanBerubah(hasil.baris, aktor, log.konteks, hasil.perubahan);
+  return { isian: keDto(hasil.baris), diterapkan: pilih };
 }
 
 /* --------------------------------------------------------------- transisi */
@@ -683,6 +673,7 @@ export async function aksiIsian(id: string, input: AksiIsianInput, aktor: AktorF
   });
 
   await auditIsian(aktor, LABEL_AUDIT[input.aksi], hasil);
+  if (konteks) siarkanStatus(hasil, aktor);
   return keDto(hasil);
 }
 

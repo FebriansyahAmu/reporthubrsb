@@ -1,8 +1,9 @@
 "use client";
 
-import { CircleAlert, Users, X } from "lucide-react";
+import { Ban, CircleAlert, Lock, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { formatTime } from "@/lib/format";
+import { tempatUnit } from "@/features/form-rm/aliran-isian";
 import { labelKolom, ringkasNilai, slotTtd } from "@/features/form-rm/label-kolom";
 import { nilaiDi } from "@/features/form-rm/gabung";
 import { srcTtd } from "@/features/form-rm/skema";
@@ -17,12 +18,9 @@ import type { KendaliIsian } from "./useIsian";
  */
 export const ID_PANEL_KONFLIK = "panel-konflik-isian";
 
-const LABEL_UNIT: Record<string, string> = { IGD: "IGD", RI: "Rawat Inap", RJ: "Rawat Jalan" };
-
 /** "Ns. Budi (IGD · Triase, 10.42)" */
 function siapa(k: KonflikKolom): string {
-  const tempat = [k.unit ? (LABEL_UNIT[k.unit] ?? k.unit) : null, k.ruang].filter(Boolean).join(" · ");
-  const rincian = [tempat, k.waktu ? formatTime(k.waktu) : null].filter(Boolean).join(", ");
+  const rincian = [tempatUnit(k.unit, k.ruang), k.waktu ? formatTime(k.waktu) : null].filter(Boolean).join(", ");
   return `${k.oleh ?? "petugas lain"}${rincian ? ` (${rincian})` : ""}`;
 }
 
@@ -136,9 +134,19 @@ function Pilihan({
   );
 }
 
-/** "Perubahan petugas lain ikut dimuat: Alamat, Telp / HP · 10.42" (mode gabung). */
+/**
+ * "Ns. Budi (IGD · Triase) mengubah: Alamat, Telp / HP · 10.42" (aliran langsung),
+ * atau "Perubahan petugas lain ikut dimuat: …" bila pengubahnya tak diketahui.
+ */
 export function PitaDariLain<T>({ kendali: k }: { kendali: KendaliIsian<T> }) {
   if (!k.gabung || !k.dariLain) return null;
+  const { kolom, lebih, waktu, oleh } = k.dariLain;
+  const daftar = (
+    <>
+      <b>{kolom.join(", ")}</b>
+      {lebih > 0 && <> dan {lebih} kolom lain</>}
+    </>
+  );
   return (
     <div
       role="status"
@@ -147,7 +155,14 @@ export function PitaDariLain<T>({ kendali: k }: { kendali: KendaliIsian<T> }) {
       <p className="flex min-w-0 items-start gap-2">
         <Users className="mt-0.5 size-4 shrink-0" aria-hidden />
         <span>
-          Perubahan petugas lain ikut dimuat: <b>{k.dariLain.kolom.join(", ")}</b> · {formatTime(k.dariLain.waktu)}
+          {oleh.length > 0 ? (
+            <>
+              {oleh.join(", ")} mengubah: {daftar}
+            </>
+          ) : (
+            <>Perubahan petugas lain ikut dimuat: {daftar}</>
+          )}{" "}
+          · {formatTime(waktu)}
         </span>
       </p>
       <button
@@ -155,6 +170,50 @@ export function PitaDariLain<T>({ kendali: k }: { kendali: KendaliIsian<T> }) {
         onClick={k.tutupDariLain}
         aria-label="Tutup pemberitahuan"
         className="rounded p-0.5 transition-colors hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+      >
+        <X className="size-3.5" />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Isian difinalkan / dibatalkan petugas lain saat masih dibuka di sini (PRD §5.3 E):
+ * layar sudah terkunci; kolom yang belum sempat tersimpan disebutkan agar bisa
+ * disampaikan ke pengelola rekam medis (koreksi lewat Buka koreksi).
+ */
+export function PitaTertinggal<T>({ kendali: k }: { kendali: KendaliIsian<T> }) {
+  const t = k.tertinggal;
+  if (!k.gabung || !t) return null;
+  const final = t.status === "FINAL";
+  const Ikon = final ? Lock : Ban;
+  return (
+    <div
+      role="alert"
+      className="flex items-start justify-between gap-3 rounded-[var(--radius-md)] border border-warning/40 bg-warning-soft px-3 py-2.5 text-[13px] text-warning"
+    >
+      <div className="flex min-w-0 items-start gap-2">
+        <Ikon className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <div className="min-w-0 space-y-0.5">
+          <p className="font-semibold">
+            Isian baru saja {final ? "difinalkan" : "dibatalkan"}
+            {t.oleh ? ` oleh ${t.oleh}` : " di tempat lain"} — layar ini terkunci.
+          </p>
+          {t.kolom.length > 0 ? (
+            <p>
+              Perubahan Anda yang belum tersimpan: <b>{t.kolom.join(", ")}</b>.{" "}
+              {final ? "Sampaikan ke pengelola rekam medis bila perlu dikoreksi lewat Buka koreksi." : ""}
+            </p>
+          ) : (
+            <p>Semua perubahan Anda sudah tersimpan sebelumnya.</p>
+          )}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={k.tutupTertinggal}
+        aria-label="Tutup pemberitahuan"
+        className="rounded p-0.5 transition-colors hover:bg-warning-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
       >
         <X className="size-3.5" />
       </button>

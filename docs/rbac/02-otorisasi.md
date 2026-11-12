@@ -220,6 +220,8 @@ export const POST = withPermission("master.pengguna", "create", async (req, _ctx
 | `PATCH /api/form-rm/isian/<id>` mode gabung `{ revDasar, konteks, ubah, timpa }` | `update` pada kategori form (tanpa `view` → 404 seragam), hanya form berlanjut (lainnya 422). `konteks` harus anggota rantai (422), path aman & ada pada bentuk form (422), kolom sama bentrok → 409 berisi isi terkini + kolom bentrok. |
 | `GET /api/form-rm/isian/<id>/log` | `view` pada kategori form (404 seragam). Nilai kolom sebelum → sesudah; pembacaan diaudit `form-rm.isian.log-lihat`. |
 | `konteks` pada `POST …/aksi` & `POST …/simrs` | opsional; bila dikirim untuk form berlanjut harus anggota rantai (422). |
+| `GET /api/form-rm/isian/<id>/aliran?konteks=` (SSE) | `view` pada kategori form (404 seragam), hanya form berlanjut yang tertaut (lainnya 404), asal sama (lintas situs → 403), `konteks` anggota rantai (422). Laju sambung 30/menit/pengguna, 8 aliran/pengguna (429), 400 total (503). Event tanpa nilai kolom; aliran ditutup tiap 10 menit (`segarkan`) sehingga hak dicek ulang saat sambung lagi. |
+| `GET /api/form-rm/isian/<id>/terkini?konteks=` | `view` pada kategori form, dicek SETIAP permintaan (404 seragam); hanya form berlanjut; `konteks` opsional (422 bila bukan anggota rantai). Laju 120/menit/pengguna. Diaudit `form-rm.isian.terkini`, dirangkum satu entri per pengguna+isian per 10 menit. |
 
 ---
 

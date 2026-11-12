@@ -12,6 +12,7 @@ import {
 import { samaNilai } from "@/features/form-rm/asal";
 import { bentukIsian, gabungkan, nilaiDi, type Perubahan } from "@/features/form-rm/gabung";
 import { auditIsian } from "./isian.audit";
+import { siarkanBerubah } from "./isian.hub";
 import { konteksLog } from "./isian.konteks";
 import { olehTerakhir, tulisLog } from "./isian.log";
 import type { SimpanGabungInput } from "./isian.schema";
@@ -38,7 +39,7 @@ import type { AktorForm, IsianForm, KonflikKolom, RincianKonflik } from "./isian
  *      terkini + kolom bentrok + siapa terakhir mengubahnya, TIDAK ADA yang ditulis;
  *   4. skema strict, aturan perubahan, batas ukuran, TTD dipisah;
  *   5. UPDATE rev + 1, tulis/gabung log bersegel;
- *   6. setelah commit: audit (tanpa isi).
+ *   6. setelah commit: audit (tanpa isi) + siaran `berubah` ke aliran (path saja).
  * Kunci baris hanya dipegang selama transaksi (milidetik).
  */
 
@@ -144,6 +145,7 @@ export async function simpanGabung(id: string, input: SimpanGabungInput, aktor: 
       timpa: hasil.berubah.filter((x) => x.t).length,
       konteks: konteks.nopen,
     });
+    siarkanBerubah(hasil.baris, aktor, konteks, hasil.berubah);
   }
   return keDto(hasil.baris);
 }

@@ -29,7 +29,8 @@ import { TtdPerangkatProvider } from "@/features/form-rm/ttd-siaga/TtdPerangkatP
 import { AksiIsianDialog } from "./AksiIsianDialog";
 import { KunciIsian } from "./kunci";
 import { MuatUlangSimrs } from "./MuatUlangSimrs";
-import { ID_PANEL_KONFLIK, PanelKonflik, PitaDariLain } from "./PanelKonflik";
+import { KehadiranIsian } from "./KehadiranIsian";
+import { ID_PANEL_KONFLIK, PanelKonflik, PitaDariLain, PitaTertinggal } from "./PanelKonflik";
 import { RiwayatIsianDrawer } from "./RiwayatIsianDrawer";
 import { StatusIsianBadge } from "./StatusIsianBadge";
 import { AsalIsianProvider } from "./TandaAsal";
@@ -84,7 +85,9 @@ export function IsianFrame<T>({
   return (
     <AsalIsianProvider value={{ asal: isian.asal, data: k.form }}>
       <div className="space-y-5 pb-28">
+        <PitaTertinggal kendali={k} />
         <PemberitahuanStatus kendali={k} onRiwayat={() => setRiwayat(true)} />
+        <KehadiranIsian kendali={k} />
         <PitaDariLain kendali={k} />
         <PanelKonflik kendali={k} />
         <PitaTautan kendali={k} />

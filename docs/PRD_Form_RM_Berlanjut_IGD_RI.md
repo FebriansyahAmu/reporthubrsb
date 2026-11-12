@@ -283,12 +283,23 @@ Kunci baris hanya dipegang selama satu transaksi (milidetik). Tidak ada kunci ya
 - Umur maksimum 10 menit membatasi jendela pengguna yang perannya dicabut masih menerima event `berubah`.
 - Klien membuka aliran **hanya saat tab terlihat**, menutupnya saat tersembunyi, dan menyambung ulang manual (EventSource berhenti setelah respons non-200 — gotcha L2 TTD siaga).
 - Hub satu proses; bila kelak multi-instance → pub/sub (Redis), antarmuka hub tetap kecil.
+- `hadir` disusun **per penerima** (tanpa dirinya sendiri) dan disiarkan **digabung per 300 ms** per isian, sehingga gelombang sambung ulang (mis. server dimulai ulang) tidak membanjiri setiap aliran. Aliran baru langsung menerima daftar hadirnya sendiri.
+- `berubah` memuat paling banyak 40 path; sisanya hanya dihitung (`lebih`).
+- Laju: sambung aliran 30/menit/pengguna; `terkini` 120/menit/pengguna.
+- `terkini` diaudit `form-rm.isian.terkini`, **dirangkum** satu entri per (pengguna, isian) per 10 menit — halaman yang terbuka mengambil isi terkini pada setiap perubahan petugas lain; pembukaan halaman tetap diaudit `lihat`.
+- Lepas tautan (§5.5) → aliran yang dibuka dari episode lanjutan itu menerima `segarkan` lalu ditutup; sambung ulang ditolak 422 dan klien menampilkan "Tautan perawatan … sudah berubah. Muat ulang halaman."
+- Setelah aliran putus, klien mengambil `terkini` lebih dulu (sekaligus memeriksa hak): 401/403/404/422 → pembaruan langsung dihentikan dengan alasannya; galat jaringan → sambung ulang bertahap 1 → 30 dtk.
 
 ### 8.6 Klien (`useIsian` mode berlanjut)
 
 - `dasar` = isi server terakhir (bentuk `siapkan`). Simpan mengirim `ubah = beda(dasar, lokal)`; kosong → tidak ada permintaan.
 - Sukses → `lokal = rebase(dasar, lokal, serverBaru)` (kolom yang diubah sejak permintaan dikirim tetap milik lokal), `dasar = serverBaru`.
 - Event `berubah`/`status` dengan rev lebih baru (bukan hasil simpan sendiri) → ambil `/terkini` → rebase → pemberitahuan "**<nama> (<unit>) mengubah: <label kolom> · <jam>**".
+  - Simpan/aksi sendiri yang sedang berjalan ditunggu dulu: event itu mungkin hasil simpannya sendiri (rev-nya lalu sudah tercakup jawaban simpan).
+  - Banyak event beruntun → satu pengambilan `terkini` (antrean rev tertinggi + info siapa/kolom).
+  - Kolom yang sama sedang diketik (belum tersimpan) dan diubah petugas lain → **panel konflik langsung**, tanpa menunggu simpan sendiri ditolak 409.
+  - Kolom tertaut SIMRS di layar tetap nilai SIMRS terkini (tidak diganti nilai tersimpan server).
+- `status` FINAL/BATAL dari pihak lain → layar terkunci seketika; pita menyebut siapa dan kolom yang belum sempat tersimpan (§5.3 E).
 - 409 konflik → `dasar` = isi server; kolom bentrok ditampilkan di **PanelKonflik**; simpan otomatis jeda sampai semua kolom bentrok dipilih.
 - Perilaku form tak berlanjut **tidak berubah**.
 
@@ -298,8 +309,8 @@ Kunci baris hanya dipegang selama satu transaksi (milidetik). Tidak ada kunci ya
 | -------------------------------------------- | ------ | -------------------------------------------------------------------------- |
 | `/api/form-rm/isian`                         | POST   | sekarang + jawaban `perluKonfirmasi` untuk kandidat `WAKTU`                |
 | `/api/form-rm/isian/[id]`                    | PATCH  | sekarang (`jagaTulis`: asal sama + laju 60/mnt) + mode gabung              |
-| `/api/form-rm/isian/[id]/terkini`            | GET    | `view` kategori, 404 seragam, `tanpaCache`, laju per pengguna              |
-| `/api/form-rm/isian/[id]/aliran`             | GET    | `view` kategori, asal sama, batas §8.5                                     |
+| `/api/form-rm/isian/[id]/terkini`            | GET    | `view` kategori, 404 seragam, `tanpaCache`, laju 120/mnt per pengguna, audit dirangkum |
+| `/api/form-rm/isian/[id]/aliran`             | GET    | `view` kategori, asal sama, laju sambung 30/mnt, batas §8.5                |
 | `/api/form-rm/isian/[id]/log`                | GET    | `view` kategori, 404 seragam, diaudit                                      |
 | `/api/form-rm/tautan-episode`                | POST   | `create` pada kategori salah satu form berlanjut, `jagaTulis`, verifikasi §6 |
 | `/api/form-rm/tautan-episode/[id]/lepas`     | POST   | `hak.kelola`, `jagaTulis`, alasan wajib (≥ 10 karakter)                    |
@@ -481,6 +492,31 @@ Data uji dibersihkan terarah; isian 42 dan tautan 0 kembali seperti semula.
 | Regresi: E2E L1 49/49, detail 38/38, riwayat 61/61, Via HP 67/67, permintaan TTD 117/117; UI L1 23/23, detail 27/27, riwayat 47/47, Via HP 18/18, permintaan TTD 39/39 | lulus |
 
 Data uji dibersihkan terarah; isian 42, log 0, tautan 0 seperti semula.
+
+### Langkah 3 — Langsung (SSE) ✅ (12 Nov 2026)
+
+**Kode.**
+- `features/form-rm/aliran-isian.ts` (murni, teruji unit): daftar event tetap + penyusun frame (bersama TTD siaga lewat `penyusunFrame` di `ttd-siaga/sse.ts`), batas, pembaca event klien yang memvalidasi bentuk, label unit/tempat.
+- `isian.hub.ts`: hub per isian di `globalThis` — batas 8/pengguna & 400 total, umur 10 menit → `segarkan`, detak 20 dtk, `hadir` per penerima & digabung 300 ms, `putuskanKonteks` saat tautan dilepas. Siaran dipanggil service **setelah commit**: simpan gabung, simpan mode lama, muat ulang SIMRS (`berubah`), FINALKAN/BUKA_KOREKSI/BATALKAN (`status`).
+- `isian.aliran.ts` + rute `GET …/aliran` (SSE) dan `GET …/terkini`; laju di `isian.jaga.ts`.
+- Klien: `useAliranIsian` (tab terlihat saja, watchdog, sambung ulang bertahap, berhenti bila akses berakhir), `useIsian` mode langsung (antrean event → satu `terkini` → rebase; konflik langsung; kolom tertaut tetap nilai SIMRS terkini), `KehadiranIsian` ("Juga membuka: …"), pita "<nama> (<unit · ruang>) mengubah: …", `PitaTertinggal` (difinalkan pihak lain), peringatan FINALKAN K6 (orang lain membuka; pasien masih dirawat untuk RM.01/RM.21 — `FINAL_SAAT_PULANG`, dari data pulang SIMRS episode RI).
+
+**Hasil uji (build produksi :3100).**
+
+| Uji | Hasil |
+| --- | --- |
+| Unit (total) | 713/713 (10 baru: protokol aliran) |
+| E2E L3 (`berlanjut-l3-e2e.mjs`): §9.5 no. 1–3, 17–19, 22 + header SSE, `hadir`, `berubah`/`status`, audit & laju `terkini`, lepas tautan | 54/54 |
+| Latensi `berubah` sampai klien lain | 38–66 ms (juga saat 400 aliran terbuka) |
+| Batas | tab ke-9 → 429; 400 aliran terbuka dalam 1,1 dtk, ke-401 → 503; sambung ke-31/menit → 429; `terkini` ke-121/menit → 429 |
+| Umur aliran | ditutup 600,1 dtk dengan `segarkan`; 29 detak; peran dicabut → sambung ulang & `terkini` 403 |
+| UI L3 dua peramban (`berlanjut-l3-ui.mjs`): §5.3 A–F, peringatan K6, 360 px | 30/30, tanpa galat konsol/CSP |
+| Regresi E2E: L2 71/71, L1 49/49, detail 38/38, riwayat 61/61, Via HP 67/67, permintaan TTD 117/117, TTD siaga 70/70 | lulus |
+| Regresi UI: L2 25/25, L1 23/23, detail 27/27, riwayat 47/47, Via HP 18/18, permintaan TTD 39/39, TTD siaga 28/28 | lulus |
+
+Perubahan perilaku yang disengaja: konflik kolom sama kini muncul **sebelum** simpan (begitu perubahan petugas lain tiba), sehingga uji UI L2 diurutkan ulang (pihak yang kalah mengetik lebih dulu). Uji UI kini menunggu input yang akan diisi terhidrasi (satu kegagalan sekali-jalan di langkah pertama UI L2 tak bisa direproduksi dalam tiga run berikutnya).
+
+Data uji dibersihkan terarah; isian 42, log 0, tautan 0 seperti semula. Tanpa migrasi baru; tanpa dependensi baru.
 
 ## 16. Keputusan terbuka
 

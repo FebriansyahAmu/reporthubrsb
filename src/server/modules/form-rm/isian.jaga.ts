@@ -23,6 +23,11 @@ const lajuCari = buatPembatasLaju({ batas: 60, jendelaMs: 60_000 });
 /** Perbandingan isian dengan SIMRS (±8 query SIMGOS per permintaan) per pengguna. */
 const lajuSimrs = buatPembatasLaju({ batas: 20, jendelaMs: 60_000 });
 
+/** Membuka aliran isian (SSE) per pengguna — sambung ulang wajar jauh di bawah ini. */
+const lajuAliran = buatPembatasLaju({ batas: 30, jendelaMs: 60_000 });
+/** Isi terkini (dipanggil tiap event `berubah` dari petugas lain) per pengguna. */
+const lajuTerkini = buatPembatasLaju({ batas: 120, jendelaMs: 60_000 });
+
 /** Aktor + hak per kategori form untuk Route Handler. */
 export const aktorDari = async (user: SessionUser, req: NextRequest): Promise<AktorForm> => ({
   id: user.id,
@@ -58,6 +63,22 @@ export function jagaCari(user: SessionUser): void {
 /** Batasi laju perbandingan isian dengan SIMRS per pengguna. */
 export function jagaSimrs(user: SessionUser): void {
   const laju = lajuSimrs(user.id);
+  if (!laju.izin) throw new TooManyRequestsError(laju.ulangDetik);
+}
+
+/** Aliran SSE isian: tolak lintas situs (EventSource membawa cookie sesi) lalu batasi laju sambung. */
+export function jagaAliran(req: NextRequest, user: SessionUser): void {
+  const publik = asalPublik();
+  if (permintaanLintasSitus(req.headers, publik ? [new URL(publik).host] : [])) {
+    throw new ForbiddenError("Permintaan lintas situs ditolak");
+  }
+  const laju = lajuAliran(user.id);
+  if (!laju.izin) throw new TooManyRequestsError(laju.ulangDetik);
+}
+
+/** Batasi laju pengambilan isi terkini per pengguna. */
+export function jagaTerkini(user: SessionUser): void {
+  const laju = lajuTerkini(user.id);
   if (!laju.izin) throw new TooManyRequestsError(laju.ulangDetik);
 }
 

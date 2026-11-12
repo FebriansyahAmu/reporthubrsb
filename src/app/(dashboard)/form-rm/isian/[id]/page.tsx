@@ -14,6 +14,7 @@ import { Rm41FormView } from "@/features/form-rm/Rm41FormView";
 import { Rm50FormView } from "@/features/form-rm/Rm50FormView";
 import { Rm70FormView } from "@/features/form-rm/Rm70FormView";
 import { TriaseFormView } from "@/features/form-rm/TriaseFormView";
+import { FINAL_SAAT_PULANG } from "@/features/form-rm/berlanjut";
 import { KonteksIsianProvider } from "@/features/form-rm/isian/KonteksIsian";
 import { KATEGORI_FORM, MODUL_AKSES_FORM_RM } from "@/features/form-rm/kategori";
 import { NotFoundError } from "@/server/lib/errors";
@@ -77,7 +78,10 @@ export default async function IsianPage({
     rantai.lanjutan.length > 0 ? ringkasEpisode([tersimpan.nopen, ...rantai.lanjutan.map((l) => l.nopen)]) : null,
   ]);
   // Kolom tertaut SIMRS (mis. Keadaan Keluar RM.01) berisi nilai SIMRS terkini selama DRAF.
-  const isian = await tertautTerkini(tersimpan, header);
+  const [isian, dirawatDi] = await Promise.all([
+    tertautTerkini(tersimpan, header),
+    ruangMasihDirawat(tersimpan, episodeRantai, nopenSimrs, rujukan.keluar),
+  ]);
   const { hak } = aktor;
   const izin: IzinIsian = {
     ubah: hak.boleh(isian.kategori, "update"),
@@ -113,11 +117,28 @@ export default async function IsianPage({
         }`}
       />
       {episodeRantai && <PitaBerlanjut episode={episodeRantai} konteks={rantai.konteks} />}
-      <KonteksIsianProvider konteks={rantai.konteks}>
+      <KonteksIsianProvider konteks={rantai.konteks} dirawatDi={dirawatDi}>
         <TampilanForm isian={isian} header={header} izin={izin} rujukan={rujukan} />
       </KonteksIsianProvider>
     </FadeIn>
   );
+}
+
+/**
+ * K6: RM.01/RM.21 biasanya difinalkan saat pasien pulang. Ruang rawat inap bila
+ * pasien MASIH dirawat (episode RI rantai tanpa data pulang SIMRS) → dialog
+ * FINALKAN memperingatkan; sudah pulang / SIMRS gagal dibaca → tanpa peringatan.
+ */
+async function ruangMasihDirawat(
+  isian: IsianForm,
+  episode: EpisodeRingkas[] | null,
+  nopenSimrs: string,
+  keluar: BacaKeluarSimrs | null,
+): Promise<string | null> {
+  if (isian.status !== "DRAF" || !FINAL_SAAT_PULANG.has(isian.kode) || !episode || episode.length < 2) return null;
+  const pulang = keluar ?? (await bacaKeluarSimrs(nopenSimrs));
+  if (pulang.status !== "kosong") return null;
+  return episode.find((e) => e.nopen === nopenSimrs)?.ruang ?? episode[episode.length - 1].ruang;
 }
 
 /** Jam dinding SIMGOS di field UTC → buang "Z" agar tak digeser zona waktu. */

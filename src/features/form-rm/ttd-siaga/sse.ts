@@ -19,13 +19,21 @@ export function retrySse(ms: number): string {
   return `retry: ${ms}\n\n`;
 }
 
-export function frameSse(event: EventSse, data: Record<string, unknown>): string {
-  if (!(EVENT_SSE as readonly string[]).includes(event)) throw new RangeError("event SSE tidak dikenal");
-  const json = JSON.stringify(data);
-  // JSON.stringify meng-escape \n dan \r; pagar ini menjaga bila ada perubahan kelak.
-  if (/[\r\n]/.test(json)) throw new RangeError("data SSE harus satu baris");
-  return `event: ${event}\ndata: ${json}\n\n`;
+/**
+ * Penyusun frame dengan daftar event TETAP milik satu aliran (dipakai juga
+ * aliran isian Form RM). Nama event di luar daftar → galat; data JSON satu baris.
+ */
+export function penyusunFrame<E extends string>(daftar: readonly E[]) {
+  return (event: E, data: Record<string, unknown>): string => {
+    if (!(daftar as readonly string[]).includes(event)) throw new RangeError("event SSE tidak dikenal");
+    const json = JSON.stringify(data);
+    // JSON.stringify meng-escape \n dan \r; pagar ini menjaga bila ada perubahan kelak.
+    if (/[\r\n]/.test(json)) throw new RangeError("data SSE harus satu baris");
+    return `event: ${event}\ndata: ${json}\n\n`;
+  };
 }
+
+export const frameSse: (event: EventSse, data: Record<string, unknown>) => string = penyusunFrame(EVENT_SSE);
 
 /**
  * Detak = EVENT sungguhan, bukan baris komentar `: ping`: EventSource tidak

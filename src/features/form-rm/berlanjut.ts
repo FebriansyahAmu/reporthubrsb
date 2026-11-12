@@ -9,6 +9,12 @@ import { DEFINISI_FORM, definisiForm } from "./registry";
 export const KODE_BERLANJUT = DEFINISI_FORM.filter((d) => d.berlanjut === "igd-ri").map((d) => d.kode);
 
 /**
+ * Form berlanjut yang biasanya difinalkan saat pasien PULANG (K6): FINALKAN
+ * selagi pasien masih dirawat tetap boleh, tetapi dialog memperingatkan.
+ */
+export const FINAL_SAAT_PULANG: ReadonlySet<string> = new Set(["RM.01", "RM.21"]);
+
+/**
  * URL halaman isian. Form berlanjut membawa episode tempat petugas membuka
  * isian (`dari`, divalidasi server sebagai anggota rantai) — penentu konteks
  * IGD / rawat inap di halaman isian.

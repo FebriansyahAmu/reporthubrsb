@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/Field";
 import { cn } from "@/lib/cn";
 import type { AksiIsian } from "@/features/form-rm/isian.status";
 import { ALASAN_TIDAK_TERDAFTAR, SYARAT_TERTAUT } from "@/features/form-rm/sementara";
+import { teksOrang } from "@/features/form-rm/aliran-isian";
+import { useDirawatDi } from "./KonteksIsian";
 import type { KendaliIsian } from "./useIsian";
 
 const ALASAN_MIN = 5;
@@ -48,6 +50,16 @@ function FinalkanDialog<T>({
 }) {
   const kurang = k.galat?.kurang.length ? k.galat.kurang : kekuranganFinal(k);
   const sibuk = k.sibuk !== null;
+  const dirawatDi = useDirawatDi();
+  // K6: peringatan, bukan larangan — petugas lain yang sedang membuka & pasien yang masih dirawat.
+  const peringatan = [
+    ...(k.hadir.length > 0
+      ? [`${k.hadir.map(teksOrang).join(", ")} sedang membuka isian ini. Setelah difinalkan, layar mereka ikut terkunci.`]
+      : []),
+    ...(dirawatDi
+      ? [`Pasien masih dirawat di ${dirawatDi}. ${k.isian.judul} biasanya difinalkan saat pasien pulang.`]
+      : []),
+  ];
 
   async function finalkan() {
     if (await k.jalankan("FINALKAN")) onBerhasil();
@@ -87,6 +99,16 @@ function FinalkanDialog<T>({
         </div>
       ) : (
         <div className="space-y-2 text-sm text-fg-muted">
+          {peringatan.length > 0 && (
+            <ul aria-label="Perhatian sebelum finalkan" className="space-y-1.5 rounded-[var(--radius-md)] border border-warning/40 bg-warning-soft px-3 py-2 text-[13px] text-warning">
+              {peringatan.map((p) => (
+                <li key={p} className="flex items-start gap-2">
+                  <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+                  <span>{p}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           <p>
             Isian akan <b className="text-fg">dikunci</b> dan disimpan sebagai revisi bersegel di riwayat. Dokumen cetak
             menjadi resmi (tanpa tanda air DRAF).

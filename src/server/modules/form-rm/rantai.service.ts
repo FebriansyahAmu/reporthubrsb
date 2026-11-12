@@ -8,6 +8,7 @@ import type { HakForm } from "@/features/form-rm/hak";
 import { DEFINISI_FORM, definisiForm, type DefinisiForm, type KodeForm } from "@/features/form-rm/registry";
 import { getFormRmHeader } from "./form-rm.service";
 import { isianAktifPerNopen } from "./isian.cari";
+import { hubIsian } from "./isian.hub";
 import type { AktorForm, RingkasIsian } from "./isian.types";
 import { queryKandidatAkar, type KandidatEpisode } from "./rantai.dal";
 import {
@@ -339,6 +340,8 @@ export async function lepasTautan(id: string, alasan: string, aktor: AktorForm):
   });
   if (n.count === 0) throw new ConflictError("Tautan ini baru saja dilepas oleh pengguna lain");
   await auditTautan(aktor, "lepas", t);
+  // Halaman yang dibuka dari episode ini tak lagi anggota rantai → aliran disegarkan (sambung ulang ditolak 422).
+  hubIsian.putuskanKonteks(t.nopenLanjutan);
 }
 
 /* ------------------------------------------------------------- konteks */
