@@ -5,29 +5,48 @@ import { AppError, PayloadTooLargeError, TooManyRequestsError, ValidationError }
 const jsonRusak = () =>
   new ValidationError({ formErrors: ["Body permintaan harus JSON yang valid"], fieldErrors: {} });
 
-/** Body JSON permintaan; body kosong/rusak → 422 (bukan 500). */
-export async function readJson(req: Request): Promise<unknown> {
+class KunciTerlarang extends Error {}
+
+/**
+ * Kunci `__proto__` di JSON menjadi properti sendiri hasil `JSON.parse`; bila
+ * body mentah kelak di-`Object.assign`/digabung, prototipe objek tujuan
+ * berubah (polusi prototipe). Zod membuangnya diam-diam — di sini ditolak
+ * terang-terangan (422) di kedalaman mana pun.
+ */
+function tolakProto(kunci: string, nilai: unknown): unknown {
+  if (kunci === "__proto__") throw new KunciTerlarang();
+  return nilai;
+}
+
+function uraiJson(teks: string): unknown {
   try {
-    return await req.json();
-  } catch {
+    return JSON.parse(teks, tolakProto);
+  } catch (e) {
+    if (e instanceof KunciTerlarang) {
+      throw new ValidationError({ formErrors: ["Body permintaan memuat kunci yang tidak diizinkan"], fieldErrors: {} });
+    }
     throw jsonRusak();
   }
 }
 
-/**
- * Seperti `readJson`, tetapi menolak body di atas `maksByte` (413) — dicek dari
- * Content-Length lebih dulu, lalu dari panjang aktual (header bisa tidak ada).
- */
-export async function readJsonTerbatas(req: Request, maksByte: number): Promise<unknown> {
-  const panjang = Number(req.headers.get("content-length"));
-  if (Number.isFinite(panjang) && panjang > maksByte) throw new PayloadTooLargeError();
-  const teks = await req.text();
-  if (new TextEncoder().encode(teks).byteLength > maksByte) throw new PayloadTooLargeError();
+/** Body JSON permintaan; body kosong/rusak → 422 (bukan 500). */
+export async function readJson(req: Request): Promise<unknown> {
+  let teks: string;
   try {
-    return JSON.parse(teks);
+    teks = await req.text();
   } catch {
     throw jsonRusak();
   }
+  return uraiJson(teks);
+}
+
+/**
+ * Seperti `readJson`, tetapi menolak body di atas `maksByte` (413) — dicek dari
+ * Content-Length lebih dulu, lalu selama membaca (header bisa tidak ada / chunked):
+ * pembacaan berhenti begitu batas terlewati, body raksasa tak pernah ditampung utuh.
+ */
+export async function readJsonTerbatas(req: Request, maksByte: number): Promise<unknown> {
+  return parseJson(await bacaTeksTerbatas(req, maksByte));
 }
 
 /**
@@ -55,13 +74,9 @@ export async function bacaTeksTerbatas(req: Request, maksByte: number): Promise<
   return Buffer.concat(potongan).toString("utf8");
 }
 
-/** JSON dari teks body yang sudah dibaca; rusak → 422 (bukan 500). */
+/** JSON dari teks body yang sudah dibaca; rusak / memuat `__proto__` → 422 (bukan 500). */
 export function parseJson(teks: string): unknown {
-  try {
-    return JSON.parse(teks);
-  } catch {
-    throw jsonRusak();
-  }
+  return uraiJson(teks);
 }
 
 /**

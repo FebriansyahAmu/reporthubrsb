@@ -55,6 +55,8 @@ export const TTD_MAKS_KARAKTER = 600_000;
 export const refTtd = (id: string) => `ttd:${id}`;
 export const idDariRefTtd = (v: string): string | null => (TTD_REF_RE.test(v) ? v.slice(4) : null);
 export const adalahDataUrlTtd = (v: string) => v.startsWith(TTD_DATA_URL_PREFIX);
+/** Nilai TTD berformat sah (referensi tersimpan / PNG data-URL) — satu-satunya yang boleh jadi `src` gambar. */
+export const ttdSah = (v: string): boolean => TTD_REF_RE.test(v) || TTD_DATA_URL_RE.test(v);
 
 /** Nilai TTD → `src` gambar: referensi tersimpan dimuat dari API, data-URL baru apa adanya. */
 export function srcTtd(v: string): string {

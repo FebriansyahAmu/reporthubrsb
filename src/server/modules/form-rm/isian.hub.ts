@@ -72,6 +72,22 @@ const st: Status = (g.__formRmIsianHub ??= {
 const DETAK = frameIsian("detak", {});
 const SEGARKAN = frameIsian("segarkan", {});
 
+/** Panjang maksimum teks event (= batas baca klien); lebih panjang dipotong agar event tak ditolak klien. */
+const MAKS_TEKS_EVENT = 191;
+const potongTeks = <T extends string | null>(s: T): T => (s === null ? s : (s.slice(0, MAKS_TEKS_EVENT) as T));
+
+/**
+ * Siaran dipanggil SETELAH commit: kegagalannya (tak terduga) tidak boleh
+ * menggagalkan permintaan yang datanya sudah tersimpan — cukup dicatat (tanpa isi).
+ */
+function aman(nama: string, f: () => void): void {
+  try {
+    f();
+  } catch (e) {
+    console.warn(`[form-rm] siaran ${nama} gagal (${(e as Error)?.name ?? "galat"})`);
+  }
+}
+
 function lepasInternal(k: KoneksiIsian): boolean {
   const set = st.isian.get(k.isianId);
   if (!set?.delete(k.seq)) return false;
@@ -161,7 +177,7 @@ export const hubIsian = {
     a: Omit<KoneksiIsian, "seq" | "mulai">,
     awal: AwalAliran,
   ): KoneksiIsian {
-    const k: KoneksiIsian = { ...a, seq: ++st.seq, mulai: Date.now() };
+    const k: KoneksiIsian = { ...a, nama: potongTeks(a.nama), ruang: potongTeks(a.ruang), seq: ++st.seq, mulai: Date.now() };
     let set = st.isian.get(a.isianId);
     if (!set) st.isian.set(a.isianId, (set = new Map()));
     set.set(k.seq, k);
@@ -203,7 +219,9 @@ export const hubIsian = {
 
   /** Episode tak lagi anggota rantai (tautan dilepas) → aliran berkonteks itu disegarkan & ditutup. */
   putuskanKonteks(nopen: string): void {
-    for (const set of [...st.isian.values()]) for (const k of [...set.values()]) if (k.konteks === nopen) putus(k, SEGARKAN);
+    aman("putuskan-konteks", () => {
+      for (const set of [...st.isian.values()]) for (const k of [...set.values()]) if (k.konteks === nopen) putus(k, SEGARKAN);
+    });
   },
 
   /** Jumlah aliran (uji & pemantauan). */
@@ -224,18 +242,21 @@ export function siarkanBerubah(
   perubahan: readonly { p: string }[],
 ): void {
   if (perubahan.length === 0) return;
-  hubIsian.berubah(baris.id, {
-    rev: baris.rev,
-    oleh: aktor.nama,
-    unit: konteks.unit,
-    ruang: konteks.ruang,
-    kolom: perubahan.map((x) => x.p),
-    waktu: baris.updatedAt,
-  });
+  aman("berubah", () =>
+    hubIsian.berubah(baris.id, {
+      rev: baris.rev,
+      oleh: potongTeks(aktor.nama),
+      unit: konteks.unit,
+      ruang: potongTeks(konteks.ruang),
+      kolom: perubahan.map((x) => x.p),
+      waktu: baris.updatedAt,
+    }),
+  );
 }
 
 /** Status berubah (FINALKAN / BUKA_KOREKSI / BATALKAN). */
 export function siarkanStatus(baris: BarisSiar, aktor: { nama: string }): void {
-  if (baris.status !== "DRAF" && baris.status !== "FINAL" && baris.status !== "BATAL") return;
-  hubIsian.status(baris.id, { rev: baris.rev, status: baris.status, oleh: aktor.nama });
+  const status = baris.status;
+  if (status !== "DRAF" && status !== "FINAL" && status !== "BATAL") return;
+  aman("status", () => hubIsian.status(baris.id, { rev: baris.rev, status, oleh: potongTeks(aktor.nama) }));
 }

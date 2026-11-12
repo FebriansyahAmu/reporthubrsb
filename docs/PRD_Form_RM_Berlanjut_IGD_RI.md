@@ -518,6 +518,74 @@ Perubahan perilaku yang disengaja: konflik kolom sama kini muncul **sebelum** si
 
 Data uji dibersihkan terarah; isian 42, log 0, tautan 0 seperti semula. Tanpa migrasi baru; tanpa dependensi baru.
 
+### Langkah 4 — Pengerasan & kesiapan produksi ✅ (12 Nov 2026)
+
+**Tinjauan keamanan menyeluruh** atas 66 berkas fitur (L1–L3, ±4.400 baris tambahan non-uji). Tidak ditemukan celah yang bisa dieksploitasi. Lima pengerasan diterapkan:
+
+| # | Temuan | Perbaikan |
+| --- | --- | --- |
+| 1 | Siaran SSE berjalan di jalur respons setelah commit; galat tak terduga akan menjawab 500 untuk simpan yang sudah tersimpan | siaran dibungkus `aman()` (`isian.hub.ts`) — tak pernah menggagalkan permintaan; dicatat tanpa isi |
+| 2 | Nama petugas / ruang > 191 karakter membuat klien menolak seluruh event | server memotong teks event ke 191 karakter |
+| 3 | Panel konflik memakai `srcTtd(nilai)` apa adanya untuk `<img>` | hanya referensi TTD / PNG data-URL (`ttdSah`, diuji unit) |
+| 4 | `readJsonTerbatas` (semua rute tulis aplikasi) menampung seluruh body chunked sebelum memeriksa batas | memakai pembaca streaming yang berhenti begitu batas terlewati (body 24 MB chunked → 413) |
+| 5 | Kunci `"__proto__"` di body lolos `strictObject` (dibuang diam-diam oleh Zod; tanpa polusi pada rute ini, tetapi berbahaya bila body mentah di-`Object.assign`) | `readJson`/`parseJson`/`readJsonTerbatas` menolak kunci `__proto__` di kedalaman mana pun → 422 (diuji unit & E2E) |
+
+Pengamatan di luar fitur (tidak diubah): klien Prisma mencatat galat ke log server (`log: ["warn","error"]`); galat validasi Prisma — hanya terjadi bila ada salah program — dapat memuat argumen query. Layak ditinjau tersendiri untuk kebijakan "tanpa PHI di log".
+
+**OWASP Top 10:2025 — bukti.**
+
+| Risiko | Bukti |
+| --- | --- |
+| A01 Broken Access Control | setiap rute baru `authorizeAny` (statik); 404 seragam (L2/L3); lepas hanya `kelola` (L1); konteks anggota rantai (L2/L3); tautan diverifikasi termasuk akar IGD pasien sama > 24 jam (L1, L4); semua tulis + aliran lintas situs → 403 tanpa efek (L4, 3 varian header) |
+| A02 Security Misconfiguration | header SSE (L3); `no-store` + `nosniff`, tanpa `X-Powered-By`, metode tak terdaftar → 405 (L4) |
+| A03 Supply Chain | `package.json`/lock tidak berubah sejak awal fitur (statik) |
+| A04 Cryptographic Failures | HMAC-SHA256 kunci ≥ 32, tanpa kunci → 503; segel log rusak terdeteksi (L2); token palsu / `alg: none` / kedaluwarsa / kunci lain → 401 di semua rute baru (L4) |
+| A05 Injection | SQL hanya template bertag / placeholder, tanpa tulis SIMGOS (statik); `konteks` & id berisi injeksi → 422/404 tanpa detail DB (L4); path aman (L2); frame SSE satu baris (unit); `__proto__` → 422 (L4); tanpa HTML mentah (statik) |
+| A06 Insecure Design | gabung tiga arah + kunci baris; 50 simpan paralel dengan 400 aliran terbuka: tiap kolom satu pemenang, event berurutan tanpa celah (L4 beban) |
+| A07 Authentication Failures | sesi wajib di semua rute baru (L1–L3); aliran ditutup ≤ 10 menit, hak dicek ulang (L3) |
+| A08 Data Integrity | log & revisi bersegel berantai (L2) |
+| A09 Logging & Alerting | audit tautan/simpan/timpa/log-lihat/terkini tanpa nilai & nama pasien (L2/L3); percobaan yang ditolak tidak menghasilkan perubahan teraudit (L4) |
+| A10 Exceptional Conditions | SIMGOS gagal → 503 tanpa tautan; transaksi dibatalkan saat galat; siaran tak pernah menggagalkan simpan; body raksasa ditolak tanpa ditampung; galat tanpa stack trace / SQL (L4) |
+
+**§9.5 — bukti per butir (build produksi final).**
+
+| No. | Uji | Skrip |
+| --- | --- | --- |
+| 1 | tanpa sesi → 401 | L1 (tautan, buka isian), L2 (PATCH gabung, log), L3 (aliran, terkini), L4 (token rusak) |
+| 2 | 404 seragam / 403 | L1, L2, L3 |
+| 3 | konteks bukan anggota rantai → 422 | L1, L2 (PATCH/aksi/simrs), L3 (aliran/terkini), L4 |
+| 4 | konfirmasi tautan tidak sah ditolak | L1 (NORM beda, akar bukan IGD, lanjutan bukan RI, tanpa asal), L4 (akar > 24 jam) |
+| 5 | tautan ganda paralel → tepat satu | L1 |
+| 6 | lepas tanpa `kelola` 403, alasan kosong 422 | L1 |
+| 7 | path berbahaya → 422, `Object.prototype` utuh | L2 |
+| 8–10 | skema, kolom tertaut, batas body & jumlah ubah | L2, L4 (chunked) |
+| 11–13 | paralel kolom berbeda / sama / 50 acak | L2, L4 beban |
+| 14 | simpan setelah FINAL | L2, UI L3 (E) |
+| 15 | segel log, rusak terdeteksi, tanpa hak 404 | L2 |
+| 16 | audit tanpa nilai & nama pasien | L1, L2, L3 |
+| 17 | SSE tanpa nilai, ≤ 10 menit, hak dicabut | L3 |
+| 18 | aliran ke-9 → 429, total → 503 | L3, L4 beban |
+| 19 | lintas situs → 403 | L2, L3, L4 (buka isian, PATCH gabung & lama, aksi, simrs, konfirmasi & lepas tautan, aliran) |
+| 20–21 | kolom tertaut & isi otomatis dari RI | L1 |
+| 22 | form tak berlanjut tak berubah | L1, L2, L3, regresi 10 formulir |
+| 23 | anti-backdoor | `berlanjut-l4-statik.mjs` |
+
+**Hasil uji (build produksi final :3100).**
+
+| Uji | Hasil |
+| --- | --- |
+| Unit (total) | 731/731 (18 baru: `ttdSah`, parser JSON & batas body) |
+| Statis anti-backdoor (`berlanjut-l4-statik.mjs`) | 39/39 |
+| Keamanan tambahan (`berlanjut-l4-keamanan.mjs`) | 49/49 |
+| Beban (`berlanjut-l4-beban.mjs`) | 17/17 — simpan gabung p95 46 ms (tanpa aliran) / 50 ms (400 aliran); 400 aliran terbuka 1,2 dtk; event ke 300 aliran (6.000 pengiriman) p95 68 ms, maks 96 ms, 0 hilang; 50 paralel 10 sukses / 40 konflik dalam 0,8 dtk; badai sambung ulang 400 aliran ±1,2 dtk, `hadir` maks 2 frame/aliran |
+| Siklus memori (`berlanjut-l4-bocor.mjs`): 6× buka 400 aliran + 5 event → tutup | 8/8 — semua siklus 400/400 aliran & 400/400 event lengkap; RSS naik-turun 120–360 MB mengikuti GC dan turun ke 123 MB setelah jeda 1 menit (tanpa pertumbuhan tertahan) |
+| E2E berlanjut L1 / L2 / L3 | 49/49, 71/71, 54/54 |
+| Regresi seluruh Form RM (10 formulir) E2E / UI | 154/154, 81/81 |
+| Regresi E2E lain: detail 38, riwayat 61, Via HP 67, permintaan TTD 117, TTD siaga 70, TTD perangkat 93 | lulus |
+| Regresi UI: berlanjut L1 23, L2 25, L3 30, detail 27, riwayat 47, Via HP 18, permintaan TTD 39, TTD siaga 28, TTD perangkat 28 | lulus |
+
+**Kesiapan produksi.** Panduan IT: [form-rm-berlanjut.md](./form-rm-berlanjut.md) (migrasi, env, RBAC, nginx SSE & HTTP/2, satu proses, batas, pemecahan masalah, audit, rollback, daftar periksa).
+
 ## 16. Keputusan terbuka
 
 | #   | Pertanyaan                                                                 | Bawaan sementara |

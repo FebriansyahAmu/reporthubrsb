@@ -7,6 +7,7 @@ import {
   pangkasTeksPanjang,
   ringkasanFormSchema,
   srcTtd,
+  ttdSah,
   ttdSchema,
 } from "./skema";
 import { emptyEdukasiForm } from "./edukasi.constants";
@@ -43,6 +44,18 @@ describe("ttdSchema", () => {
     expect(srcTtd("data:image/png;base64,AA==")).toBe("data:image/png;base64,AA==");
     expect(srcTtd("")).toBe("");
     expect(srcTtd("ttd:../../api/auth/logout")).toBe("ttd:../../api/auth/logout");
+  });
+
+  it.each([
+    ["ttd:abcdefghijklmnopqrstuvwx", true],
+    ["data:image/png;base64,iVBORw0KGgo=", true],
+    ["", false],
+    ["https://evil.example/x.png", false],
+    ["javascript:alert(1)", false],
+    ["data:image/svg+xml;base64,PHN2Zz4=", false],
+    ["ttd:../../api/auth/logout", false],
+  ])("ttdSah %j → %s (hanya ini yang boleh jadi src gambar)", (nilai, sah) => {
+    expect(ttdSah(nilai)).toBe(sah);
   });
 });
 

@@ -6,7 +6,7 @@ import { formatTime } from "@/lib/format";
 import { tempatUnit } from "@/features/form-rm/aliran-isian";
 import { labelKolom, ringkasNilai, slotTtd } from "@/features/form-rm/label-kolom";
 import { nilaiDi } from "@/features/form-rm/gabung";
-import { srcTtd } from "@/features/form-rm/skema";
+import { srcTtd, ttdSah } from "@/features/form-rm/skema";
 import type { KonflikKolom } from "@/server/modules/form-rm/isian.types";
 import type { KendaliIsian } from "./useIsian";
 
@@ -113,7 +113,8 @@ function Pilihan({
   onPilih: () => void;
   nonaktif: boolean;
 }) {
-  const gambar = ttd && typeof nilai === "string" && nilai !== "" ? srcTtd(nilai) : null;
+  // Pertahanan berlapis: hanya referensi TTD / PNG data-URL yang menjadi `src` gambar.
+  const gambar = ttd && typeof nilai === "string" && ttdSah(nilai) ? srcTtd(nilai) : null;
   return (
     <div className="flex min-w-0 flex-col justify-between gap-2 rounded-[var(--radius-md)] border border-border bg-surface-2/40 p-2.5">
       <div className="min-w-0">
@@ -123,7 +124,7 @@ function Pilihan({
           <img src={gambar} alt="Tanda tangan" className="mt-1 h-16 w-auto max-w-full rounded border border-border bg-white object-contain" />
         ) : (
           <p className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words text-sm text-fg">
-            {ttd ? "(belum ditandatangani)" : ringkasNilai(nilai)}
+            {ttd ? (nilai ? "(format tanda tangan tidak dikenal)" : "(belum ditandatangani)") : ringkasNilai(nilai)}
           </p>
         )}
       </div>
