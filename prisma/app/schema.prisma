@@ -87,6 +87,7 @@ model User {
 
   refreshTokens RefreshToken[]
   ttdTersimpan  FormRmTtdPetugas[]
+  invRuanganPetugas InvRuanganPetugas[]
 
   @@index([roleId])
   @@map("users")
@@ -708,8 +709,26 @@ model InvRuangan {
   mutasiDari InvMutasi[] @relation("MutasiDari")
   checklistRun      InvChecklistRun[]
   publik     InvRuanganPublik?
+  petugas    InvRuanganPetugas[]
 
   @@map("inv_ruangan")
+}
+
+/// Petugas ruangan (akun ↔ ruangan) → "Ruangan saya" di Checklist Pemeliharaan.
+/// Akun ber-NIP sama dgn NIP PJ juga dianggap petugas (dihitung aplikasi, tak disimpan).
+/// DDL: scripts/db/inventaris-petugas.sql (kolasi kolom kunci = kolasi kolom rujukan).
+model InvRuanganPetugas {
+  ruanganId  String   @map("ruangan_id")
+  userId     String   @map("user_id")
+  dibuatOleh String?  @map("dibuat_oleh")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  ruangan InvRuangan @relation(fields: [ruanganId], references: [id], onDelete: Cascade)
+  user    User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([ruanganId, userId])
+  @@index([userId], map: "idx_inv_ruangan_petugas_user")
+  @@map("inv_ruangan_petugas")
 }
 
 /// Tautan publik (QR) daftar barang ruangan — `token` = kapabilitas acak

@@ -1,6 +1,6 @@
 // ============================================================================
 // Runner GABUNGAN migrasi modul Inventarisasi Barang → DB APLIKASI `reporthub`.
-// Menjalankan migrasi berurutan (base → katalog → checklist → publik).
+// Menjalankan migrasi berurutan (base → katalog → checklist → publik → petugas).
 // DB APLIKASI `reporthub` (RW). BUKAN SIMGOS.
 //
 // Jalankan:
@@ -21,6 +21,7 @@ const STEPS = [
   "./migrate-inventaris-katalog.mjs",
   "./migrate-inventaris-checklist.mjs",
   "./migrate-inventaris-publik.mjs",
+  "./migrate-inventaris-petugas.mjs",
 ];
 
 for (let i = 0; i < STEPS.length; i++) {

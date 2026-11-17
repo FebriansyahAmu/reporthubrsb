@@ -56,6 +56,8 @@ export type PeriksaState = {
 export type ChecklistRefs = {
   ruangan: { id: string; kodePrefix: string; nama: string }[];
   kondisi: { id: string; nama: string; kode: string; tone: string }[];
+  /** ID ruangan tempat akun ini petugas / PJ (urut seperti `ruangan`). */
+  ruanganSaya: string[];
 };
 
 export type RiwayatRun = {

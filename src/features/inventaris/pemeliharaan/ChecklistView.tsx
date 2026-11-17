@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ClipboardCheck, DoorOpen, History } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Label } from "@/components/ui/Field";
-import { Select, type SelectOption } from "@/components/ui/Select";
+import { Combobox, type ComboboxGroup, type ComboboxOption } from "@/components/ui/Combobox";
 import { EmptyState } from "@/components/feedback/States";
 import { useAsyncData } from "@/lib/useAsyncData";
 import { cn } from "@/lib/cn";
@@ -12,22 +12,74 @@ import type { Frekuensi } from "@/server/modules/inventaris/checklist.schema";
 import { fetchChecklistRefs, type ChecklistRefs } from "./checklist.client";
 import { ChecklistPanel } from "./ChecklistPanel";
 import { RiwayatPanel } from "./RiwayatPanel";
+import { pilihRuanganAwal } from "./ruangan-awal";
 
 type ViewMode = "checklist" | "riwayat";
 
-export function ChecklistView({ canCreate }: { canCreate: boolean; canUpdate: boolean }) {
+/**
+ * Ruangan terakhir dipakai — per AKUN di peramban ini (PC bangsal kerap dipakai
+ * bergantian). Kenyamanan saja: boleh hilang, tak pernah dibaca server.
+ */
+const kunciTerakhir = (userId: string) => `rh:inv-checklist-ruangan:${userId}`;
+
+function bacaTerakhir(userId: string): string | null {
+  try {
+    return window.localStorage.getItem(kunciTerakhir(userId));
+  } catch {
+    return null;
+  }
+}
+
+function simpanTerakhir(userId: string, id: string) {
+  try {
+    window.localStorage.setItem(kunciTerakhir(userId), id);
+  } catch {
+    /* mode privat / penyimpanan diblokir — abaikan */
+  }
+}
+
+export function ChecklistView({ canCreate, userId }: { canCreate: boolean; canUpdate: boolean; userId: string }) {
   const [ruanganId, setRuanganId] = useState("");
+  const [siap, setSiap] = useState(false);
   const [frekuensi, setFrekuensi] = useState<Frekuensi>("HARIAN");
   const [view, setView] = useState<ViewMode>("checklist");
 
   const refsState = useAsyncData<ChecklistRefs>(() => fetchChecklistRefs(), []);
   const refs = refsState.result;
-  if (refs && !ruanganId && refs.ruangan[0]) setRuanganId(refs.ruangan[0].id);
+  // Pilihan awal sekali setelah refs tiba (refs hanya ada di klien → aman membaca URL/storage).
+  if (refs && !siap) {
+    setSiap(true);
+    setRuanganId(
+      pilihRuanganAwal(refs, {
+        dariUrl: new URLSearchParams(window.location.search).get("ruangan"),
+        terakhir: bacaTerakhir(userId),
+      }),
+    );
+  }
 
-  const ruanganOpts = useMemo<SelectOption[]>(
-    () => (refs?.ruangan ?? []).map((r) => ({ value: r.id, label: `${r.kodePrefix} — ${r.nama}` })),
-    [refs],
-  );
+  // Ruangan terpilih → URL (bisa dibagikan / dimuat ulang) + ingatan peramban.
+  useEffect(() => {
+    if (!siap) return;
+    const url = new URL(window.location.href);
+    if (ruanganId) url.searchParams.set("ruangan", ruanganId);
+    else url.searchParams.delete("ruangan");
+    if (url.href !== window.location.href) window.history.replaceState(window.history.state, "", url);
+    if (ruanganId) simpanTerakhir(userId, ruanganId);
+  }, [ruanganId, siap, userId]);
+
+  const saya = useMemo(() => new Set(refs?.ruanganSaya ?? []), [refs]);
+  const opsi = useMemo<ComboboxGroup[]>(() => {
+    const ke = (r: ChecklistRefs["ruangan"][number]): ComboboxOption => ({ value: r.id, label: r.nama, badge: r.kodePrefix });
+    const semua = refs?.ruangan ?? [];
+    const milik = semua.filter((r) => saya.has(r.id)).map(ke);
+    const lain = semua.filter((r) => !saya.has(r.id)).map(ke);
+    return milik.length
+      ? [
+          { label: "Ruangan saya", options: milik },
+          { label: "Ruangan lain", options: lain },
+        ]
+      : [{ label: "", options: lain }];
+  }, [refs, saya]);
 
   return (
     <div className="space-y-4">
@@ -36,12 +88,23 @@ export function ChecklistView({ canCreate }: { canCreate: boolean; canUpdate: bo
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0 flex-1">
             <Label htmlFor="cl-ruangan">Ruangan</Label>
-            <div className="flex items-center gap-2">
-              <DoorOpen className="size-4 shrink-0 text-fg-subtle" />
-              <div className="min-w-0 flex-1 lg:max-w-md">
-                <Select id="cl-ruangan" value={ruanganId} onChange={setRuanganId} options={ruanganOpts} placeholder="Pilih ruangan…" />
-              </div>
+            <div className="lg:max-w-md">
+              <Combobox
+                id="cl-ruangan"
+                value={ruanganId}
+                onChange={setRuanganId}
+                options={opsi}
+                icon={<DoorOpen />}
+                disabled={!refs}
+                placeholder={refs ? "Ketik nama atau kode ruangan…" : "Memuat ruangan…"}
+                emptyText="Tidak ada ruangan yang cocok."
+              />
             </div>
+            {refs && saya.size === 0 && (
+              <p className="mt-1.5 text-xs text-fg-subtle">
+                Akun Anda belum dipetakan ke ruangan. Pengelola dapat mengaturnya di Pengaturan › Ruangan › Petugas.
+              </p>
+            )}
           </div>
           <ViewToggle value={view} onChange={setView} />
         </div>
@@ -49,7 +112,7 @@ export function ChecklistView({ canCreate }: { canCreate: boolean; canUpdate: bo
 
       {!ruanganId ? (
         <Card className="overflow-hidden">
-          <EmptyState title="Pilih ruangan" description="Pilih ruangan terlebih dahulu untuk melihat checklist pemeliharaan atau riwayatnya." />
+          <EmptyState title="Pilih ruangan" description="Ketik nama atau kode ruangan di atas untuk melihat checklist pemeliharaan atau riwayatnya." />
         </Card>
       ) : view === "checklist" ? (
         <ChecklistPanel key={ruanganId} ruanganId={ruanganId} frekuensi={frekuensi} setFrekuensi={setFrekuensi} refs={refs} canCreate={canCreate} />

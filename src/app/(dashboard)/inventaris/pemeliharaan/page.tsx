@@ -28,7 +28,7 @@ export default async function PemeliharaanPage() {
         title="Checklist Pemeliharaan"
         description="Checklist perawatan berkala per ruangan — harian, mingguan, bulanan. Centang tiap barang lewat kartu, telusuri riwayat pelaksanaan, dan ekspor ke Excel."
       />
-      <ChecklistView canCreate={canCreate} canUpdate={canUpdate} />
+      <ChecklistView canCreate={canCreate} canUpdate={canUpdate} userId={user.id} />
     </FadeIn>
   );
 }

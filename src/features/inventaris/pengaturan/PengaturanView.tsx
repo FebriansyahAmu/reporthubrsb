@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { Boxes, DoorOpen, Layers, ShieldCheck, Wallet } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Boxes, DoorOpen, Layers, ShieldCheck, UserCog, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/cn";
 import { RefManager, type RefColumnDef, type RefFieldDef, type RefRow } from "./RefManager";
+import { PetugasRuanganModal } from "./PetugasRuanganModal";
 
 type Tab = {
   key: string;
@@ -132,13 +133,71 @@ const TABS: Tab[] = [
       { name: "pjNip", label: "NIP Penanggung Jawab", type: "text", placeholder: "mis. 198310272019031003" },
     ],
     inlineFields: ["pjNama", "pjNip"],
-    emptyHint: "PJ & NIP bisa diedit langsung di kolomnya",
+    emptyHint: "PJ & NIP bisa diedit langsung di kolomnya; Petugas = akun yang langsung diarahkan ke ruangan ini di Checklist",
   },
 ];
 
+type PetugasChip = { id: string; nama: string; aktif: boolean };
+type RuanganTarget = { id: string; kodePrefix: string; nama: string };
+
+/** Sel "Petugas": maks. 2 nama + "+n", tombol Atur bagi pengelola. */
+function PetugasCell({ row, canManage, onAtur }: { row: RefRow; canManage: boolean; onAtur: (r: RuanganTarget) => void }) {
+  const list = (Array.isArray(row.petugas) ? row.petugas : []) as PetugasChip[];
+  const lebih = list.length - 2;
+  return (
+    <div className="flex min-w-[10rem] flex-wrap items-center gap-1">
+      {list.length === 0 && <span className="text-xs text-fg-subtle">—</span>}
+      {list.slice(0, 2).map((p) => (
+        <span
+          key={p.id}
+          title={p.aktif ? p.nama : `${p.nama} (nonaktif)`}
+          className={cn(
+            "inline-block max-w-[9rem] truncate rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[11px] text-fg",
+            !p.aktif && "line-through opacity-60",
+          )}
+        >
+          {p.nama}
+        </span>
+      ))}
+      {lebih > 0 && (
+        <span className="text-[11px] text-fg-muted" title={list.slice(2).map((p) => p.nama).join(", ")}>
+          +{lebih}
+        </span>
+      )}
+      {canManage && (
+        <button
+          type="button"
+          onClick={() => onAtur({ id: row.id, kodePrefix: String(row.kodePrefix), nama: String(row.nama) })}
+          className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[11px] font-medium text-brand transition-colors hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+          aria-label={`Atur petugas ${String(row.kodePrefix)}`}
+        >
+          <UserCog className="size-3.5" />
+          Atur
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function PengaturanView({ canManage }: { canManage: boolean }) {
   const [active, setActive] = useState<string>(TABS[0].key);
+  const [petugasTarget, setPetugasTarget] = useState<RuanganTarget | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const tab = TABS.find((t) => t.key === active) ?? TABS[0];
+  const columns = useMemo<RefColumnDef[]>(
+    () =>
+      tab.key === "ruangan"
+        ? [
+            ...tab.columns,
+            {
+              key: "petugas",
+              header: "Petugas",
+              render: (row) => <PetugasCell row={row} canManage={canManage} onAtur={setPetugasTarget} />,
+            },
+          ]
+        : tab.columns,
+    [tab, canManage],
+  );
 
   return (
     <div className="space-y-5">
@@ -173,12 +232,22 @@ export function PengaturanView({ canManage }: { canManage: boolean }) {
         entity={tab.entity}
         title={tab.label}
         singular={tab.singular}
-        columns={tab.columns}
+        columns={columns}
         fields={tab.fields}
         canManage={canManage}
         emptyHint={tab.emptyHint}
         inlineFields={tab.inlineFields}
+        reloadKey={reloadKey}
       />
+
+      {petugasTarget && (
+        <PetugasRuanganModal
+          key={petugasTarget.id}
+          ruangan={petugasTarget}
+          onClose={() => setPetugasTarget(null)}
+          onSaved={() => setReloadKey((k) => k + 1)}
+        />
+      )}
     </div>
   );
 }
