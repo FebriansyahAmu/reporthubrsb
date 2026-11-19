@@ -152,16 +152,21 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 
   // Tampilkan wadah di lapisan teratas selama ada toast (Popover API); disembunyikan setelah animasi keluar selesai.
-  const adaToast = items.length > 0;
+  // `daftar` = toast yang masih aktif. Saat `onExitComplete` berjalan, elemen yang keluar belum tentu sudah lepas
+  // dari DOM, jadi jangan menghitung anak elemen wadah.
+  const daftar = useRef<ToastItem[]>([]);
   useLayoutEffect(() => {
+    daftar.current = items;
     const el = wadah.current;
     if (!el || typeof el.showPopover !== "function") return;
-    if (adaToast && !el.matches(":popover-open")) el.showPopover();
-  }, [adaToast]);
+    if (items.length > 0 && !el.matches(":popover-open")) el.showPopover();
+  }, [items]);
   const sembunyikanBilaKosong = () => {
     const el = wadah.current;
-    if (el && typeof el.hidePopover === "function" && el.children.length === 0 && el.matches(":popover-open")) el.hidePopover();
+    if (el && typeof el.hidePopover === "function" && daftar.current.length === 0 && el.matches(":popover-open")) el.hidePopover();
   };
+  /** Toast yang sedang beranimasi keluar tak boleh memasang timer lagi (mis. blur saat fokus dikembalikan). */
+  const masihAda = (id: string) => daftar.current.some((t) => t.id === id);
 
   /** Tutup lewat tombol: fokus pindah ke toast berikutnya, atau kembali ke asal bila tak ada lagi. */
   function tutupManual(id: string) {
@@ -221,11 +226,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 // Jeda auto-hilang selama kursor atau fokus berada di toast.
                 onMouseEnter={() => hentikanTimer(t.id)}
                 onMouseLeave={(e) => {
-                  if (!e.currentTarget.contains(document.activeElement)) pasangTimer(t.id, DURATION_LANJUT);
+                  if (masihAda(t.id) && !e.currentTarget.contains(document.activeElement)) pasangTimer(t.id, DURATION_LANJUT);
                 }}
                 onFocus={() => hentikanTimer(t.id)}
                 onBlur={(e) => {
-                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) pasangTimer(t.id, DURATION_LANJUT);
+                  if (masihAda(t.id) && !e.currentTarget.contains(e.relatedTarget as Node | null)) pasangTimer(t.id, DURATION_LANJUT);
                 }}
                 className={cn(
                   "pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-[var(--radius-lg)] border border-l-4 border-border bg-surface px-4 py-3 shadow-lg",
