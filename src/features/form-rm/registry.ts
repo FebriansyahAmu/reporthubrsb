@@ -2,7 +2,7 @@ import type { z } from "zod";
 import type { BagianSimrs } from "./asal";
 import { emptyConsentForm, CONSENT_JENIS, kekuranganConsent } from "./consent.constants";
 import type { StrukturDeklaratif } from "./deklaratif";
-import { emptyEdukasiForm, EDUKASI_JENIS } from "./edukasi.constants";
+import { emptyEdukasiForm, EDUKASI_JENIS, kekuranganEdukasi } from "./edukasi.constants";
 import { morse } from "./forms/morse";
 import { emptyRingkasanForm, lengkapiRingkasan, RINGKASAN_JENIS } from "./ringkasan.constants";
 import { cekTtdPernyataan, emptyRm22Form, kekuranganRm22, ringkasRm22, type Rm22Data } from "./rm22.constants";
@@ -395,15 +395,8 @@ const edukasi: DefinisiForm<z.output<typeof edukasiFormSchema>> = {
     ...d,
     entries: d.entries.map((e, i) => ({ ...e, sasaranTtd: f(e.sasaranTtd, `entries.${i}.sasaranTtd`) })),
   }),
-  syaratFinal: (d) => {
-    const aktif = d.entries.filter((e) => e.aktif);
-    if (aktif.length === 0) return ["Minimal satu kebutuhan edukasi diisi"];
-    return aktif.flatMap((e) => [
-      ...kosongBila(belumDiisi(e.edukatorNama), `${e.kategori}: nama edukator`),
-      ...kosongBila(belumDiisi(e.tanggalJam), `${e.kategori}: tanggal & jam edukasi`),
-      ...kosongBila(e.sasaranTtd === "", `${e.kategori}: tanda tangan sasaran edukasi`),
-    ]);
-  },
+  // Sumber tunggal dengan panel "Syarat finalisasi" di layar isian (edukasi.constants).
+  syaratFinal: (d) => kekuranganEdukasi(d).map((s) => s.label),
 };
 
 const ringkasan: DefinisiForm<z.output<typeof ringkasanFormSchema>> = {

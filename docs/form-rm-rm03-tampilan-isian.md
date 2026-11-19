@@ -31,7 +31,7 @@ Empat langkah berurutan sesuai alur di meja admisi:
 ## Catatan teknis
 
 - **Syarat FINAL satu sumber.** `SYARAT_FINAL_CONSENT` / `kekuranganConsent` (`consent.constants.ts`) dipakai registri (diperiksa server saat FINALKAN) dan layar. Teks pesannya sama dengan sebelumnya (`consent.test.ts`).
-- **Scrollspy.** `scroll-target-group: auto` + `:target-current` bila didukung (Chrome 140+); `aria-current` diselaraskan saat `scrollend`. Peramban lain memakai IntersectionObserver dan kelas `.target-current`. Lightning CSS memberi peringatan build bahwa `:target-current` belum dikenal, tetapi aturannya tetap terbawa ke CSS hasil build.
+- **Scrollspy.** `scroll-target-group: auto` + `:target-current` bila didukung (Chrome 140+); `aria-current` diselaraskan saat `scrollend`. Peramban lain memakai IntersectionObserver dan kelas `.target-current`. Sejak redesign RM.21, aturan `:target-current` dipasang lewat CSSOM (`adoptedStyleSheets`), sehingga peringatan Lightning CSS "Parsing CSS source code failed" tidak muncul lagi. Komponen langkah kini bersama di `src/features/form-rm/isian/langkah/` (lihat `docs/form-rm-rm21-tampilan-isian.md`).
 - **`scroll-padding`.** Diberlakukan pada halaman yang memuat `[data-bilah-aksi-isian]` (semua form isian), di `globals.css`, supaya kolom yang difokus tidak tertutup topbar, bilah langkah, atau bilah aksi (WCAG 2.4.11).
 - **Gotcha:** teks `sr-only` (berposisi absolut) di dalam wadah `overflow-x-auto` harus punya leluhur `relative` di wadah itu. Tanpa itu, teks tersebut lolos dari pemotongan dan melebarkan halaman ponsel.
 - **`SelectOther`** (komponen bersama) kini memberi nama aksesibel pada kolom teks "Lainnya…" (`otherAriaLabel`; bawaan: placeholder tanpa "…").

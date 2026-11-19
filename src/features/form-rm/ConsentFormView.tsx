@@ -4,17 +4,13 @@ import { useRef, useState } from "react";
 import {
   AlertTriangle,
   CalendarCheck2,
-  Check,
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
-  Circle,
   CircleCheck,
-  ListChecks,
   PenLine,
   UserRoundCheck,
 } from "lucide-react";
-import { Card } from "@/components/ui/Card";
 import { Input, Label } from "@/components/ui/Field";
 import { DatePicker, DateTimePicker, toYmd } from "@/components/ui/DatePicker";
 import { SelectOther } from "@/components/ui/Select";
@@ -22,8 +18,25 @@ import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
 import { SaranNamaSaya } from "@/features/form-rm/isian/SaranNamaSaya";
 import { BidangIsian, useTerkunci } from "@/features/form-rm/isian/kunci";
-import { TandaAsal } from "@/features/form-rm/isian/TandaAsal";
 import { useIsian } from "@/features/form-rm/isian/useIsian";
+import {
+  BagianLangkah,
+  IsiCepat,
+  ItemId,
+  KONTROL,
+  KolomTeks,
+  LabelKolom,
+  SyaratFinal,
+  TOMBOL_KECIL,
+  TataLetakLangkah,
+  Wajib,
+  fmtTanggal,
+  statusDari,
+  terisi,
+  type ButirSyarat,
+} from "@/features/form-rm/isian/langkah/bagian";
+import type { Langkah } from "@/features/form-rm/isian/langkah/NavLangkah";
+import { PilihanRadio } from "@/features/form-rm/isian/langkah/PilihanRadio";
 import { HUBUNGAN_OPTS } from "@/features/form-rm/edukasi.constants";
 import {
   CONSENT_TEXT,
@@ -38,8 +51,6 @@ import {
   kekuranganConsent,
   type SyaratConsent,
 } from "@/features/form-rm/consent.constants";
-import { NavLangkah, useLangkahAktif, type Langkah, type StatusLangkah } from "@/features/form-rm/consent/NavLangkah";
-import { PilihanRadio } from "@/features/form-rm/consent/PilihanRadio";
 import { cn } from "@/lib/cn";
 import type { ConsentForm, FormRmHeader } from "@/server/modules/form-rm/form-rm.types";
 import type { IsianForm, IzinIsian } from "@/server/modules/form-rm/isian.types";
@@ -57,12 +68,7 @@ const ID = {
   persetujuan: "rm03-persetujuan",
   ttd: "rm03-ttd",
 } as const;
-const ID_LANGKAH = [ID.pasien, ID.pj, ID.persetujuan, ID.ttd] as const;
-
 /* Kelas bersama (dipakai juga oleh konstanta poin di tingkat modul → dideklarasikan lebih dulu). */
-const KONTROL = "pointer-coarse:h-11 pointer-coarse:text-base";
-const TOMBOL_KECIL =
-  "inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-md)] border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring pointer-coarse:min-h-10";
 const PANAH = "size-4 shrink-0 text-fg-subtle transition-transform duration-200 motion-reduce:transition-none";
 const RINGKAS =
   "flex cursor-pointer list-none items-center gap-2 rounded-[var(--radius-md)] px-3 py-2.5 text-sm text-fg transition-colors hover:bg-surface-2/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring [&::-webkit-details-marker]:hidden pointer-coarse:min-h-11 [details[open]>&_svg:first-child]:rotate-90";
@@ -81,18 +87,7 @@ const TUJUAN_SYARAT: Record<SyaratConsent["kolom"], string> = {
 const KOLOM_PASIEN = ["nik", "waktuPendaftaran", "ruanganRawat", "kelas"] as const;
 const KOLOM_PJ = ["pjNama", "pjJenisKelamin", "pjUmur", "pjHubungan", "pjTelepon", "pjAlamat"] as const;
 
-const terisi = (v: string) => v.trim() !== "";
-const statusDari = (n: number, total: number): StatusLangkah => (n === 0 ? "kosong" : n >= total ? "lengkap" : "sebagian");
 const samaNama = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase() && a.trim() !== "";
-
-/** Gulir ke kolom lalu fokuskan (tanpa animasi bila pengguna memilih gerak dikurangi). */
-function fokusKe(id: string) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const halus = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  el.scrollIntoView({ behavior: halus ? "smooth" : "auto", block: "center" });
-  el.focus({ preventScroll: true });
-}
 
 export function ConsentFormView({
   isian,
@@ -105,7 +100,6 @@ export function ConsentFormView({
 }) {
   const k = useIsian(isian, izin, siapkan);
   const { form, setForm } = k;
-  const { aktif, cssAsli } = useLangkahAktif(ID_LANGKAH);
 
   const set = <K extends keyof ConsentForm>(key: K, value: ConsentForm[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -158,28 +152,17 @@ export function ConsentFormView({
   ];
   // Daftar syarat hanya untuk yang bisa mengisi (DRAF & tidak terkunci).
   const draf = isian.status === "DRAF" && !k.terkunci;
+  const belum = new Set(kurang.map((s) => s.kolom));
+  const butirSyarat: ButirSyarat[] = SYARAT_FINAL_CONSENT.map((s) => ({
+    kunci: s.kolom,
+    label: s.label,
+    ok: !belum.has(s.kolom),
+    tujuan: TUJUAN_SYARAT[s.kolom],
+  }));
 
   return (
     <IsianFrame kendali={k}>
-      <div className="xl:grid xl:grid-cols-[15rem_minmax(0,1fr)] xl:items-start xl:gap-6">
-        {/* Layar lebar: navigasi langkah + syarat finalisasi di kolom samping yang lengket. */}
-        <aside className="sticky top-20 hidden space-y-4 xl:block">
-          <NavLangkah langkah={langkah} aktif={aktif} cssAsli={cssAsli} arah="vertikal" />
-          {draf && <SyaratFinal kurang={kurang} />}
-        </aside>
-
-        <div className="min-w-0 space-y-5">
-          {/* Ponsel & tablet: bilah langkah lengket di bawah topbar, bisa digeser. */}
-          <div className="sticky top-16 z-10 -mx-4 border-b border-border bg-bg/90 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-bg/75 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 xl:hidden">
-            <NavLangkah
-              langkah={langkah}
-              aktif={aktif}
-              cssAsli={cssAsli}
-              arah="horizontal"
-              className="overflow-x-auto"
-            />
-          </div>
-
+      <TataLetakLangkah langkah={langkah} samping={draf && <SyaratFinal butir={butirSyarat} idJudul="rm03-syarat-judul" />}>
           {/* ------------------------------------------------ 1. Pasien & pendaftaran */}
           <Langkah1 header={header} form={form} set={set} />
 
@@ -196,7 +179,7 @@ export function ConsentFormView({
             judul="Pernyataan & tanda tangan"
             ket="Kolom bertanda * wajib diisi sebelum isian bisa difinalkan."
           >
-            {draf && <SyaratFinal kurang={kurang} className="mb-5 xl:hidden" />}
+            {draf && <SyaratFinal butir={butirSyarat} idJudul="rm03-syarat-judul-ponsel" className="mb-5 xl:hidden" />}
             <blockquote className="mb-5 rounded-[var(--radius-md)] border-l-4 border-brand bg-brand-soft/50 px-4 py-3 text-[13px] leading-relaxed text-fg">
               <p className="mb-1 text-xs font-semibold text-brand-soft-fg">X. {JUDUL_POIN.X}</p>
               <p className="font-medium [text-wrap:pretty]">{CONSENT_TEXT.X}</p>
@@ -266,8 +249,7 @@ export function ConsentFormView({
               </div>
             </BidangIsian>
           </BagianLangkah>
-        </div>
-      </div>
+      </TataLetakLangkah>
     </IsianFrame>
   );
 }
@@ -695,139 +677,11 @@ function IsiCepatNama({
   pilihan: { ket: string; nama: string }[];
   onPilih: (v: string) => void;
 }) {
-  const terkunci = useTerkunci();
   const tampil = pilihan.filter((p) => terisi(p.nama) && !samaNama(p.nama, nilai));
-  if (terkunci || tampil.length === 0) return null;
-  return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-      <span className="text-[11px] text-fg-subtle">Isi dengan:</span>
-      {tampil.map((p) => (
-        <button
-          key={p.ket}
-          type="button"
-          onClick={() => onPilih(p.nama)}
-          className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] text-fg-muted transition-colors hover:border-brand hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring pointer-coarse:min-h-9"
-        >
-          <span className="font-medium text-fg">{p.ket}</span>
-          <span className="truncate">— {p.nama}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/** Daftar syarat FINAL + kemajuan; butir yang belum terpenuhi membawa ke kolomnya. */
-function SyaratFinal({ kurang, className }: { kurang: readonly SyaratConsent[]; className?: string }) {
-  const total = SYARAT_FINAL_CONSENT.length;
-  const ok = total - kurang.length;
-  const belum = new Set(kurang.map((s) => s.kolom));
-  return (
-    <section
-      aria-labelledby="rm03-syarat-judul"
-      className={cn("rounded-[var(--radius-lg)] border border-border bg-surface p-3", className)}
-    >
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h2 id="rm03-syarat-judul" className="flex items-center gap-1.5 text-sm font-semibold text-fg">
-          <ListChecks className="size-4 text-brand" aria-hidden />
-          Syarat finalisasi
-        </h2>
-        <span className="text-xs tabular-nums text-fg-muted" aria-hidden>
-          {ok}/{total}
-        </span>
-      </div>
-      <progress
-        value={ok}
-        max={total}
-        aria-labelledby="rm03-syarat-judul"
-        className={cn(
-          "mb-1 block h-1.5 w-full appearance-none overflow-clip rounded-full border-0 bg-surface-2",
-          "[&::-webkit-progress-bar]:bg-transparent",
-          "[&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-success [&::-webkit-progress-value]:transition-[inline-size]",
-          "[&::-moz-progress-bar]:rounded-full [&::-moz-progress-bar]:bg-success",
-        )}
-      />
-      <p className="mb-2 text-[11px] text-fg-muted" aria-live="polite">
-        {kurang.length === 0 ? "Semua syarat terpenuhi — isian siap difinalkan." : `${ok} dari ${total} terpenuhi`}
-      </p>
-      <ul className="space-y-0.5">
-        {SYARAT_FINAL_CONSENT.map((s) => {
-          const kosong = belum.has(s.kolom);
-          return (
-            <li key={s.kolom}>
-              {kosong ? (
-                <button
-                  type="button"
-                  onClick={() => fokusKe(TUJUAN_SYARAT[s.kolom])}
-                  className="flex w-full items-start gap-2 rounded-[var(--radius-sm)] px-1.5 py-1 text-left text-xs text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring pointer-coarse:min-h-10"
-                >
-                  <Circle className="mt-px size-3.5 shrink-0 text-fg-subtle" aria-hidden />
-                  <span className="min-w-0 flex-1">
-                    {s.label}
-                    <span className="sr-only"> — belum, buka kolomnya</span>
-                  </span>
-                  <ChevronRight className="mt-px size-3.5 shrink-0 text-fg-subtle" aria-hidden />
-                </button>
-              ) : (
-                <span className="flex items-start gap-2 px-1.5 py-1 text-xs text-fg-muted">
-                  <Check className="mt-px size-3.5 shrink-0 text-success" aria-hidden />
-                  <span className="min-w-0">
-                    {s.label}
-                    <span className="sr-only"> — terpenuhi</span>
-                  </span>
-                </span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </section>
-  );
+  return <IsiCepat pilihan={tampil.map((p) => ({ kunci: p.ket, ket: p.ket, nilai: p.nama, pilih: () => onPilih(p.nama) }))} />;
 }
 
 /* ================================================================== bersama */
-
-/** Kartu satu langkah: <section> berjudul (h2) + nomor urut; tujuan tautan navigasi. */
-function BagianLangkah({
-  id,
-  no,
-  judul,
-  ket,
-  aksi,
-  children,
-}: {
-  id: string;
-  no: number;
-  judul: string;
-  ket?: string;
-  aksi?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section id={id} tabIndex={-1} aria-labelledby={`${id}-judul`} className="outline-none">
-      <Card className="@container p-4 sm:p-5">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-          <div className="flex min-w-0 items-start gap-3">
-            <span
-              aria-hidden
-              className="grid size-7 shrink-0 place-items-center rounded-full bg-brand text-xs font-semibold text-white tabular-nums"
-            >
-              {no}
-            </span>
-            <div className="min-w-0">
-              <h2 id={`${id}-judul`} className="text-base font-semibold text-fg [text-wrap:balance]">
-                <span className="sr-only">Langkah {no}: </span>
-                {judul}
-              </h2>
-              {ket && <p className="mt-0.5 text-xs text-fg-muted [text-wrap:pretty]">{ket}</p>}
-            </div>
-          </div>
-          {aksi}
-        </div>
-        {children}
-      </Card>
-    </section>
-  );
-}
 
 /** Poin yang hanya dibacakan: akordeon <details> (tetap bisa dicari dengan Find saat tertutup). */
 function PoinBaca({ no, onToggle, children }: { no: keyof typeof JUDUL_POIN; onToggle: () => void; children: React.ReactNode }) {
@@ -858,90 +712,3 @@ function PoinIsian({ no, children }: { no: keyof typeof JUDUL_POIN; children: Re
     </div>
   );
 }
-
-function Wajib() {
-  return (
-    <>
-      <span aria-hidden className="text-danger">
-        *
-      </span>
-      <span className="sr-only">(wajib sebelum finalisasi)</span>
-    </>
-  );
-}
-
-/** Label kolom + penanda asal SIMRS/diubah (bila `asal`) + tanda wajib/opsional. */
-function LabelKolom({
-  htmlFor,
-  asal,
-  wajib,
-  opsional,
-  children,
-}: {
-  htmlFor: string;
-  asal?: string;
-  wajib?: boolean;
-  opsional?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
-      <label htmlFor={htmlFor} className="min-w-0 text-xs font-medium text-fg-muted">
-        {children} {wajib && <Wajib />}
-        {opsional && <span className="font-normal text-fg-subtle">(opsional)</span>}
-      </label>
-      {asal && <TandaAsal path={asal} />}
-    </div>
-  );
-}
-
-function KolomTeks({
-  id,
-  label,
-  asal,
-  wajib,
-  opsional,
-  value,
-  onChange,
-  placeholder,
-  describedBy,
-}: {
-  id: string;
-  label: string;
-  asal?: string;
-  wajib?: boolean;
-  opsional?: boolean;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  describedBy?: string;
-}) {
-  return (
-    <div>
-      <LabelKolom htmlFor={id} asal={asal} wajib={wajib} opsional={opsional}>
-        {label}
-      </LabelKolom>
-      <Input
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        aria-describedby={describedBy}
-        enterKeyHint="next"
-        className={KONTROL}
-      />
-    </div>
-  );
-}
-
-function ItemId({ label, value, mono, strong }: { label: string; value: string; mono?: boolean; strong?: boolean }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-[11px] text-fg-muted">{label}</dt>
-      <dd className={cn("truncate text-fg", mono && "font-mono", strong && "font-semibold")}>{value || "—"}</dd>
-    </div>
-  );
-}
-
-const fmtTanggal = (iso: string) =>
-  new Date(iso).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
