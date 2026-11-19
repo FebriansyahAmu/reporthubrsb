@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import type { BagianSimrs } from "./asal";
-import { emptyConsentForm, CONSENT_JENIS } from "./consent.constants";
+import { emptyConsentForm, CONSENT_JENIS, kekuranganConsent } from "./consent.constants";
 import type { StrukturDeklaratif } from "./deklaratif";
 import { emptyEdukasiForm, EDUKASI_JENIS } from "./edukasi.constants";
 import { morse } from "./forms/morse";
@@ -462,13 +462,8 @@ const consent: DefinisiForm<z.output<typeof consentFormSchema>> = {
     pasienTtd: f(d.pasienTtd, "pasienTtd"),
     petugasTtd: f(d.petugasTtd, "petugasTtd"),
   }),
-  syaratFinal: (d) => [
-    ...kosongBila(belumDiisi(d.pasienNama), "Nama pasien / penanggung jawab yang menandatangani"),
-    ...kosongBila(d.pasienTtd === "", "Tanda tangan pasien / penanggung jawab"),
-    ...kosongBila(belumDiisi(d.petugasNama), "Nama petugas"),
-    ...kosongBila(d.petugasTtd === "", "Tanda tangan petugas"),
-    ...kosongBila(belumDiisi(d.tanggalTtd), "Tanggal tanda tangan"),
-  ],
+  // Sumber tunggal dgn daftar "Syarat finalisasi" di tampilan isian (consent.constants).
+  syaratFinal: (d) => kekuranganConsent(d).map((s) => s.label),
 };
 
 /*

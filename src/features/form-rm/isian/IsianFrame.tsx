@@ -283,6 +283,7 @@ function BilahAksi<T>({
     <div
       role="region"
       aria-label="Aksi isian"
+      data-bilah-aksi-isian
       className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80 lg:left-64"
     >
       {/* Ponsel: status di baris sendiri di atas tombol (chip skor/kategori tak cukup ruang di samping

@@ -76,6 +76,42 @@ export const KEWAJIBAN_PASIEN: string[] = [
   "Memberikan imbalan atas pelayanan yang diterima.",
 ];
 
+/**
+ * Judul poin I–X (sama dengan cetak). Poin III & IV memuat isian; sisanya
+ * dibacakan/dijelaskan kepada pasien. Teks tetap dari `CONSENT_TEXT`.
+ */
+export const JUDUL_POIN = {
+  I: "Persetujuan untuk Pengobatan",
+  II: "Hasil yang Tidak Diharapkan",
+  III: "Persetujuan Pelepasan Informasi",
+  IV: "Keinginan Privasi",
+  V: "Informasi Biaya",
+  VI: "Persetujuan Tindakan Pemasangan Alat Medis",
+  VII: "Pendidikan Kesehatan di RSUD Boltim",
+  VIII: "Tata Tertib Rumah Sakit",
+  IX: "Hak dan Kewajiban Pasien",
+  X: "Pernyataan",
+} as const;
+
+/**
+ * Syarat FINAL RM.03 — sumber tunggal untuk registri (diperiksa server saat
+ * FINALKAN) dan daftar "Syarat finalisasi" di layar. `kolom` = path isian.
+ */
+export const SYARAT_FINAL_CONSENT = [
+  { kolom: "pasienNama", label: "Nama pasien / penanggung jawab yang menandatangani" },
+  { kolom: "pasienTtd", label: "Tanda tangan pasien / penanggung jawab" },
+  { kolom: "petugasNama", label: "Nama petugas" },
+  { kolom: "petugasTtd", label: "Tanda tangan petugas" },
+  { kolom: "tanggalTtd", label: "Tanggal tanda tangan" },
+] as const satisfies readonly { kolom: keyof ConsentForm; label: string }[];
+
+export type SyaratConsent = (typeof SYARAT_FINAL_CONSENT)[number];
+
+/** Syarat FINAL yang belum terpenuhi (teks kosong / tanda tangan belum ada). */
+export function kekuranganConsent(d: ConsentForm): SyaratConsent[] {
+  return SYARAT_FINAL_CONSENT.filter((s) => d[s.kolom].trim() === "");
+}
+
 /** Form General Consent kosong. */
 export function emptyConsentForm(): ConsentForm {
   return {

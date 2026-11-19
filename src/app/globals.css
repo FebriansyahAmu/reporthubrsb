@@ -215,6 +215,47 @@ fieldset.isian-terkunci [aria-label="Kosongkan"] {
   display: none;
 }
 
+/* Halaman isian Form RM: topbar lengket (4rem) di atas & bilah aksi tetap di
+   bawah. scroll-padding menjaga kolom yang difokus/ditautkan tak tertutup
+   keduanya (WCAG 2.4.11); bilah aksi ponsel 2 baris → ruang bawah lebih besar.
+   Bilah langkah lengket RM.03 (di bawah xl) menambah ruang atas. */
+html:has([data-bilah-aksi-isian]) {
+  scroll-padding-block: 5rem 7.5rem;
+}
+@media (min-width: 40rem) {
+  html:has([data-bilah-aksi-isian]) {
+    scroll-padding-bottom: 5.5rem;
+  }
+}
+@media (max-width: 79.99rem) {
+  html:has([data-nav-langkah="horizontal"]) {
+    scroll-padding-top: 8.5rem;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html:has([data-nav-langkah]) {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Akordeon poin persetujuan (<details>): buka/tutup beranimasi tinggi bila
+   didukung (::details-content + interpolate-size); tanpa dukungan → instan. */
+.poin-persetujuan::details-content {
+  interpolate-size: allow-keywords;
+  overflow: clip;
+  contain: layout;
+}
+.poin-persetujuan:not([open])::details-content {
+  block-size: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .poin-persetujuan::details-content {
+    transition:
+      block-size 0.2s ease-in-out,
+      content-visibility 0.2s ease-in-out allow-discrete;
+  }
+}
+
 /* =========================================================================
    PRINT — layout kertas untuk cetakan (resume medik, laporan).
    ========================================================================= */
