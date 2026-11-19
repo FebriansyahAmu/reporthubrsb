@@ -53,3 +53,8 @@ next-env.d.ts
 /desktop/src-tauri/target
 /desktop/src-tauri/gen
 /desktop/rilis
+
+# alat agen AI lokal (skill Claude Code / modern-web-guidance, pengaturan lokal) — bukan kode aplikasi
+/.agents/
+/.claude/
+/skills-lock.json
