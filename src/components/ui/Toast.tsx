@@ -9,9 +9,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useMediaQuery } from "@/lib/useMediaQuery";
 
 /**
  * Sistem notifikasi (toast) global — bahasa desain "Cord". Dipasang sekali di
@@ -83,7 +84,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const liveTegas = useRef<HTMLDivElement>(null);
   /** Fokus sebelum masuk ke wadah toast — dikembalikan saat toast terakhir ditutup dengan keyboard. */
   const asalFokus = useRef<HTMLElement | null>(null);
-  const kurangiGerak = useReducedMotion();
+  // Reaktif terhadap perubahan preferensi selama halaman terbuka (useReducedMotion framer-motion hanya membaca sekali saat mount).
+  const kurangiGerak = useMediaQuery("(prefers-reduced-motion: reduce)");
 
   const hentikanTimer = useCallback((id: string) => {
     const timer = timers.current.get(id);

@@ -182,7 +182,8 @@ export function statusLangkahRm33(d: Rm33Data, id: IdLangkahRm33, kurang: readon
     ttdInformasi: adaIsi(d.pemberiTtd, d.penerimaTtd),
     keputusan: d.keputusan !== "",
     pernyataan: adaIsi(d.pernyataNama, d.pernyataUmur, d.pernyataAlamat, d.hubungan) || d.terhadap !== "",
-    ttdPernyataan: adaIsi(d.pernyataTtd, d.dokterTtd, d.saksi1Nama, d.saksi1Ttd, d.saksi2Nama, d.saksi2Ttd),
+    // Nama dokter (bisa terisi dari SIMRS) juga menandai langkah tersentuh → kekurangan TTD-nya tampil.
+    ttdPernyataan: adaIsi(d.pernyataTtd, d.dokterNama, d.dokterTtd, d.saksi1Nama, d.saksi1Ttd, d.saksi2Nama, d.saksi2Ttd),
   };
   return statusDari(kurang, tersentuh[id]);
 }

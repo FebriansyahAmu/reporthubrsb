@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyRm22Form, kekuranganRm22, type Rm22Data } from "../rm22.constants";
+import { emptyRm33Form, kekuranganRm33, type Rm33Data } from "../rm33.constants";
 import { JENIS_INFORMASI } from "./informasi";
 import { tujuanPesan } from "./tujuan";
 
@@ -37,6 +38,27 @@ describe("tujuanPesan — pesan syarat RM.22 → kolom di layar isian", () => {
     expect(tujuanPesan("rm22", "Saksi 1: tanda tangan")).toBe("rm22-ttd-saksi1");
     expect(tujuanPesan("rm22", "Jenis kelamin pasien")).toBe("rm22-pasien-jk");
     expect(tujuanPesan("rm33", "Tanggal pernyataan")).toBe("rm33-tanggal");
+  });
+
+  it("setiap pesan kekurangan RM.33 punya kolom tujuan", () => {
+    const kosong = emptyRm33Form();
+    const isiSemua = Object.fromEntries(JENIS_INFORMASI.map((j) => [j.id, { isi: "x", tanda: false }])) as Rm33Data["informasi"];
+    const variasi33: Rm33Data[] = [
+      kosong,
+      { ...kosong, keputusan: "setuju" },
+      { ...kosong, keputusan: "menolak", terhadap: "keluarga" },
+      { ...kosong, terhadap: "diri", informasi: isiSemua },
+      { ...kosong, saksi1Nama: "Ns. Ani", saksi2Ttd: "ttd:abc" },
+    ];
+    const pesan = new Set(variasi33.flatMap((d) => Object.values(kekuranganRm33(d)).flat()));
+    expect(pesan.size).toBeGreaterThan(40);
+    const tanpa = [...pesan].filter((p) => tujuanPesan("rm33", p) === null);
+    expect(tanpa).toEqual([]);
+    expect(tujuanPesan("rm33", "Tujuan rujukan (rumah sakit / fasilitas)")).toBe("rm33-tujuan");
+    expect(tujuanPesan("rm33", "Tanggal rujuk")).toBe("rm33-tgl-rujuk");
+    expect(tujuanPesan("rm33", "Keputusan: setuju, menunda, atau menolak rujukan")).toBe("rm33-keputusan");
+    expect(tujuanPesan("rm33", "Tanda tangan dokter")).toBe("rm33-ttd-dokter");
+    expect(tujuanPesan("rm33", "Rujukan terhadap diri sendiri atau keluarga")).toBe("rm33-terhadap");
   });
 
   it("pesan tak dikenal → null (pemanggil jatuh ke kartu langkah)", () => {

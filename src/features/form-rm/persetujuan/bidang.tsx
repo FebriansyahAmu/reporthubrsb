@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useId, useRef, type Dispatch, type SetStateAction } from "react";
 import { CalendarCheck2, CircleAlert, CircleCheck, ListChecks, PenLine, Stethoscope, UserRound, UsersRound, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -843,7 +843,11 @@ export function TempatTanggal({ id, kota, value, onChange }: { id: string; kota:
 
 /* ============================================================ umpan balik */
 
-/** Konfirmasi sebaris (mis. ganti keputusan menghapus TTD pernyataan). */
+/**
+ * Konfirmasi sebaris (mis. ganti keputusan menghapus TTD pernyataan). Saat
+ * muncul, fokus pindah ke "Batal" (aksi aman); saat ditutup, fokus kembali ke
+ * pilihan yang kini terpilih di grup radio asal (bukan hilang ke <body>).
+ */
 export function KonfirmasiGanti({
   id,
   children,
@@ -857,6 +861,25 @@ export function KonfirmasiGanti({
   onBatal: () => void;
   onYa: () => void;
 }) {
+  const batal = useRef<HTMLButtonElement>(null);
+  /** Elemen yang memicu konfirmasi (mis. radio keputusan). Diisi sekali: efek ganda StrictMode tak boleh mencatat "Batal". */
+  const asalFokus = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!asalFokus.current && document.activeElement instanceof HTMLElement && document.activeElement !== batal.current) {
+      asalFokus.current = document.activeElement;
+    }
+    const asal = asalFokus.current;
+    batal.current?.focus();
+    return () => {
+      requestAnimationFrame(() => {
+        // Fokus sudah dipindah pengguna ke tempat lain → biarkan.
+        if (document.activeElement && document.activeElement !== document.body) return;
+        const grup = asal instanceof HTMLInputElement && asal.type === "radio" && asal.name ? asal.name : "";
+        const terpilih = grup ? document.querySelector<HTMLInputElement>(`input[type="radio"][name="${CSS.escape(grup)}"]:checked`) : null;
+        (terpilih ?? (asal?.isConnected ? asal : null))?.focus();
+      });
+    };
+  }, []);
   return (
     <div
       role="alertdialog"
@@ -868,7 +891,7 @@ export function KonfirmasiGanti({
         <span id={id}>{children}</span>
       </p>
       <div className="flex shrink-0 gap-2">
-        <Button type="button" size="sm" variant="secondary" onClick={onBatal}>
+        <Button ref={batal} type="button" size="sm" variant="secondary" onClick={onBatal}>
           Batal
         </Button>
         <Button type="button" size="sm" onClick={onYa}>

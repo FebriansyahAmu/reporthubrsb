@@ -28,6 +28,12 @@ export function tujuanPesan(awalan: string, pesan: string): string | null {
     "Tanggal pernyataan": `${a}-tanggal`,
     "Tanda tangan yang menyatakan": `${a}-ttd-pernyata`,
     "Minimal satu saksi (nama & tanda tangan)": `${a}-saksi1-nama`,
+    // RM.33 (rujukan): rencana rujukan, keputusan setuju/menunda/menolak, dokter di baris tanda tangan.
+    "Tujuan rujukan (rumah sakit / fasilitas)": `${a}-tujuan`,
+    "Tanggal rujuk": `${a}-tgl-rujuk`,
+    "Keputusan: setuju, menunda, atau menolak rujukan": `${a}-keputusan`,
+    "Nama dokter": `${a}-dokter`,
+    "Tanda tangan dokter": `${a}-ttd-dokter`,
   };
   if (pesan in tetap) return tetap[pesan];
 
