@@ -10,7 +10,7 @@ import { cekTtdRm33, emptyRm33Form, kekuranganRm33, ringkasRm33, type Rm33Data }
 import { cekTtdRm41, emptyRm41Form, kekuranganRm41 } from "./rm41.constants";
 import { cekParafRm50, emptyRm50Form, kekuranganRm50, ringkasRm50, type Rm50Data } from "./rm50.constants";
 import { cekParafRm70, emptyRm70Form, kekuranganRm70 } from "./rm70.constants";
-import { emptyTriaseForm, hitungKategori, TRIASE_JENIS } from "./triase.constants";
+import { emptyTriaseForm, kekuranganTriase, TRIASE_JENIS } from "./triase.constants";
 import { KATEGORI_FORM, type KategoriForm } from "./kategori";
 import {
   consentFormSchema,
@@ -368,12 +368,8 @@ const triase: DefinisiForm<z.output<typeof triaseFormSchema>> = {
   skema: triaseFormSchema,
   kosong: () => triaseFormSchema.parse(emptyTriaseForm()),
   petaTtd: (d, f) => ({ ...d, petugasTtd: f(d.petugasTtd, "petugasTtd") }),
-  syaratFinal: (d) => [
-    ...kosongBila(hitungKategori(d) === null, "Kategori triase (centang minimal satu kriteria pemeriksaan)"),
-    ...kosongBila(belumDiisi(d.waktuTriase), "Tanggal & pukul triase"),
-    ...kosongBila(belumDiisi(d.petugasNama), "Nama petugas triase"),
-    ...kosongBila(d.petugasTtd === "", "Tanda tangan petugas triase"),
-  ],
+  // Sumber tunggal dengan panel "Syarat finalisasi" layar isian (triase.constants).
+  syaratFinal: (d) => kekuranganTriase(d).map((s) => s.label),
 };
 
 const edukasi: DefinisiForm<z.output<typeof edukasiFormSchema>> = {

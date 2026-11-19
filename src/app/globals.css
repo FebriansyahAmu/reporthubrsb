@@ -167,8 +167,14 @@
 }
 
 /* ========================================================================= */
-* {
-  border-color: var(--border);
+/* Warna bingkai bawaan DI DALAM @layer base: aturan tak berlapis mengalahkan semua
+   utilitas Tailwind (berlapis) apa pun spesifisitasnya → tanpa layer, kelas warna
+   bingkai (border-brand, has-checked:border-success, border-l-success, …) tak pernah
+   berlaku. Elemen tanpa kelas warna tetap memakai --border (base > preflight). */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
 }
 
 html {

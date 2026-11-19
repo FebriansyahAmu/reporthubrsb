@@ -202,6 +202,96 @@ export function hitungKategori(f: Pick<TriaseForm, "kriteria" | "kesadaran">): T
   return i < 0 ? null : ((i + 1) as TriaseKat);
 }
 
+/* -------------------------------------------------------- syarat finalisasi */
+
+/**
+ * Syarat FINAL — sumber tunggal untuk validasi server (registri) dan panel
+ * "Syarat finalisasi" di layar isian. Kriteria & kesadaran = keputusan klinis
+ * (tak pernah diisi otomatis); minimal satu temuan menentukan kategori.
+ */
+export const SYARAT_FINAL_TRIASE = [
+  { kolom: "kriteria", label: "Kategori triase (centang minimal satu kriteria pemeriksaan)" },
+  { kolom: "waktuTriase", label: "Tanggal & pukul triase" },
+  { kolom: "petugasNama", label: "Nama petugas triase" },
+  { kolom: "petugasTtd", label: "Tanda tangan petugas triase" },
+] as const satisfies readonly { kolom: keyof TriaseForm; label: string }[];
+export type SyaratTriase = (typeof SYARAT_FINAL_TRIASE)[number];
+
+type DataSyaratTriase = Pick<TriaseForm, "kriteria" | "kesadaran" | "waktuTriase" | "petugasNama" | "petugasTtd">;
+
+/** Syarat FINAL yang belum terpenuhi (urut sesuai daftar). */
+export function kekuranganTriase(d: DataSyaratTriase): SyaratTriase[] {
+  const belum: Record<SyaratTriase["kolom"], boolean> = {
+    kriteria: hitungKategori(d) === null,
+    waktuTriase: d.waktuTriase.trim() === "",
+    petugasNama: d.petugasNama.trim() === "",
+    petugasTtd: d.petugasTtd === "",
+  };
+  return SYARAT_FINAL_TRIASE.filter((s) => belum[s.kolom]);
+}
+
+/* ---------------------------------------------------- langkah layar isian */
+
+/** Urutan langkah layar isian (= urutan alur di meja triase; cetak tidak memakai ini). */
+export const LANGKAH_TRIASE = [
+  { id: "kedatangan", judul: "Kedatangan", singkat: "Kedatangan" },
+  { id: "kasus", judul: "Jenis kasus", singkat: "Kasus" },
+  { id: "ttv", judul: "Tanda-tanda vital", singkat: "Tanda vital" },
+  { id: "pemeriksaan", judul: "Pemeriksaan triase", singkat: "Pemeriksaan" },
+  { id: "hasil", judul: "Hasil & tanda tangan", singkat: "Hasil & TTD" },
+] as const;
+export type IdLangkahTriase = (typeof LANGKAH_TRIASE)[number]["id"];
+
+/** Syarat FINAL → langkah tempat kolomnya diisi. */
+export const LANGKAH_SYARAT_TRIASE: Record<SyaratTriase["kolom"], IdLangkahTriase> = {
+  kriteria: "pemeriksaan",
+  waktuTriase: "hasil",
+  petugasNama: "hasil",
+  petugasTtd: "hasil",
+};
+
+export type StatusLangkahTriase = "lengkap" | "sebagian" | "kosong";
+
+/** Tanda vital utama (wajib dicatat di meja triase); diastolik & saturasi melengkapi. */
+const TTV_UTAMA = ["tdSistolik", "nadi", "suhu", "pernapasan"] as const;
+const TTV_SEMUA = ["tdSistolik", "tdDiastolik", "nadi", "suhu", "saturasi", "pernapasan"] as const;
+
+const statusDari = (n: number, total: number): StatusLangkahTriase => (n === 0 ? "kosong" : n >= total ? "lengkap" : "sebagian");
+
+/**
+ * Status, ringkasan, dan jumlah kolom yang belum lengkap tiap langkah layar
+ * isian (navigasi & lencana langkah). Murni — mudah diuji.
+ */
+export function ringkasLangkahTriase(
+  d: TriaseForm,
+): Record<IdLangkahTriase, { status: StatusLangkahTriase; ket: string; kurang: number }> {
+  const isi = (s: string) => s.trim() !== "";
+  const caraOk = isi(d.caraDatang) && (d.caraDatang !== "Lain-lain" || isi(d.caraDatangLain));
+  const nDatang = [isi(d.kedatanganWaktu), caraOk].filter(Boolean).length;
+  const nTtv = TTV_SEMUA.filter((c) => isi(d[c])).length;
+  const nUtama = TTV_UTAMA.filter((c) => isi(d[c])).length;
+  const kat = hitungKategori(d);
+  const kasusOk = d.doa || isi(d.kasus);
+  const nHasil = [isi(d.emergency), isi(d.waktuTriase), isi(d.petugasNama), d.petugasTtd !== ""].filter(Boolean).length;
+  return {
+    kedatangan: { status: statusDari(nDatang, 2), ket: `${nDatang} dari 2 terisi`, kurang: 2 - nDatang },
+    kasus: {
+      status: kasusOk ? "lengkap" : d.kecelakaan.length ? "sebagian" : "kosong",
+      ket: d.doa ? "DOA" : isi(d.kasus) ? d.kasus + (d.kecelakaan.length ? ` · ${d.kecelakaan.length} kecelakaan` : "") : "Belum dipilih",
+      kurang: kasusOk ? 0 : 1,
+    },
+    ttv: {
+      status: nUtama === TTV_UTAMA.length ? "lengkap" : nTtv > 0 ? "sebagian" : "kosong",
+      ket: `${nTtv} dari 6 terisi`,
+      kurang: TTV_UTAMA.length - nUtama,
+    },
+    pemeriksaan: kat
+      ? { status: "lengkap", ket: `Hasil ${TRIASE_KATEGORI[kat - 1].label}`, kurang: 0 }
+      : { status: "kosong", ket: "Belum ada temuan", kurang: 1 },
+    hasil: { status: statusDari(nHasil, 4), ket: `${nHasil} dari 4 terisi`, kurang: 4 - nHasil },
+  };
+}
+
 /** Angka dari isian TTV ("37,5" → 37.5). NaN bila kosong/bukan angka. */
 export function angkaTtv(s: string): number {
   const t = s.trim().replace(",", ".");
