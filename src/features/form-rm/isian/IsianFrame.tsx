@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -66,6 +66,43 @@ export function IsianFrame<T>({
   const [riwayat, setRiwayat] = useState(false);
   const [simrs, setSimrs] = useState(false);
   const { isian } = k;
+  const idToastSimpan = useRef<string | null>(null);
+
+  /**
+   * Simpan atas permintaan petugas (tombol Simpan / Ctrl+S) lalu tampilkan
+   * pemberitahuan hasilnya. Simpan otomatis sengaja tanpa pemberitahuan (terlalu
+   * sering); statusnya tetap terbaca di bilah aksi bawah. Pemberitahuan simpan
+   * sebelumnya diganti, tidak ditumpuk.
+   */
+  async function simpanDenganPemberitahuan() {
+    if (isian.status !== "DRAF" || !k.izin.ubah || k.terkunci) return;
+    const h = await k.simpanManual();
+    if (idToastSimpan.current) toast.dismiss(idToastSimpan.current);
+    idToastSimpan.current =
+      h.status === "tersimpan"
+        ? toast.success("Draf tersimpan", "Semua perubahan sudah disimpan. Isian masih berstatus draf — tekan Finalkan setelah semua syarat terpenuhi.")
+        : h.status === "tanpaPerubahan"
+          ? toast.info("Tidak ada perubahan baru", "Semua isian sudah tersimpan sebelumnya.")
+          : h.bentrok || h.galat?.konflik
+            ? toast.warning("Belum tersimpan", h.galat?.pesan ?? "Ada kolom yang bentrok — pilih isinya lebih dulu.")
+            : toast.error("Gagal menyimpan", h.galat?.pesan ?? "Draf belum tersimpan. Coba lagi.");
+  }
+
+  // Ctrl/⌘+S = sama dengan tombol Simpan (ref → selalu memakai fungsi & keadaan terbaru).
+  const simpanTerbaru = useRef(simpanDenganPemberitahuan);
+  useEffect(() => {
+    simpanTerbaru.current = simpanDenganPemberitahuan;
+  });
+  useEffect(() => {
+    const tekan = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void simpanTerbaru.current();
+      }
+    };
+    window.addEventListener("keydown", tekan);
+    return () => window.removeEventListener("keydown", tekan);
+  }, []);
 
   const bukaDialog = (aksi: AksiIsian) => {
     k.tutupGalat();
@@ -99,7 +136,13 @@ export function IsianFrame<T>({
           </TtdPerangkatProvider>
         </KunciIsian>
 
-        <BilahAksi kendali={k} aksen={aksen} onAksi={bukaDialog} onRiwayat={() => setRiwayat(true)} />
+        <BilahAksi
+          kendali={k}
+          aksen={aksen}
+          onAksi={bukaDialog}
+          onRiwayat={() => setRiwayat(true)}
+          onSimpan={() => void simpanDenganPemberitahuan()}
+        />
 
         <AksiIsianDialog kendali={k} aksi={dialog} onTutup={() => setDialog(null)} onBerhasil={berhasil} />
         {simrs && <MuatUlangSimrs kendali={k} onTutup={() => setSimrs(false)} />}
@@ -269,11 +312,14 @@ function BilahAksi<T>({
   aksen,
   onAksi,
   onRiwayat,
+  onSimpan,
 }: {
   kendali: KendaliIsian<T>;
   aksen?: React.ReactNode;
   onAksi: (aksi: AksiIsian) => void;
   onRiwayat: () => void;
+  /** Simpan + pemberitahuan hasil (sama dengan Ctrl+S). */
+  onSimpan: () => void;
 }) {
   const { isian, izin } = k;
   const draf = isian.status === "DRAF";
@@ -330,7 +376,7 @@ function BilahAksi<T>({
             <>
               <Button
                 variant="secondary"
-                onClick={() => void k.simpan()}
+                onClick={onSimpan}
                 loading={k.sibuk === "simpan"}
                 disabled={k.sibuk !== null}
                 icon={<Save className="size-4" />}

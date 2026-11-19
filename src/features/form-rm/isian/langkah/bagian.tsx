@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, Circle, ListChecks } from "lucide-react";
+import { ArrowDown, Check, ChevronRight, Circle, ListChecks } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Field";
 import { useTerkunci } from "@/features/form-rm/isian/kunci";
@@ -77,6 +77,8 @@ export function BagianLangkah({
   judul,
   ket,
   aksi,
+  lencana,
+  sorot,
   children,
 }: {
   id: string;
@@ -84,11 +86,15 @@ export function BagianLangkah({
   judul: string;
   ket?: React.ReactNode;
   aksi?: React.ReactNode;
+  /** Lencana di samping judul (mis. status langkah). */
+  lencana?: React.ReactNode;
+  /** Sorot kartu (mis. "Langkah berikutnya"). */
+  sorot?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <section id={id} tabIndex={-1} aria-labelledby={`${id}-judul`} className="outline-none">
-      <Card className="@container p-4 sm:p-5">
+      <Card className={cn("@container p-4 transition-shadow sm:p-5", sorot && "ring-2 ring-brand/35")}>
         <div className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
           <div className="flex min-w-0 items-start gap-3">
             <span
@@ -98,10 +104,13 @@ export function BagianLangkah({
               {no}
             </span>
             <div className="min-w-0">
-              <h2 id={`${id}-judul`} className="text-base font-semibold text-fg [text-wrap:balance]">
-                <span className="sr-only">Langkah {no}: </span>
-                {judul}
-              </h2>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <h2 id={`${id}-judul`} className="text-base font-semibold text-fg [text-wrap:balance]">
+                  <span className="sr-only">Langkah {no}: </span>
+                  {judul}
+                </h2>
+                {lencana}
+              </div>
               {ket && <p className="mt-0.5 text-xs text-fg-muted [text-wrap:pretty]">{ket}</p>}
             </div>
           </div>
@@ -113,12 +122,88 @@ export function BagianLangkah({
   );
 }
 
+/** Lencana status langkah (teks, bukan warna saja). `berikutnya` = langkah pertama yang belum lengkap. */
+export function LencanaLangkah({ status, kurang, berikutnya }: { status: StatusLangkah; kurang: number; berikutnya?: boolean }) {
+  return (
+    <>
+      <span
+        className={cn(
+          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
+          status === "lengkap" && "bg-success-soft text-success",
+          status === "sebagian" && "bg-warning-soft text-warning",
+          status === "kosong" && "bg-surface-2 text-fg-muted",
+        )}
+      >
+        {status === "lengkap" && <Check className="size-3" aria-hidden />}
+        {status === "lengkap" ? "Lengkap" : status === "sebagian" ? `${kurang} belum lengkap` : "Belum diisi"}
+      </span>
+      {berikutnya && (
+        <span className="rounded-full bg-brand px-2 py-0.5 text-[11px] font-semibold text-brand-fg">Langkah berikutnya</span>
+      )}
+    </>
+  );
+}
+
+/**
+ * Kaki kartu langkah: kekurangan yang bisa diklik (memfokuskan kolomnya) dan
+ * tautan ke langkah sesudahnya. Kekurangan tidak ditampilkan selama langkah
+ * belum disentuh (`tampilKurang` = false) agar tidak terasa "dimarahi".
+ */
+export function KakiLangkah({
+  kurang,
+  tampilKurang,
+  lanjut,
+}: {
+  kurang: readonly { label: string; tujuan: string }[];
+  tampilKurang: boolean;
+  lanjut?: { id: string; judul: string };
+}) {
+  const terkunci = useTerkunci();
+  const daftar = tampilKurang && !terkunci ? kurang : [];
+  if (daftar.length === 0 && !lanjut) return null;
+  return (
+    <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+      {daftar.length > 0 ? (
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-fg-subtle">Belum lengkap:</span>
+          <ul className="flex min-w-0 flex-wrap gap-1.5">
+            {daftar.map((x) => (
+              <li key={x.label}>
+                <button
+                  type="button"
+                  onClick={() => fokusKe(x.tujuan)}
+                  className="rounded-full bg-warning-soft px-2 py-0.5 text-left text-[11px] text-warning transition-colors hover:bg-warning/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring pointer-coarse:min-h-9"
+                >
+                  {x.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <span />
+      )}
+      {lanjut && (
+        <a
+          href={`#${lanjut.id}`}
+          className="inline-flex items-center gap-1 rounded-[var(--radius-md)] px-2 py-1 text-[13px] font-medium text-brand transition-colors hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring pointer-coarse:min-h-10"
+        >
+          Lanjut: {lanjut.judul}
+          <ArrowDown className="size-3.5" aria-hidden />
+        </a>
+      )}
+    </div>
+  );
+}
+
 export type ButirSyarat = {
   kunci: string;
   label: string;
   ok: boolean;
   /** id elemen yang difokuskan saat butir yang belum terpenuhi diklik. */
   tujuan: string;
+  /** Rincian singkat (mis. kekurangan di langkah itu). */
+  ket?: string;
 };
 
 /** Daftar syarat FINAL + kemajuan; butir yang belum terpenuhi membawa ke kolomnya. */
@@ -180,6 +265,7 @@ export function SyaratFinal({
                 <span className="min-w-0 flex-1">
                   {s.label}
                   <span className="sr-only"> — belum, buka kolomnya</span>
+                  {s.ket && <span className="mt-0.5 block text-[11px] text-fg-muted [overflow-wrap:anywhere]">{s.ket}</span>}
                 </span>
                 <ChevronRight className="mt-px size-3.5 shrink-0 text-fg-subtle" aria-hidden />
               </button>

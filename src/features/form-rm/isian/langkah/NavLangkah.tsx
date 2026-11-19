@@ -24,6 +24,8 @@ export type Langkah = {
   /** Ringkasan status, mis. "3 dari 4 terisi". */
   ket: string;
   sub?: readonly SubLangkah[];
+  /** Judul kelompok (mis. bagian formulir kertas) — tampil di navigasi samping sebelum langkah pertama kelompok. */
+  grup?: string;
 };
 
 const LABEL_STATUS: Record<StatusLangkah, string> = {
@@ -180,6 +182,8 @@ export function NavLangkah({
   className?: string;
 }) {
   const vertikal = arah === "vertikal";
+  // > 4 langkah: bilah horizontal hanya bulatan bernomor (label tetap dibaca pembaca layar); ringkasan teks bila muat (container query).
+  const padat = langkah.length > 4;
   // Sub-bagian aktif → langkah induknya yang aktif di bilah horizontal.
   const induk = (l: Langkah) =>
     l.id === aktif || (l.sub?.some((s) => s.id === aktif) ?? false);
@@ -193,10 +197,13 @@ export function NavLangkah({
       // `relative`: teks sr-only (absolut) ikut terpotong overflow nav — tanpa ini ia melebarkan halaman ponsel.
       className={cn("relative [scroll-target-group:auto]", className)}
     >
-      <div className={cn(!vertikal && "flex items-center gap-3")}>
+      <div className={cn(!vertikal && "@container flex items-center gap-3")}>
         <ol className={cn(vertikal ? "space-y-1" : "flex shrink-0 gap-1")}>
-          {langkah.map((l) => (
+          {langkah.map((l, i) => (
             <li key={l.id}>
+              {vertikal && l.grup && l.grup !== langkah[i - 1]?.grup && (
+                <p className={cn("px-2.5 pb-1 text-[11px] font-semibold text-fg-subtle", i > 0 && "pt-3")}>{l.grup}</p>
+              )}
               <a
                 href={`#${l.id}`}
                 aria-current={aktifIni(l) ? "true" : undefined}
@@ -205,14 +212,22 @@ export function NavLangkah({
                   "gap-2.5",
                   vertikal
                     ? "px-2.5 py-2"
-                    : "justify-center px-2 py-1.5 max-sm:min-w-11 pointer-coarse:min-h-11",
+                    : cn(
+                        "justify-center px-2 py-1.5 pointer-coarse:min-h-11",
+                        padat ? "min-w-11" : "max-sm:min-w-11",
+                      ),
                   SOROTAN_CADANGAN,
                   !cssAsli && aktifIni(l) && "target-current",
                 )}
               >
                 <TandaLangkah status={l.status} no={l.no} />
                 {/* Ponsel: label disembunyikan secara visual (tetap dibaca pembaca layar) → semua langkah muat tanpa geser. */}
-                <span className={cn("min-w-0", !vertikal && "max-sm:sr-only")}>
+                <span
+                  className={cn(
+                    "min-w-0",
+                    !vertikal && (padat ? "sr-only" : "max-sm:sr-only"),
+                  )}
+                >
                   <span className="block truncate">
                     {vertikal ? l.judul : l.singkat}
                   </span>
@@ -261,7 +276,11 @@ export function NavLangkah({
           // Ringkasan langkah aktif untuk layar sempit (tautan di atas sudah membawa aria-current).
           <p
             aria-hidden
-            className="min-w-0 truncate text-xs text-fg-muted sm:hidden"
+            className={cn(
+              "min-w-0 truncate text-xs text-fg-muted",
+              // Padat: 6 bulatan 44 px memenuhi ponsel → ringkasan hanya bila wadah ≥ 28rem.
+              padat ? "hidden @[28rem]:block" : "sm:hidden",
+            )}
           >
             Langkah {kini.no} dari {langkah.length} ·{" "}
             <span className="font-semibold text-fg">{kini.singkat}</span>

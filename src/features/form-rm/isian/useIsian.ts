@@ -54,6 +54,13 @@ export type Tertinggal = { status: Exclude<StatusIsian, "DRAF">; oleh: string | 
 
 export type PilihanBentrok = "saya" | "mereka";
 
+/** Hasil simpan yang diminta petugas (tombol Simpan / Ctrl+S) — dasar pemberitahuan di layar. */
+export type HasilSimpan =
+  | { status: "tersimpan" }
+  /** Tidak ada perubahan sejak simpan terakhir (tanpa permintaan ke server). */
+  | { status: "tanpaPerubahan" }
+  | { status: "gagal"; galat: GalatIsian | null; bentrok: boolean };
+
 export type KendaliIsian<T> = {
   /** Metadata isian terbaru dari server (isi form ada di `form`). */
   isian: IsianForm;
@@ -72,6 +79,8 @@ export type KendaliIsian<T> = {
   galat: GalatIsian | null;
   tutupGalat: () => void;
   simpan: () => Promise<boolean>;
+  /** Simpan atas permintaan petugas + rincian hasilnya (untuk pemberitahuan). Simpan otomatis tidak memakai ini. */
+  simpanManual: () => Promise<HasilSimpan>;
   jalankan: (aksi: AksiIsian, alasan?: string) => Promise<boolean>;
   /** Terapkan nilai SIMRS terkini ke kolom terpilih; path yang diterapkan, atau null bila gagal. */
   terapkanSimrs: (kolom: string[]) => Promise<string[] | null>;
@@ -187,6 +196,12 @@ export function useIsian<T extends object>(
   const terkini = useRef(state);
   /** Permintaan simpan yang sedang berjalan (manual atau otomatis). */
   const proses = useRef<Promise<boolean> | null>(null);
+  /** Galat simpan terakhir — dibaca `simpanManual` tepat setelah janji simpan selesai (state galat belum tentu sudah dirender). */
+  const galatTerakhir = useRef<GalatIsian | null>(null);
+  const catatGalat = (g: GalatIsian): GalatIsian => {
+    galatTerakhir.current = g;
+    return g;
+  };
   /** Transisi status / terapkan SIMRS yang sedang berjalan. */
   const transisi = useRef<Promise<unknown> | null>(null);
   /** Event aliran yang menunggu isi terkini: rev tertinggi + info siapa/kolom. */
@@ -254,7 +269,7 @@ export function useIsian<T extends object>(
       if (otomatis) setGalat((g) => (g?.konflik ? g : null));
       return true;
     } catch (e) {
-      setGalat(galatDari(e, false));
+      setGalat(catatGalat(galatDari(e, false)));
       setVersiGagal(versiKirim);
       return false;
     } finally {
@@ -412,7 +427,7 @@ export function useIsian<T extends object>(
   async function kirimGabung(otomatis: boolean): Promise<boolean> {
     const s = terkini.current;
     if (s.bentrok.length > 0) {
-      if (!otomatis) setGalat({ pesan: "Pilih isi kolom yang bentrok lebih dulu.", konflik: false, kurang: [] });
+      if (!otomatis) setGalat(catatGalat({ pesan: "Pilih isi kolom yang bentrok lebih dulu.", konflik: false, kurang: [] }));
       return false;
     }
     const ubah = susunUbah(s.dasar, s.data, def.tertaut ?? []);
@@ -457,11 +472,13 @@ export function useIsian<T extends object>(
       if (r) {
         terapkanKonflik(r);
         setGalat(
-          otomatis ? null : { pesan: "Ada kolom yang juga diubah petugas lain. Pilih isinya lebih dulu.", konflik: false, kurang: [] },
+          otomatis
+            ? null
+            : catatGalat({ pesan: "Ada kolom yang juga diubah petugas lain. Pilih isinya lebih dulu.", konflik: false, kurang: [] }),
         );
         return false;
       }
-      setGalat(galatDari(e, true));
+      setGalat(catatGalat(galatDari(e, true)));
       setVersiGagal(s.versi);
       // Status berubah di tempat lain (FINAL/BATAL) → muat status terbaru.
       if (e instanceof ApiError && e.code === "BUSINESS_RULE") void segarkan(null);
@@ -509,6 +526,19 @@ export function useIsian<T extends object>(
     });
     proses.current = p;
     return p;
+  }
+
+  /**
+   * Simpan atas permintaan petugas (tombol Simpan / Ctrl+S) + rincian hasil
+   * untuk pemberitahuan: tersimpan, tanpa perubahan (tak ada permintaan ke
+   * server), atau gagal beserta galat & ada-tidaknya kolom bentrok.
+   */
+  async function simpanManual(): Promise<HasilSimpan> {
+    const berubah = proses.current !== null || terkini.current.versi !== tersimpan.current;
+    galatTerakhir.current = null;
+    const ok = await simpan();
+    if (ok) return { status: berubah ? "tersimpan" : "tanpaPerubahan" };
+    return { status: "gagal", galat: galatTerakhir.current, bentrok: terkini.current.bentrok.length > 0 };
   }
 
   /** Tunggu simpan yang berjalan, lalu simpan perubahan yang tersisa (bila ada). */
@@ -618,17 +648,8 @@ export function useIsian<T extends object>(
     };
   }, []);
 
-  // Ctrl/⌘+S = simpan; peringatan saat menutup tab dengan perubahan yang belum tersimpan.
-  useEffect(() => {
-    const tekan = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        void simpanTerbaru.current();
-      }
-    };
-    window.addEventListener("keydown", tekan);
-    return () => window.removeEventListener("keydown", tekan);
-  }, []);
+  // Ctrl/⌘+S ditangani <IsianFrame> (sama dengan tombol Simpan + pemberitahuan).
+  // Peringatan saat menutup tab dengan perubahan yang belum tersimpan.
   useEffect(() => {
     if (!kotor) return;
     const tahan = (e: BeforeUnloadEvent) => {
@@ -680,6 +701,7 @@ export function useIsian<T extends object>(
     galat,
     tutupGalat: () => setGalat(null),
     simpan: () => simpan(),
+    simpanManual: () => simpanManual(),
     jalankan,
     terapkanSimrs,
     rampungkan: async () => ((await tuntaskanSimpan()) ? rev.current : null),
