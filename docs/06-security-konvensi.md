@@ -201,4 +201,27 @@ Audit dipanggil dari **service** (bukan API), agar tercatat apa pun jalur pemang
   - sesi 43/43;
   - sesi-tetap 27/29. Dua cek `expires_at` meleset karena jam server DB reporthub 16 detik lebih cepat (drift NTP), bukan karena kode.
 
+### Log patch 17 Nov 2026
+
+Pemicu: `next build` berhenti dengan `SecurityFatalError` ("Your version of Next.js is affected by a known security vulnerability") setelah kompilasi, dan `npm audit` melaporkan advisory `next`.
+
+| Komponen | Sebelum → sesudah | Advisory | Dampak ke aplikasi ini |
+| --- | --- | --- | --- |
+| `next` (+ `@next/env`, `@next/swc-*`) | 16.4.2 → **16.4.6** (patch terbaru jalur 16.4) | GHSA-mfr8-8qww-v76h (moderate): kebocoran informasi lintas *root params* saat fungsi `use cache` dipanggil lewat `unstable_cache()` (rentan 16.3.0–16.4.4) | `use cache` / `unstable_cache` tidak dipakai, jadi tidak terjangkau. Tetap ditambal; notice build hilang. |
+| `eslint-config-next` (dev) | 16.4.2 → **16.4.6** | — | Diselaraskan dengan `next`. |
+
+Lockfile hanya berubah pada 12 paket keluarga Next; tidak ada paket lain yang ikut naik.
+
+**Sisa temuan:**
+- `zod` 4.4.3 — GHSA-mrhx-c7xc-m3w5 (**high**): memori bisa habis saat memvalidasi koleksi berbatas yang sangat besar. Tambalan ada di ≥ 4.6.6, yaitu naik **minor**, bukan patch, sehingga perlu uji regresi skema tersendiri. Untuk sementara, body JSON rute tulis sudah dibatasi ukurannya (`readJsonTerbatas`, 413), yang membatasi ukuran koleksi masukan. Belum ditambal; menunggu keputusan.
+- `minimatch` (lewat `@typescript-eslint/*`, moderate, dev-only): tidak masuk image produksi.
+
+**Validasi** (build produksi `next start` :3100):
+- `tsc` dan ESLint bersih; unit 741/741.
+- Build lolos tanpa notice keamanan. Enam peringatan Turbopack `storage.ts` sudah ada sebelumnya (sama di 16.4.2).
+- Regresi E2E: keamanan Form RM berlanjut 49/49, RL sumber diagnosa 52/52, TTD perangkat 93/93, 10 formulir Form RM 154/154.
+- Regresi UI: RL 23/23, Form RM 81/81.
+- Header: CSP nonce rute publik `/ruang/*` dan CSP `/sw.js` tetap terpasang.
+- Catatan: fixture uji keamanan "akar IGD > 24 jam" sempat memilih IGD pembuat SPRI, yang merupakan kandidat sah server. Hasilnya 3 kegagalan, identik di 16.4.2. Fixture diperbaiki (IGD sumber SPRI dikecualikan), bukan kode aplikasi.
+
 Lanjut ke → [07-roadmap.md](./07-roadmap.md)
