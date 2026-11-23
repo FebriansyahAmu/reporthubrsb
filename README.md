@@ -1,128 +1,118 @@
 # AuditTrail RS BOLTIM — ReportHub RSB
 
-Aplikasi **SaaS pelaporan, kelengkapan berkas & cetak dokumen** untuk RSUD Bolaang
-Mongondow Timur. Melengkapi cetakan/laporan yang tidak disediakan SIMRS **SIMGOS**:
-membaca **langsung** dari database SIMGOS (query & stored procedure **read-only**),
-menyajikannya dalam UI modern, dan menyimpan dokumen yang diisi sendiri petugas
-(Bukti Pelayanan, Form RM, penetapan pejabat) di database aplikasi terpisah.
+Aplikasi web pelaporan, kelengkapan berkas, dan pengisian dokumen untuk RSUD Bolaang
+Mongondow Timur. ReportHub membaca data SIMRS **SIMGOS** secara langsung untuk
+menyajikan laporan dan cetakan yang tidak disediakan SIMGOS. Data milik aplikasi
+sendiri (akun, form isian, tanda tangan, inventaris, audit) disimpan di database
+terpisah **`reporthub`**.
 
-> 🚨 **HIGH ALERT — SIMGOS READ-ONLY.** Dilarang keras menambah tabel, mengubah
-> struktur, atau menulis data apa pun ke database SIMGOS (hanya `SELECT`/`EXECUTE`).
-> Semua state milik aplikasi (pengguna, peran, audit, form, TTD, konfigurasi)
-> disimpan di **database aplikasi `reporthub` yang terpisah & read-write**.
+Modul utama: Dashboard, Monitoring Pelayanan & Antrean BPJS, Laporan (RL 3.2, 3.5, 4.1,
+5.1, pendapatan, domisili), Berkas & Verifikasi Klaim BPJS, Audit Trail RME, Form RM
+(isian rekam medis + tanda tangan), BCKH, Inventarisasi Barang, dan Master (pengguna &
+peran).
 
-## Tech Stack
+> 🚨 **SIMGOS hanya dibaca.** Aplikasi hanya menjalankan `SELECT`/`EXECUTE` ke SIMGOS;
+> semua penulisan masuk ke `reporthub`. Jangan pernah memberi user SIMGOS hak tulis.
 
-**Next.js 16** (App Router, Turbopack) · **React 19** · **TypeScript (strict)** ·
-**Prisma 7** + `@prisma/adapter-mariadb` · **MySQL/MariaDB** · **Tailwind CSS v4** ·
-**Zod v4** · **jose** (JWT) · **bcryptjs** · **Framer Motion** · **lucide-react** ·
-**signature_pad** · **qrcode**
+Teknologi: Next.js 16 · React 19 · TypeScript · Prisma 7 · MySQL/MariaDB · Tailwind
+CSS v4. Dokumentasi teknis lengkap ada di [`docs/`](docs/README.md).
 
-## Fitur
+## Instalasi
 
-- **Dashboard** — ringkasan & grafik (tren kunjungan per-episode, sensus rawat inap)
-  dengan kit chart SVG bawaan.
-- **Monitoring Pelayanan** — pantau kelengkapan: *Belum Difinalkan*, *Kelengkapan
-  Diagnosa*, *Kelengkapan Resume*.
-- **Monitoring Antrean BPJS** — antrean registrasi online (regonline).
-- **Berkas Klaim** — kelengkapan dokumen klaim per pasien (SEP, SPRI, Triase, CPPT,
-  Resume), **Total Tagihan** + modal **Rincian Tagihan** (per komponen & per item),
-  serta **Bukti Pelayanan JKN-KIS**: tindakan ditarik dari SIMGOS lalu bisa disunting,
-  **tanda tangan peserta per tindakan**, QR nama petugas, dan tanda tangan **Kepala
-  Ruangan** otomatis.
-- **Form RM** (diisi admisi/petugas) — RM.01 *Ringkasan Masuk & Keluar*, RM.21
-  *Edukasi Terintegrasi*, RM.03 *General Consent*; **penanda kelengkapan** per pasien
-  di daftar IGD; penangkap **tanda tangan** (gambar / unggah / kamera / **via HP** lewat
-  QR); cetak 1:1.
-- **Resume Pulang (Discharge Planning)** — cetak via stored procedure SIMGOS.
-- **Pengaturan / Master**
-  - **Pengguna & Peran (RBAC)** — peran dinamis + grant izin per-modul, superadmin
-    bypass, audit trail.
-  - **Login via akun SIMGOS** — pengguna dapat masuk memakai akun SIMGOS-nya *bila*
-    admin telah menetapkan perannya di aplikasi (sumber login "SIMGOS"); kredensial
-    tetap diverifikasi read-only ke SIMGOS.
-  - **Mapping Ruangan** — tetapkan Kepala Instalasi / Kepala Ruangan / Ketua Tim per
-    ruangan (+ tanda tangan), dengan opsi *terapkan ke semua ruangan* satu instalasi.
-    Kepala Ruangan menjadi penanda tangan Bukti Pelayanan.
+### Prasyarat
 
-Bahasa visual: *maritime "Cord"* (navy + harbor-blue), font Figtree, **mode terang**.
+- **Produksi:** Docker + Docker Compose (image sudah berisi Node.js).
+- **Pengembangan:** Node.js 24 LTS (≥ 24.22.1).
+- **Database MySQL/MariaDB:**
+  - user SIMGOS dengan hak **hanya** `SELECT, EXECUTE`;
+  - database `reporthub` dengan user baca-tulis.
 
-## Arsitektur singkat
-
-- **Dua database, dua klien Prisma.** SIMGOS (banyak DB: `pendaftaran`, `medicalrecord`,
-  `layanan`, `master`, `pembayaran`, `regonline`, `bpjs`, `aplikasi`, …) diakses
-  **read-only** lewat satu koneksi, query ter-kualifikasi (`db.tabel` / `db.sp()`).
-  `reporthub` (read-write) menyimpan data aplikasi.
-- **Auth custom** (bukan NextAuth): access token 15 mnt + refresh 7 hari (jose,
-  rotasi + reuse-detection), cookie **httpOnly**. Sandi lokal = **bcrypt**; akun
-  SIMGOS diverifikasi memakai skema hashing SIMGOS (HMAC-SHA256 + bcrypt dengan
-  kunci rahasia dari env).
-- Layering: **API route → validasi (Zod) → service → DAL**.
-
-## Persiapan
-
-Prasyarat: Node.js 24 LTS (≥ 24.22.1, rilis keamanan Okt 2026; sama dengan image
-Docker) dan akses jaringan ke server MySQL SIMGOS (read-only) &
-`reporthub` (read-write).
+### 1. Isi konfigurasi `.env`
 
 ```bash
-npm install
-cp .env.example .env    # lalu isi nilai-nilainya
-npm run dev             # http://localhost:3000
+cp .env.example .env
 ```
 
-Variabel `.env` (lihat [`.env.example`](.env.example)):
+| Variabel | Wajib | Keterangan |
+| --- | --- | --- |
+| `DATABASE_URL_SIMGOS` | Ya | Koneksi SIMGOS (user `SELECT, EXECUTE` saja). |
+| `DATABASE_URL_APP` | Ya | Koneksi database `reporthub`. |
+| `AUTH_ACCESS_SECRET`, `AUTH_REFRESH_SECRET` | Ya | Dua secret acak yang berbeda. |
+| `FORM_RM_KUNCI_INTEGRITAS` | Ya | Secret acak ≥ 32 karakter. **Jangan diganti** setelah dipakai. |
+| `SIMGOS_PASSWORD_KEY` | Untuk login akun SIMGOS | Kunci hashing sandi dari instalasi SIMGOS. |
+| `PUBLIC_APP_ORIGIN` | Untuk QR ruangan | Alamat aplikasi yang bisa dijangkau HP, mis. `https://reporthub.contoh.go.id`. |
 
-| Variabel                                    | Keterangan                                                                 |
-| ------------------------------------------- | -------------------------------------------------------------------------- |
-| `DATABASE_URL_SIMGOS`                       | Koneksi SIMGOS — user MySQL **hanya** `GRANT SELECT, EXECUTE`.             |
-| `SIMGOS_PASSWORD_KEY`                        | `private_key` rahasia SIMGOS (`Aplikasi\Password`) untuk verifikasi login akun SIMGOS. |
-| `DATABASE_URL_APP`                          | Koneksi database aplikasi `reporthub` (read-write).                        |
-| `AUTH_ACCESS_SECRET` / `AUTH_REFRESH_SECRET`| Secret acak kuat untuk JWT access & refresh.                               |
+Buat secret acak dengan:
 
-## Skrip
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+```
 
-| Perintah                      | Fungsi                                             |
-| ----------------------------- | -------------------------------------------------- |
-| `npm run dev`                 | Server pengembangan (Turbopack).                   |
-| `npm run build` / `start`     | Build & jalankan produksi.                         |
-| `npm run lint`                | ESLint.                                            |
-| `npm run db:app:generate`     | Generate Prisma client aplikasi (`reporthub`).     |
-| `npm run db:simgos:generate`  | Generate Prisma client SIMGOS (read-only).         |
+Pengaturan opsional lain (masa sesi, folder penyimpanan, aplikasi desktop) dijelaskan
+di [`.env.example`](.env.example).
 
-> ⚠️ **Migrasi DB aplikasi:** `schema.prisma` bisa *drift* dari struktur live —
-> `prisma db push` dapat menuntut perubahan destruktif. Untuk menambah kolom/tabel,
-> gunakan **ALTER TABLE aditif manual** lalu `db:app:generate`, dan **restart** dev
-> server setelah menambah model/kolom Prisma.
+### 2. Produksi (Docker)
 
-## Dokumentasi
+Pertama kali di server:
 
-Perencanaan & desain di [`docs/`](docs/README.md):
+```bash
+mkdir -p storage && sudo chown -R 1001:1001 storage   # folder unggahan (sekali saja)
+docker compose build
+docker compose run --rm migrate                        # migrasi database, lihat langkah 4
+docker compose up -d
+```
 
-| Dokumen                                                     | Isi                                                |
-| ----------------------------------------------------------- | -------------------------------------------------- |
-| [docs/README.md](docs/README.md)                            | Ikhtisar, HIGH ALERT, scope                        |
-| [01-arsitektur.md](docs/01-arsitektur.md)                   | Arsitektur sistem, dual-database, layering         |
-| [02-tech-stack-struktur.md](docs/02-tech-stack-struktur.md) | Stack & struktur folder                            |
-| [03-database-prisma.md](docs/03-database-prisma.md)         | Multi-DB SIMGOS, guard read-only, stored procedure |
-| [04-backend-layering.md](docs/04-backend-layering.md)       | Layer API/Validation/Service/DAL                   |
-| [05-frontend-design.md](docs/05-frontend-design.md)         | Design system & UI                                 |
-| [06-security-konvensi.md](docs/06-security-konvensi.md)     | Keamanan & konvensi                                |
-| [07-roadmap.md](docs/07-roadmap.md)                         | Roadmap bertahap                                   |
-| [docs/rbac/](docs/rbac/)                                    | Model data & konvensi RBAC                          |
-| [workflows/](docs/workflows/)                               | Workflow tiap fitur                                |
+Aplikasi berjalan di `127.0.0.1:3003`. Pasang reverse proxy (HTTPS) di depannya.
 
-## Keamanan
+Memperbarui ke versi baru:
 
-- SIMGOS **read-only** mutlak; seluruh penulisan hanya ke `reporthub`.
-- RBAC per-modul, penjaga anti-lockout superadmin, audit trail aksi administratif.
-- Sandi tak pernah disimpan plaintext; refresh token disimpan sebagai hash.
-- `.env` (berisi rahasia & `SIMGOS_PASSWORD_KEY`) **tidak** di-commit.
+```bash
+git pull
+docker compose build
+docker compose run --rm migrate    # selalu jalankan; aman diulang
+docker compose up -d
+```
 
-## Developer
+### 3. Pengembangan (lokal)
 
-Febriansyah Dirgantara Amu
+```bash
+npm install                                  # sekaligus membuat Prisma client
+node scripts/db/migrate-inventaris-all.mjs   # dan migrasi lain di langkah 4 bila perlu
+npm run dev                                  # http://localhost:3000
+```
+
+Pemeriksaan: `npm run lint` dan `npm test`. Setelah mengubah `prisma/app/schema.prisma`,
+jalankan `npm run db:app:generate` lalu restart `npm run dev`.
+
+### 4. Migrasi database `reporthub`
+
+Semua skrip hanya menulis ke `reporthub` (tidak pernah ke SIMGOS), idempoten, dan aman
+diulang.
+
+| Modul | Docker | Lokal |
+| --- | --- | --- |
+| Inventarisasi Barang | `docker compose run --rm migrate` | `node scripts/db/migrate-inventaris-all.mjs` |
+| Form RM | `docker compose run --rm migrate scripts/db/migrate-form-rm.mjs` | `node scripts/db/migrate-form-rm.mjs` |
+| BCKH | `docker compose run --rm migrate scripts/db/migrate-bckh.mjs` | `node scripts/db/migrate-bckh.mjs` |
+| Laporan RL 3.2 & 3.5 | `docker compose run --rm migrate scripts/db/migrate-laporan-rl.mjs` | `node scripts/db/migrate-laporan-rl.mjs` |
+| Verifikasi Klaim BPJS | `docker compose run --rm migrate scripts/db/migrate-verifikasi-klaim.mjs` | `node scripts/db/migrate-verifikasi-klaim.mjs` |
+| Rekap Klaim BPJS | `docker compose run --rm migrate scripts/db/migrate-rekap-klaim.mjs` | `node scripts/db/migrate-rekap-klaim.mjs` |
+
+Skrip di atas menambah tabel per modul; tabel inti (akun, peran, sesi, audit) sudah harus
+ada di `reporthub`. **Jangan** memakai `prisma db push` ke `reporthub`: skema Prisma bisa
+berbeda dari struktur live sehingga perintah itu dapat menghapus data.
 
 ## Versi
 
-**v1.0.0** — rilis stabil pertama.
+**v2.4.0** — 23 November 2026
+
+- Redesign layar isian Form RM: RM.01, RM.03, RM.04, RM.21, RM.22, RM.33, RM.50.
+- Checklist Pemeliharaan: pilihan ruangan bisa diketik dan langsung terbuka sesuai
+  ruangan petugas; ruangan tugas kini juga diatur dari Master › Pengguna.
+- Termasuk patch keamanan Next.js 16.4.6.
+- **Saat memperbarui:** jalankan `docker compose run --rm migrate` (tabel baru
+  `inv_ruangan_petugas`).
+
+Riwayat versi sebelumnya ada di daftar tag Git (`git tag -n`).
+
+Pengembang: Febriansyah Dirgantara Amu
