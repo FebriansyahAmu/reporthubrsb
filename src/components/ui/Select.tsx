@@ -209,6 +209,7 @@ export function SelectOther({
   placeholder = "Pilih…",
   otherLabel = "Lainnya…",
   otherPlaceholder = "Ketik manual…",
+  otherAriaLabel,
   id,
   disabled,
 }: {
@@ -218,6 +219,8 @@ export function SelectOther({
   placeholder?: string;
   otherLabel?: string;
   otherPlaceholder?: string;
+  /** Nama aksesibel kolom teks "Lainnya" (bawaan: placeholder tanpa "…"). */
+  otherAriaLabel?: string;
   id?: string;
   disabled?: boolean;
 }) {
@@ -253,6 +256,8 @@ export function SelectOther({
           autoFocus
           value={value}
           placeholder={otherPlaceholder}
+          // Kolom teks bebas ini tak punya <label> sendiri → beri nama aksesibel.
+          aria-label={otherAriaLabel ?? otherPlaceholder.replace(/…$/, "").trim()}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
         />

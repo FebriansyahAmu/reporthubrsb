@@ -1,19 +1,21 @@
 "use client";
 
-import type { Dispatch, SetStateAction } from "react";
-import { Check, CircleAlert, ListChecks, Stethoscope, UserRound, UsersRound, type LucideIcon } from "lucide-react";
+import { useEffect, useId, useRef, type Dispatch, type SetStateAction } from "react";
+import { CalendarCheck2, CircleAlert, CircleCheck, ListChecks, PenLine, Stethoscope, UserRound, UsersRound, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { DatePicker } from "@/components/ui/DatePicker";
+import { DatePicker, toYmd } from "@/components/ui/DatePicker";
 import { Input, Label } from "@/components/ui/Field";
 import { SelectOther } from "@/components/ui/Select";
 import { cn } from "@/lib/cn";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { SaranNamaSaya } from "@/features/form-rm/isian/SaranNamaSaya";
-import { LabelAsal } from "@/features/form-rm/isian/TandaAsal";
+import { useTerkunci } from "@/features/form-rm/isian/kunci";
+import { TandaAsal } from "@/features/form-rm/isian/TandaAsal";
+import { KONTROL, LabelKolom, TOMBOL_KECIL, Wajib } from "@/features/form-rm/isian/langkah/bagian";
+import { KONTROL_PILIHAN, PIL_PILIHAN, PilihanRadio } from "@/features/form-rm/isian/langkah/PilihanRadio";
 import type { FormRmHeader } from "@/server/modules/form-rm/form-rm.types";
-import { Meter } from "./alur";
 import { Saran } from "./saran";
 import {
   HUBUNGAN_KELUARGA,
@@ -95,52 +97,63 @@ type SetPihak = <K extends keyof DataPihak>(key: K, value: DataPihak[K]) => void
 /** Dokter pelaksana, pemberi informasi / DPJP, dan penerima informasi + saran satu-klik. */
 export function PihakInformasi({ awalan, form, set, pasienNama }: { awalan: string; form: DataPihak; set: SetPihak; pasienNama: string }) {
   return (
-    <>
-      <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-3">
+    <div className="@container">
+      <div className="grid grid-cols-1 gap-x-6 gap-y-4 @3xl:grid-cols-3">
         <div>
-          <LabelAsal path="dokterPelaksana" htmlFor={`${awalan}-pelaksana`}>
-            Dokter Pelaksana Tindakan
-          </LabelAsal>
+          <LabelKolom htmlFor={`${awalan}-pelaksana`} asal="dokterPelaksana" wajib>
+            Dokter pelaksana tindakan
+          </LabelKolom>
           <Input
             id={`${awalan}-pelaksana`}
             value={form.dokterPelaksana}
             maxLength={120}
             onChange={(e) => set("dokterPelaksana", e.target.value)}
             placeholder="Nama dokter beserta gelar"
+            enterKeyHint="next"
+            className={KONTROL}
           />
           {!kosong(form.pemberiInformasi) && !samaNama(form.dokterPelaksana, form.pemberiInformasi) && (
             <Saran onClick={() => set("dokterPelaksana", form.pemberiInformasi)}>Sama dengan pemberi informasi: {form.pemberiInformasi}</Saran>
           )}
         </div>
         <div>
-          <LabelAsal path="pemberiInformasi" htmlFor={`${awalan}-pemberi`}>
-            Pemberi Informasi / DPJP
-          </LabelAsal>
+          <LabelKolom htmlFor={`${awalan}-pemberi`} asal="pemberiInformasi" wajib>
+            Pemberi informasi / DPJP
+          </LabelKolom>
           <Input
             id={`${awalan}-pemberi`}
             value={form.pemberiInformasi}
             maxLength={120}
             onChange={(e) => set("pemberiInformasi", e.target.value)}
             placeholder="Nama dokter pemberi informasi"
+            enterKeyHint="next"
+            className={KONTROL}
           />
           <SaranNamaSaya nama={form.pemberiInformasi} onPilih={(v) => set("pemberiInformasi", v)} />
         </div>
         <div>
-          <Label htmlFor={`${awalan}-penerima`}>Pasien / Keluarga (penerima informasi)</Label>
+          <LabelKolom htmlFor={`${awalan}-penerima`} wajib>
+            Penerima informasi (pasien / keluarga)
+          </LabelKolom>
           <Input
             id={`${awalan}-penerima`}
             value={form.penerimaInformasi}
             maxLength={120}
             onChange={(e) => set("penerimaInformasi", e.target.value)}
             placeholder="Nama penerima informasi"
+            aria-describedby={`${awalan}-penerima-ket`}
+            enterKeyHint="next"
+            className={KONTROL}
           />
           {pasienNama && !samaNama(form.penerimaInformasi, pasienNama) && (
             <Saran onClick={() => set("penerimaInformasi", pasienNama)}>Pasien sendiri: {pasienNama}</Saran>
           )}
         </div>
       </div>
-      <p className="mt-4 rounded-[var(--radius-md)] bg-surface-2/60 px-3 py-2 text-xs text-fg-muted">{TEKS_INFORMASI.catatanPenerima}</p>
-    </>
+      <p id={`${awalan}-penerima-ket`} className="mt-4 rounded-[var(--radius-md)] bg-surface-2/60 px-3 py-2 text-xs text-fg-muted">
+        {TEKS_INFORMASI.catatanPenerima}
+      </p>
+    </div>
   );
 }
 
@@ -150,44 +163,53 @@ export function TtdInformasi({
   set,
   konteks,
   noPihak,
+  awalan,
 }: {
   form: DataPihak;
   set: SetPihak;
   konteks: (peran: string) => string;
   /** Nomor langkah tempat nama pihak diisi (petunjuk saat nama kosong). */
   noPihak: number;
+  /** Awalan id kotak TTD (tujuan fokus dari daftar syarat). */
+  awalan?: string;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      <KotakTtd
-        ikon={Stethoscope}
-        peran="Pemberi informasi"
-        nama={form.pemberiInformasi}
-        kosongNama={`Isi nama pemberi informasi di langkah ${noPihak}`}
-        pernyataan={TEKS_INFORMASI.menerangkan}
-      >
-        <SignaturePad
-          label="Tanda tangan pemberi informasi"
-          value={form.pemberiTtd}
-          onChange={(v) => set("pemberiTtd", v)}
-          context={konteks("Pemberi informasi")}
-          petugas={{ nama: form.pemberiInformasi, onNama: (v) => set("pemberiInformasi", v) }}
-        />
-      </KotakTtd>
-      <KotakTtd
-        ikon={UserRound}
-        peran="Penerima informasi"
-        nama={form.penerimaInformasi}
-        kosongNama={`Isi nama penerima informasi di langkah ${noPihak}`}
-        pernyataan={TEKS_INFORMASI.menerima}
-      >
-        <SignaturePad
-          label="Tanda tangan penerima informasi"
-          value={form.penerimaTtd}
-          onChange={(v) => set("penerimaTtd", v)}
-          context={konteks("Penerima informasi")}
-        />
-      </KotakTtd>
+    <div className="@container">
+      <div className="grid grid-cols-1 gap-4 @3xl:grid-cols-2">
+        <KotakTtd
+          ikon={Stethoscope}
+          peran="Pemberi informasi"
+          nama={form.pemberiInformasi}
+          kosongNama={`Isi nama pemberi informasi di langkah ${noPihak}`}
+          pernyataan={TEKS_INFORMASI.menerangkan}
+          sudah={form.pemberiTtd !== ""}
+          idTtd={awalan && `${awalan}-ttd-pemberi`}
+        >
+          <SignaturePad
+            label="Tanda tangan pemberi informasi"
+            value={form.pemberiTtd}
+            onChange={(v) => set("pemberiTtd", v)}
+            context={konteks("Pemberi informasi")}
+            petugas={{ nama: form.pemberiInformasi, onNama: (v) => set("pemberiInformasi", v) }}
+          />
+        </KotakTtd>
+        <KotakTtd
+          ikon={UserRound}
+          peran="Penerima informasi"
+          nama={form.penerimaInformasi}
+          kosongNama={`Isi nama penerima informasi di langkah ${noPihak}`}
+          pernyataan={TEKS_INFORMASI.menerima}
+          sudah={form.penerimaTtd !== ""}
+          idTtd={awalan && `${awalan}-ttd-penerima`}
+        >
+          <SignaturePad
+            label="Tanda tangan penerima informasi"
+            value={form.penerimaTtd}
+            onChange={(v) => set("penerimaTtd", v)}
+            context={konteks("Penerima informasi")}
+          />
+        </KotakTtd>
+      </div>
     </div>
   );
 }
@@ -215,18 +237,52 @@ function hitungInformasi(informasi: DataTabelInformasi) {
   };
 }
 
-/** Meter "Terisi" (baris wajib) & "Ditandai" (baris berisi) di kepala langkah. */
+/** Kelas <progress> bergaya (pseudo-elemen -webkit & -moz di aturan terpisah). */
+const PROGRES =
+  "block h-1.5 w-24 appearance-none overflow-clip rounded-full border-0 bg-surface-2 [&::-webkit-progress-bar]:bg-transparent [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:transition-[inline-size] [&::-moz-progress-bar]:rounded-full";
+
+function BarisMeter({ label, nilai, total }: { label: string; nilai: number; total: number }) {
+  const id = useId();
+  const penuh = total > 0 && nilai === total;
+  return (
+    <>
+      <span id={id} className="text-right text-fg-muted">
+        {label}
+      </span>
+      <progress
+        aria-labelledby={id}
+        value={nilai}
+        max={Math.max(total, 1)}
+        className={cn(
+          PROGRES,
+          penuh
+            ? "[&::-webkit-progress-value]:bg-success [&::-moz-progress-bar]:bg-success"
+            : "[&::-webkit-progress-value]:bg-brand [&::-moz-progress-bar]:bg-brand",
+        )}
+      />
+      <span className={cn("tabular-nums", penuh ? "font-semibold text-success" : "text-fg")}>
+        {nilai}/{total}
+      </span>
+    </>
+  );
+}
+
+/** Meter "Terisi" (baris wajib) & "Ditandai" (baris berisi) di kepala langkah — <progress> asli berlabel. */
 export function MeterInformasi({ informasi }: { informasi: DataTabelInformasi }) {
   const h = hitungInformasi(informasi);
   return (
-    <div className="flex flex-col items-end gap-1.5 text-xs">
-      <Meter label="Terisi" nilai={h.terisi} total={INFORMASI_WAJIB.length} />
-      <Meter label="Ditandai" nilai={h.ditandai} total={h.adaIsi} />
+    <div className="grid grid-cols-[auto_6rem_auto] items-center gap-x-2 gap-y-1.5 text-xs">
+      <BarisMeter label="Terisi" nilai={h.terisi} total={INFORMASI_WAJIB.length} />
+      <BarisMeter label="Ditandai" nilai={h.ditandai} total={h.adaIsi} />
     </div>
   );
 }
 
-/** Tabel "Jenis / Isi Informasi / Tanda (V)" — grid di layar lebar, kartu bertumpuk di ponsel. */
+/**
+ * Tabel "Jenis / Isi Informasi / Tanda (V)" — <table> semantik (judul baris =
+ * jenis informasi). Wadah < 36rem: baris bertumpuk jadi kartu (container
+ * query), kepala kolom disembunyikan karena setiap kontrol sudah berlabel.
+ */
 export function TabelInformasi({
   awalan,
   informasi,
@@ -244,54 +300,63 @@ export function TabelInformasi({
   saran?: Partial<Record<IdInformasi, React.ReactNode>>;
 }) {
   const h = hitungInformasi(informasi);
+  const terkunci = useTerkunci();
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-fg-subtle">Baris 1–10 wajib; Lain-lain opsional.</p>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          icon={<ListChecks className="size-4" />}
-          onClick={onTandaiSemua}
-          disabled={h.adaIsi === 0 || h.ditandai === h.adaIsi}
-        >
-          Tandai (V) semua yang terisi
-        </Button>
+        <p className="text-xs text-fg-subtle [text-wrap:pretty]">
+          Baris 1–10 wajib, Lain-lain opsional. Centang <b className="font-semibold text-fg-muted">Tanda (V)</b> setelah penerima
+          memahami informasinya.
+        </p>
+        {!terkunci && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            icon={<ListChecks className="size-4" />}
+            onClick={onTandaiSemua}
+            disabled={h.adaIsi === 0 || h.ditandai === h.adaIsi}
+          >
+            Tandai (V) semua yang terisi
+          </Button>
+        )}
       </div>
-      <div role="table" aria-label="Jenis dan isi informasi" className="overflow-hidden rounded-[var(--radius-md)] border border-border">
-        <div
-          role="row"
-          className="hidden grid-cols-[2.5rem_12rem_minmax(0,1fr)_7.5rem] border-b border-border bg-surface-2/70 text-xs font-semibold text-fg-muted md:grid"
-        >
-          <span role="columnheader" className="px-2 py-2 text-center">
-            No
-          </span>
-          <span role="columnheader" className="px-3 py-2">
-            Jenis Informasi
-          </span>
-          <span role="columnheader" className="border-l border-border px-3 py-2">
-            Isi Informasi
-          </span>
-          <span role="columnheader" className="border-l border-border px-2 py-2 text-center">
-            Tanda (V)
-          </span>
+      <div className="@container">
+        <div className="overflow-hidden rounded-[var(--radius-md)] border border-border @max-xl:overflow-visible @max-xl:rounded-none @max-xl:border-0">
+          <table className="w-full border-separate border-spacing-0 text-sm @max-xl:block">
+            <caption className="sr-only">Jenis dan isi informasi</caption>
+            <thead className="bg-surface-2/70 text-xs font-semibold text-fg-muted @max-xl:hidden">
+              <tr>
+                <th scope="col" className="w-60 border-b border-border px-3 py-2 text-left font-semibold">
+                  Jenis informasi
+                </th>
+                <th scope="col" className="border-b border-l border-border px-3 py-2 text-left font-semibold">
+                  Isi informasi
+                </th>
+                <th scope="col" className="w-32 border-b border-l border-border px-2 py-2 text-center font-semibold">
+                  Tanda (V)
+                </th>
+              </tr>
+            </thead>
+            <tbody className="@max-xl:block @max-xl:space-y-2">
+              {JENIS_INFORMASI.map((j) => (
+                <BarisInformasi
+                  key={j.id}
+                  fieldId={`${awalan}-info-${j.id}`}
+                  id={j.id}
+                  no={j.no}
+                  label={j.label}
+                  contoh={j.contoh}
+                  wajib={j.id !== "lainLain"}
+                  nilai={informasi[j.id]}
+                  onIsi={(v) => onIsi(j.id, v)}
+                  onTanda={(v) => onTanda(j.id, v)}
+                  saran={saran?.[j.id]}
+                />
+              ))}
+            </tbody>
+          </table>
         </div>
-        {JENIS_INFORMASI.map((j) => (
-          <BarisInformasi
-            key={j.id}
-            fieldId={`${awalan}-info-${j.id}`}
-            id={j.id}
-            no={j.no}
-            label={j.label}
-            contoh={j.contoh}
-            wajib={j.id !== "lainLain"}
-            nilai={informasi[j.id]}
-            onIsi={(v) => onIsi(j.id, v)}
-            onTanda={(v) => onTanda(j.id, v)}
-            saran={saran?.[j.id]}
-          />
-        ))}
       </div>
     </>
   );
@@ -321,25 +386,34 @@ function BarisInformasi({
   saran?: React.ReactNode;
 }) {
   const ada = !kosong(nilai.isi);
+  // Garis bawah tiap sel kecuali baris terakhir (tabel border-separate).
+  const sel = "border-b border-border [tr:last-child>&]:border-b-0 @max-xl:border-0";
   return (
-    <div
-      role="row"
+    <tr
       data-info={id}
       className={cn(
-        "grid grid-cols-[2rem_minmax(0,1fr)_auto] items-start gap-x-2 gap-y-2 border-b border-border px-2 py-2.5 last:border-b-0 md:grid-cols-[2.5rem_12rem_minmax(0,1fr)_7.5rem] md:gap-0 md:p-0",
+        "align-top @max-xl:grid @max-xl:grid-cols-[minmax(0,1fr)_auto] @max-xl:gap-x-2 @max-xl:gap-y-2 @max-xl:rounded-[var(--radius-md)] @max-xl:border @max-xl:border-border @max-xl:p-3",
         ada && nilai.tanda ? "bg-success-soft/35" : ada ? "bg-brand-soft/25" : "",
       )}
     >
-      <span role="cell" className="pt-2 text-center text-sm tabular-nums text-fg-muted md:py-3">
-        {no}
-      </span>
-      <div role="cell" className="min-w-0 pt-1.5 md:px-3 md:py-2.5">
-        <LabelAsal path={`informasi.${id}.isi`} htmlFor={fieldId} className="mb-0">
-          <span className="text-sm font-medium text-fg">{label}</span>
-          {!wajib && <span className="ml-1 text-xs text-fg-subtle">(opsional)</span>}
-        </LabelAsal>
-      </div>
-      <div role="cell" className="col-span-3 col-start-1 row-start-2 md:col-span-1 md:col-start-3 md:row-start-1 md:border-l md:border-border md:p-2">
+      <th scope="row" className={cn(sel, "px-3 py-2.5 text-left font-normal @max-xl:block @max-xl:self-center @max-xl:p-0")}>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <label htmlFor={fieldId} className="text-sm font-medium text-fg">
+            {no && <span className="mr-1 inline-block min-w-5 tabular-nums text-fg-muted">{no}</span>}
+            {label}
+            {wajib ? (
+              <>
+                {" "}
+                <Wajib />
+              </>
+            ) : (
+              <span className="ml-1 text-xs font-normal text-fg-subtle">(opsional)</span>
+            )}
+          </label>
+          <TandaAsal path={`informasi.${id}.isi`} />
+        </div>
+      </th>
+      <td className={cn(sel, "border-l p-2 @max-xl:col-span-2 @max-xl:row-start-2 @max-xl:block @max-xl:p-0")}>
         <textarea
           id={fieldId}
           value={nilai.isi}
@@ -347,33 +421,32 @@ function BarisInformasi({
           rows={1}
           onChange={(e) => onIsi(e.target.value)}
           placeholder={contoh}
-          className="block min-h-10 w-full resize-y rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-sm text-fg [field-sizing:content] placeholder:text-fg-subtle focus-visible:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring/40 md:max-h-48"
+          className="block min-h-10 w-full resize-y rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-sm text-fg [field-sizing:content] placeholder:text-fg-subtle focus-visible:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring/40 md:max-h-48 pointer-coarse:text-base"
         />
         {saran}
-      </div>
-      <div
-        role="cell"
-        className="col-start-3 row-start-1 flex justify-end md:col-start-4 md:h-full md:items-start md:justify-center md:border-l md:border-border md:p-2"
-      >
-        <button
-          type="button"
-          aria-pressed={nilai.tanda}
-          aria-label={`Tanda (V) ${label}`}
-          disabled={!ada}
-          onClick={() => onTanda(!nilai.tanda)}
-          title={ada ? (nilai.tanda ? "Batalkan tanda" : "Penerima memahami informasi ini") : "Isi informasinya lebih dulu"}
+      </td>
+      <td className={cn(sel, "border-l p-2 text-center @max-xl:col-start-2 @max-xl:row-start-1 @max-xl:block @max-xl:p-0")}>
+        {/* Checkbox asli: belum bisa dicentang sebelum isinya ada (sama dengan aturan syarat FINAL). */}
+        <label
+          title={ada ? undefined : "Isi informasinya lebih dulu"}
           className={cn(
-            "inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-md)] border px-2.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring disabled:cursor-not-allowed disabled:opacity-45",
-            nilai.tanda ? "border-success bg-success text-white" : "border-border bg-surface text-fg-muted hover:border-success/50 hover:text-success",
+            PIL_PILIHAN,
+            "has-checked:border-success has-checked:bg-success-soft has-disabled:opacity-50",
           )}
         >
-          <span className={cn("flex size-4 items-center justify-center rounded-[4px] border", nilai.tanda ? "border-white/70" : "border-current")}>
-            {nilai.tanda && <Check className="size-3" strokeWidth={3} />}
-          </span>
-          {nilai.tanda ? "Ditandai" : "Tandai"}
-        </button>
-      </div>
-    </div>
+          <input
+            id={`${fieldId}-tanda`}
+            type="checkbox"
+            checked={nilai.tanda}
+            disabled={!ada}
+            onChange={(e) => onTanda(e.target.checked)}
+            className={cn(KONTROL_PILIHAN, "accent-success")}
+          />
+          <span className="font-medium">Tanda (V)</span>
+          <span className="sr-only"> — {label}</span>
+        </label>
+      </td>
+    </tr>
   );
 }
 
@@ -386,6 +459,8 @@ export function KotakTtd({
   kosongNama,
   pernyataan,
   opsional,
+  sudah,
+  idTtd,
   children,
 }: {
   ikon: LucideIcon;
@@ -394,33 +469,56 @@ export function KotakTtd({
   kosongNama?: string;
   pernyataan?: string;
   opsional?: boolean;
+  /** Status TTD ("Sudah/Belum ditandatangani", teks — bukan warna saja). */
+  sudah?: boolean;
+  /** id pembungkus TTD (tujuan fokus dari daftar syarat; bisa difokus, bukan pemberhentian Tab). */
+  idTtd?: string;
   children: React.ReactNode;
 }) {
   return (
     <section className="flex min-w-0 flex-col rounded-[var(--radius-md)] border border-border bg-surface-2/30 p-3" aria-label={peran}>
-      <div className="mb-2 flex items-center gap-2">
-        <span className="flex size-7 items-center justify-center rounded-[var(--radius-sm)] bg-surface text-fg-muted ring-1 ring-border">
-          <Ikon className="size-4" aria-hidden />
-        </span>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-fg">
-            {peran}
-            {opsional && <span className="ml-1 text-xs font-normal text-fg-subtle">(opsional)</span>}
-          </p>
-          {kosongNama !== undefined && (
-            <p className={cn("truncate text-xs", kosong(nama) ? "text-warning" : "text-fg-muted")}>{kosong(nama) ? kosongNama : nama}</p>
-          )}
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-surface text-fg-muted ring-1 ring-border">
+            <Ikon className="size-4" aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-fg">
+              {peran}
+              {opsional && <span className="ml-1 text-xs font-normal text-fg-subtle">(opsional)</span>}
+            </p>
+            {kosongNama !== undefined && (
+              <p className={cn("truncate text-xs", kosong(nama) ? "text-warning" : "text-fg-muted")}>{kosong(nama) ? kosongNama : nama}</p>
+            )}
+          </div>
         </div>
+        {sudah !== undefined && (
+          <span
+            className={cn(
+              "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
+              sudah ? "bg-success-soft text-success" : "bg-surface-2 text-fg-muted",
+            )}
+          >
+            {sudah ? <CircleCheck className="size-3" aria-hidden /> : <PenLine className="size-3" aria-hidden />}
+            {sudah ? "Sudah ditandatangani" : "Belum ditandatangani"}
+          </span>
+        )}
       </div>
       {pernyataan && (
         <blockquote className="mb-3 border-l-2 border-brand/40 pl-3 text-xs italic leading-relaxed text-fg-muted">{pernyataan}</blockquote>
       )}
-      {children}
+      {idTtd ? (
+        <div id={idTtd} tabIndex={-1} className="rounded-[var(--radius-md)] outline-none focus-visible:ring-2 focus-visible:ring-brand-ring">
+          {children}
+        </div>
+      ) : (
+        children
+      )}
     </section>
   );
 }
 
-/** Saksi 1 & 2: nama + tanda tangan (saksi 2 opsional). */
+/** Saksi 1 & 2: nama (label tampak) + tanda tangan (saksi 2 opsional). */
 export function KotakSaksi({
   no,
   nama,
@@ -428,6 +526,7 @@ export function KotakSaksi({
   onNama,
   onTtd,
   konteks,
+  awalan,
 }: {
   no: 1 | 2;
   nama: string;
@@ -435,17 +534,24 @@ export function KotakSaksi({
   onNama: (v: string) => void;
   onTtd: (v: string) => void;
   konteks: string;
+  /** Awalan id kolom nama & kotak TTD (tujuan fokus dari daftar syarat). */
+  awalan?: string;
 }) {
+  const cadangan = useId();
+  const idNama = awalan ? `${awalan}-saksi${no}-nama` : `${cadangan}-nama`;
   return (
-    <KotakTtd ikon={UsersRound} peran={`Saksi ${no}`} nama={nama} opsional={no === 2}>
-      <Input
-        value={nama}
-        maxLength={120}
-        onChange={(e) => onNama(e.target.value)}
-        placeholder={`Nama saksi ${no}`}
-        aria-label={`Nama saksi ${no}`}
-      />
+    <KotakTtd ikon={UsersRound} peran={`Saksi ${no}`} nama={nama} opsional={no === 2} sudah={ttd !== ""} idTtd={awalan && `${awalan}-ttd-saksi${no}`}>
       <div className="mb-3">
+        <Label htmlFor={idNama}>Nama saksi {no}</Label>
+        <Input
+          id={idNama}
+          value={nama}
+          maxLength={120}
+          onChange={(e) => onNama(e.target.value)}
+          placeholder="mis. perawat atau keluarga"
+          enterKeyHint="next"
+          className={KONTROL}
+        />
         <SaranNamaSaya nama={nama} onPilih={onNama} />
       </div>
       {/* Saksi bisa petugas RS → boleh memakai TTD tersimpan; nama tak diisi otomatis (bisa keluarga). */}
@@ -456,47 +562,7 @@ export function KotakSaksi({
 
 /* ================================================================ pilihan */
 
-export function PilihanBesar({
-  ikon: Ikon,
-  judul,
-  ket,
-  dipilih,
-  onPilih,
-}: {
-  ikon: LucideIcon;
-  judul: string;
-  ket: string;
-  dipilih: boolean;
-  onPilih: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={dipilih}
-      onClick={onPilih}
-      className={cn(
-        "flex items-center gap-3 rounded-[var(--radius-md)] border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring",
-        dipilih ? "border-brand bg-brand-soft text-brand-soft-fg" : "border-border bg-surface text-fg-muted hover:border-border-strong hover:text-fg",
-      )}
-    >
-      <span
-        className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)]",
-          dipilih ? "bg-brand text-brand-fg" : "bg-surface-2 text-fg-subtle",
-        )}
-      >
-        <Ikon className="size-4" aria-hidden />
-      </span>
-      <span className="min-w-0">
-        <span className="block text-sm font-semibold">{judul}</span>
-        <span className="block text-xs opacity-80">{ket}</span>
-      </span>
-      {dipilih && <Check className="ml-auto size-4 shrink-0" aria-hidden />}
-    </button>
-  );
-}
-
+/** Pilihan jenis kelamin bergaya segmen (dipakai RM.41). */
 export function PilihJk({ id, nilai, onUbah }: { id: string; nilai: "" | JkPilihan; onUbah: (v: "" | JkPilihan) => void }) {
   return (
     <div id={id} role="radiogroup" aria-label="Jenis kelamin" className="inline-flex h-10 w-full rounded-[var(--radius-md)] border border-border bg-surface-2 p-1">
@@ -519,7 +585,7 @@ export function PilihJk({ id, nilai, onUbah }: { id: string; nilai: "" | JkPilih
   );
 }
 
-/** Nama · umur (tahun) · jenis kelamin · alamat — dipakai untuk yang menyatakan & pasien. */
+/** Nama · umur (tahun) · jenis kelamin (radio asli) · alamat — dipakai untuk yang menyatakan & pasien. Semua wajib sebelum FINAL. */
 function IdentitasOrang({
   awalan,
   asal,
@@ -546,53 +612,72 @@ function IdentitasOrang({
   onAlamat: (v: string) => void;
   saranNama?: React.ReactNode;
 }) {
-  const lbl = (path: string, htmlFor: string, teks: string) =>
-    asal ? (
-      <LabelAsal path={path} htmlFor={htmlFor}>
-        {teks}
-      </LabelAsal>
-    ) : (
-      <Label htmlFor={htmlFor}>{teks}</Label>
-    );
+  // Breakpoint layar (bukan container query): IdentitasOrang berada di dalam <fieldset> ber-legend; wadah
+  // `container-type` sebagai anak fieldset ber-legend tak dirender ulang oleh Chromium saat isinya berubah
+  // (mis. memilih "Diri sendiri") → kolom hilang. Lihat docs/form-rm-rm22-tampilan-isian.md.
   return (
-    <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-[minmax(0,2fr)_7rem_minmax(0,1.3fr)]">
-      <div className="min-w-0">
-        {lbl("pasienNama", `${awalan}-nama`, "Nama")}
-        <Input id={`${awalan}-nama`} value={nama} maxLength={120} onChange={(e) => onNama(e.target.value)} placeholder="Nama lengkap" />
-        {saranNama}
-      </div>
-      <div>
-        {lbl("pasienUmur", `${awalan}-umur`, "Umur (tahun)")}
-        <Input
-          id={`${awalan}-umur`}
-          value={umur}
-          inputMode="numeric"
-          maxLength={3}
-          onChange={(e) => onUmur(e.target.value.replace(/\D/g, "").slice(0, 3))}
-          placeholder="mis. 35"
+    <div>
+      <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-[minmax(0,1fr)_7rem] lg:grid-cols-[minmax(0,2fr)_7rem_minmax(0,1.4fr)]">
+        <div className="min-w-0">
+          <LabelKolom htmlFor={`${awalan}-nama`} asal={asal ? "pasienNama" : undefined} wajib>
+            Nama
+          </LabelKolom>
+          <Input
+            id={`${awalan}-nama`}
+            value={nama}
+            maxLength={120}
+            onChange={(e) => onNama(e.target.value)}
+            placeholder="Nama lengkap"
+            enterKeyHint="next"
+            className={KONTROL}
+          />
+          {saranNama}
+        </div>
+        <div>
+          <LabelKolom htmlFor={`${awalan}-umur`} asal={asal ? "pasienUmur" : undefined} wajib>
+            Umur (tahun)
+          </LabelKolom>
+          <Input
+            id={`${awalan}-umur`}
+            value={umur}
+            inputMode="numeric"
+            maxLength={3}
+            onChange={(e) => onUmur(e.target.value.replace(/\D/g, "").slice(0, 3))}
+            placeholder="mis. 35"
+            enterKeyHint="next"
+            className={KONTROL}
+          />
+        </div>
+        <PilihanRadio
+          id={`${awalan}-jk`}
+          ringkas
+          className="sm:col-span-2 lg:col-span-1"
+          legend={
+            <>
+              Jenis kelamin <Wajib />
+            </>
+          }
+          asal={asal ? "pasienJk" : undefined}
+          value={jk}
+          onChange={(v) => onJk(v as "" | JkPilihan)}
+          opsi={JK_PILIHAN.map((x) => ({ value: x, label: x }))}
+          bolehKosong
         />
-      </div>
-      <div>
-        {asal ? (
-          <LabelAsal path="pasienJk" htmlFor={`${awalan}-jk`}>
-            Jenis kelamin
-          </LabelAsal>
-        ) : (
-          <p className="mb-1.5 text-xs font-medium text-fg-muted">Jenis kelamin</p>
-        )}
-        <PilihJk id={`${awalan}-jk`} nilai={jk} onUbah={onJk} />
-      </div>
-      <div className="sm:col-span-3">
-        {lbl("pasienAlamat", `${awalan}-alamat`, "Alamat")}
-        <textarea
-          id={`${awalan}-alamat`}
-          rows={2}
-          value={alamat}
-          maxLength={300}
-          onChange={(e) => onAlamat(e.target.value)}
-          placeholder="Alamat lengkap"
-          className="w-full rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-subtle focus-visible:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring/40"
-        />
+        <div className="sm:col-span-2 lg:col-span-3">
+          <LabelKolom htmlFor={`${awalan}-alamat`} asal={asal ? "pasienAlamat" : undefined} wajib>
+            Alamat
+          </LabelKolom>
+          <textarea
+            id={`${awalan}-alamat`}
+            rows={2}
+            value={alamat}
+            maxLength={300}
+            onChange={(e) => onAlamat(e.target.value)}
+            placeholder="Jalan, desa/kelurahan, kecamatan, kabupaten"
+            // field-sizing: tinggi mengikuti isi (2–8 baris); peramban lama tetap 2 baris + gulir.
+            className="block min-h-[4.25rem] max-h-[12rem] w-full rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-sm text-fg [field-sizing:content] placeholder:text-fg-subtle focus-visible:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring/40 pointer-coarse:text-base"
+          />
+        </div>
       </div>
     </div>
   );
@@ -604,10 +689,10 @@ type DataPernyataan = DataYangMenyatakan & { penerimaInformasi: string };
 
 /**
  * "Saya yang bertanda tangan di bawah ini" (identitas yang menyatakan), lalu
- * "terhadap diri sendiri / keluarga" — keluarga: hubungan + identitas pasien
- * (terisi SIMRS). Pilihan "diri sendiri" menyalin identitas pasien ke yang
- * menyatakan bila masih kosong. `tengah` = bidang khusus formulir di antara
- * keduanya (mis. tindakan RM.22).
+ * "terhadap diri sendiri / keluarga" (radio asli) — keluarga: hubungan +
+ * identitas pasien (terisi SIMRS). Pilihan "diri sendiri" menyalin identitas
+ * pasien ke yang menyatakan bila masih kosong. `tengah` = bidang khusus
+ * formulir di antara keduanya (mis. tindakan RM.22).
  */
 export function BagianYangMenyatakan<T extends DataPernyataan>({
   awalan,
@@ -629,6 +714,7 @@ export function BagianYangMenyatakan<T extends DataPernyataan>({
   judulPasien: string;
   tengah?: React.ReactNode;
 }) {
+  const terkunci = useTerkunci();
   const ubah = (patch: Partial<DataYangMenyatakan>) => setForm((f) => ({ ...f, ...patch }));
   const dariPasien = (f: DataYangMenyatakan): Partial<DataYangMenyatakan> => ({
     pernyataNama: f.pasienNama || pasienNamaHeader,
@@ -645,8 +731,9 @@ export function BagianYangMenyatakan<T extends DataPernyataan>({
 
   return (
     <>
-      <fieldset className="min-w-0">
-        <legend className="mb-3 text-xs font-semibold uppercase tracking-wide text-fg-subtle">Saya yang bertanda tangan di bawah ini</legend>
+      {/* mx-0 (bukan m-0): jarak bawah dari `space-y-*` induk tetap berlaku. */}
+      <fieldset className="mx-0 min-w-0 border-0 p-0">
+        <legend className="mb-3 p-0 text-sm font-semibold text-fg">Saya yang bertanda tangan di bawah ini</legend>
         <IdentitasOrang
           awalan={`${awalan}-pernyata`}
           nama={form.pernyataNama}
@@ -669,27 +756,24 @@ export function BagianYangMenyatakan<T extends DataPernyataan>({
 
       {tengah}
 
-      <div>
-        <p className="mb-1.5 text-xs font-medium text-fg-muted">{objek} dilakukan terhadap</p>
-        <div role="radiogroup" aria-label={`${objek} dilakukan terhadap`} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <PilihanBesar
-            ikon={UserRound}
-            judul="Diri sendiri"
-            ket="Yang menyatakan adalah pasien"
-            dipilih={form.terhadap === "diri"}
-            onPilih={() => pilihTerhadap("diri")}
-          />
-          <PilihanBesar
-            ikon={UsersRound}
-            judul="Keluarga / orang yang diwakili"
-            ket="Yang menyatakan adalah wali / keluarga pasien"
-            dipilih={form.terhadap === "keluarga"}
-            onPilih={() => pilihTerhadap("keluarga")}
-          />
-        </div>
+      <div className="@container">
+        <PilihanRadio
+          id={`${awalan}-terhadap`}
+          legend={
+            <>
+              {objek} dilakukan terhadap <Wajib />
+            </>
+          }
+          value={form.terhadap}
+          onChange={(v) => pilihTerhadap(v as DataYangMenyatakan["terhadap"])}
+          opsi={[
+            { value: "diri", label: "Diri sendiri", ket: "Yang menyatakan adalah pasien" },
+            { value: "keluarga", label: "Keluarga / orang yang diwakili", ket: "Yang menyatakan adalah wali / keluarga pasien" },
+          ]}
+        />
       </div>
 
-      {form.terhadap === "diri" && (
+      {form.terhadap === "diri" && !terkunci && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-border bg-surface-2/40 px-3 py-2 text-[13px] text-fg-muted">
           <span>Identitas yang menyatakan = identitas pasien.</span>
           <Button type="button" size="sm" variant="secondary" onClick={() => setForm((f) => ({ ...f, ...dariPasien(f) }))}>
@@ -700,9 +784,11 @@ export function BagianYangMenyatakan<T extends DataPernyataan>({
 
       {form.terhadap === "keluarga" && (
         <fieldset className="min-w-0 rounded-[var(--radius-md)] border border-border p-3 sm:p-4">
-          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-fg-subtle">{judulPasien}</legend>
+          <legend className="px-1 text-sm font-semibold text-fg">{judulPasien}</legend>
           <div className="mb-4 sm:max-w-xs">
-            <Label htmlFor={`${awalan}-hubungan`}>Hubungan (… saya)</Label>
+            <LabelKolom htmlFor={`${awalan}-hubungan`} wajib>
+              Hubungan (… saya)
+            </LabelKolom>
             <SelectOther
               id={`${awalan}-hubungan`}
               value={form.hubungan}
@@ -710,6 +796,7 @@ export function BagianYangMenyatakan<T extends DataPernyataan>({
               options={HUBUNGAN_KELUARGA}
               placeholder="Pilih hubungan"
               otherPlaceholder="Hubungan lainnya…"
+              otherAriaLabel="Hubungan dengan pasien (lainnya)"
             />
           </div>
           <IdentitasOrang
@@ -730,16 +817,25 @@ export function BagianYangMenyatakan<T extends DataPernyataan>({
   );
 }
 
-/** "<Kota>, [tanggal]" pernyataan. */
+/** "<Kota>, [tanggal]" pernyataan + pintasan "Hari ini" (dihitung saat diklik). */
 export function TempatTanggal({ id, kota, value, onChange }: { id: string; kota: string; value: string; onChange: (v: string) => void }) {
+  const terkunci = useTerkunci();
   return (
-    <div className="sm:max-w-xs">
-      <Label htmlFor={id}>Tempat & tanggal</Label>
-      <div className="flex items-center gap-2">
+    <div>
+      <LabelKolom htmlFor={id} wajib>
+        Tempat &amp; tanggal
+      </LabelKolom>
+      <div className="flex flex-wrap items-center gap-2">
         <span className="shrink-0 text-sm text-fg-muted">{kota},</span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 sm:max-w-xs">
           <DatePicker id={id} value={value} onChange={onChange} placeholder="Pilih tanggal" />
         </div>
+        {!terkunci && (
+          <button type="button" onClick={() => onChange(toYmd(new Date()))} className={cn(TOMBOL_KECIL, "h-10")}>
+            <CalendarCheck2 className="size-3.5" aria-hidden />
+            Hari ini
+          </button>
+        )}
       </div>
     </div>
   );
@@ -747,7 +843,11 @@ export function TempatTanggal({ id, kota, value, onChange }: { id: string; kota:
 
 /* ============================================================ umpan balik */
 
-/** Konfirmasi sebaris (mis. ganti keputusan menghapus TTD pernyataan). */
+/**
+ * Konfirmasi sebaris (mis. ganti keputusan menghapus TTD pernyataan). Saat
+ * muncul, fokus pindah ke "Batal" (aksi aman); saat ditutup, fokus kembali ke
+ * pilihan yang kini terpilih di grup radio asal (bukan hilang ke <body>).
+ */
 export function KonfirmasiGanti({
   id,
   children,
@@ -761,6 +861,25 @@ export function KonfirmasiGanti({
   onBatal: () => void;
   onYa: () => void;
 }) {
+  const batal = useRef<HTMLButtonElement>(null);
+  /** Elemen yang memicu konfirmasi (mis. radio keputusan). Diisi sekali: efek ganda StrictMode tak boleh mencatat "Batal". */
+  const asalFokus = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!asalFokus.current && document.activeElement instanceof HTMLElement && document.activeElement !== batal.current) {
+      asalFokus.current = document.activeElement;
+    }
+    const asal = asalFokus.current;
+    batal.current?.focus();
+    return () => {
+      requestAnimationFrame(() => {
+        // Fokus sudah dipindah pengguna ke tempat lain → biarkan.
+        if (document.activeElement && document.activeElement !== document.body) return;
+        const grup = asal instanceof HTMLInputElement && asal.type === "radio" && asal.name ? asal.name : "";
+        const terpilih = grup ? document.querySelector<HTMLInputElement>(`input[type="radio"][name="${CSS.escape(grup)}"]:checked`) : null;
+        (terpilih ?? (asal?.isConnected ? asal : null))?.focus();
+      });
+    };
+  }, []);
   return (
     <div
       role="alertdialog"
@@ -772,7 +891,7 @@ export function KonfirmasiGanti({
         <span id={id}>{children}</span>
       </p>
       <div className="flex shrink-0 gap-2">
-        <Button type="button" size="sm" variant="secondary" onClick={onBatal}>
+        <Button ref={batal} type="button" size="sm" variant="secondary" onClick={onBatal}>
           Batal
         </Button>
         <Button type="button" size="sm" onClick={onYa}>

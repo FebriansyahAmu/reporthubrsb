@@ -108,6 +108,11 @@ describe("RM.33 — kekurangan & status langkah", () => {
     expect(statusLangkahRm33(sebagian, "rujukan", kekuranganRm33(sebagian).rujukan)).toBe("sebagian");
   });
 
+  it("nama dokter saja (mis. dari SIMRS) → langkah tanda tangan 'sebagian' (kekurangan TTD ditampilkan)", () => {
+    const d = { ...emptyRm33Form(), keputusan: "setuju" as const, dokterNama: "dr. Andi" };
+    expect(statusLangkahRm33(d, "ttdPernyataan", kekuranganRm33(d).ttdPernyataan)).toBe("sebagian");
+  });
+
   it("keputusan & pernyataan: kata objek 'Rujukan'; dokter wajib (nama & TTD) di samping saksi", () => {
     expect(kekuranganRm33({ ...lengkap(), keputusan: "" }).keputusan).toEqual(["Keputusan: setuju, menunda, atau menolak rujukan"]);
     expect(kekuranganRm33({ ...lengkap(), terhadap: "" }).pernyataan).toEqual(["Rujukan terhadap diri sendiri atau keluarga"]);

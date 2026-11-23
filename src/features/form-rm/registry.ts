@@ -1,16 +1,16 @@
 import type { z } from "zod";
 import type { BagianSimrs } from "./asal";
-import { emptyConsentForm, CONSENT_JENIS } from "./consent.constants";
+import { emptyConsentForm, CONSENT_JENIS, kekuranganConsent } from "./consent.constants";
 import type { StrukturDeklaratif } from "./deklaratif";
-import { emptyEdukasiForm, EDUKASI_JENIS } from "./edukasi.constants";
+import { emptyEdukasiForm, EDUKASI_JENIS, kekuranganEdukasi } from "./edukasi.constants";
 import { morse } from "./forms/morse";
-import { emptyRingkasanForm, lengkapiRingkasan, RINGKASAN_JENIS } from "./ringkasan.constants";
+import { emptyRingkasanForm, kekuranganRingkasan, lengkapiRingkasan, RINGKASAN_JENIS } from "./ringkasan.constants";
 import { cekTtdPernyataan, emptyRm22Form, kekuranganRm22, ringkasRm22, type Rm22Data } from "./rm22.constants";
 import { cekTtdRm33, emptyRm33Form, kekuranganRm33, ringkasRm33, type Rm33Data } from "./rm33.constants";
 import { cekTtdRm41, emptyRm41Form, kekuranganRm41 } from "./rm41.constants";
 import { cekParafRm50, emptyRm50Form, kekuranganRm50, ringkasRm50, type Rm50Data } from "./rm50.constants";
 import { cekParafRm70, emptyRm70Form, kekuranganRm70 } from "./rm70.constants";
-import { emptyTriaseForm, hitungKategori, TRIASE_JENIS } from "./triase.constants";
+import { emptyTriaseForm, kekuranganTriase, TRIASE_JENIS } from "./triase.constants";
 import { KATEGORI_FORM, type KategoriForm } from "./kategori";
 import {
   consentFormSchema,
@@ -180,9 +180,6 @@ export type RingkasanIsianForm = {
   judul: string;
   lencana?: { label: string; nada: "success" | "danger" | "warning" | "neutral" };
 };
-
-const kosongBila = (kondisi: boolean, pesan: string) => (kondisi ? [pesan] : []);
-const belumDiisi = (s: string) => s.trim() === "";
 
 /*
  * SIMGOS membuat NOPEN BARU untuk rawat inap (514 dari 560 episode RI dalam 90
@@ -368,12 +365,8 @@ const triase: DefinisiForm<z.output<typeof triaseFormSchema>> = {
   skema: triaseFormSchema,
   kosong: () => triaseFormSchema.parse(emptyTriaseForm()),
   petaTtd: (d, f) => ({ ...d, petugasTtd: f(d.petugasTtd, "petugasTtd") }),
-  syaratFinal: (d) => [
-    ...kosongBila(hitungKategori(d) === null, "Kategori triase (centang minimal satu kriteria pemeriksaan)"),
-    ...kosongBila(belumDiisi(d.waktuTriase), "Tanggal & pukul triase"),
-    ...kosongBila(belumDiisi(d.petugasNama), "Nama petugas triase"),
-    ...kosongBila(d.petugasTtd === "", "Tanda tangan petugas triase"),
-  ],
+  // Sumber tunggal dengan panel "Syarat finalisasi" layar isian (triase.constants).
+  syaratFinal: (d) => kekuranganTriase(d).map((s) => s.label),
 };
 
 const edukasi: DefinisiForm<z.output<typeof edukasiFormSchema>> = {
@@ -395,15 +388,8 @@ const edukasi: DefinisiForm<z.output<typeof edukasiFormSchema>> = {
     ...d,
     entries: d.entries.map((e, i) => ({ ...e, sasaranTtd: f(e.sasaranTtd, `entries.${i}.sasaranTtd`) })),
   }),
-  syaratFinal: (d) => {
-    const aktif = d.entries.filter((e) => e.aktif);
-    if (aktif.length === 0) return ["Minimal satu kebutuhan edukasi diisi"];
-    return aktif.flatMap((e) => [
-      ...kosongBila(belumDiisi(e.edukatorNama), `${e.kategori}: nama edukator`),
-      ...kosongBila(belumDiisi(e.tanggalJam), `${e.kategori}: tanggal & jam edukasi`),
-      ...kosongBila(e.sasaranTtd === "", `${e.kategori}: tanda tangan sasaran edukasi`),
-    ]);
-  },
+  // Sumber tunggal dengan panel "Syarat finalisasi" di layar isian (edukasi.constants).
+  syaratFinal: (d) => kekuranganEdukasi(d).map((s) => s.label),
 };
 
 const ringkasan: DefinisiForm<z.output<typeof ringkasanFormSchema>> = {
@@ -429,17 +415,8 @@ const ringkasan: DefinisiForm<z.output<typeof ringkasanFormSchema>> = {
     dokterMerawatTtd: f(d.dokterMerawatTtd, "dokterMerawatTtd"),
     dokterKematianTtd: f(d.dokterKematianTtd, "dokterKematianTtd"),
   }),
-  syaratFinal: (d) => [
-    ...kosongBila(belumDiisi(d.dokterMerawatNama), "Nama dokter yang merawat"),
-    ...kosongBila(d.dokterMerawatTtd === "", "Tanda tangan dokter yang merawat"),
-    ...(d.sebabKematianAktif
-      ? [
-          ...kosongBila(belumDiisi(d.skA), "Sebab kematian langsung (I.a)"),
-          ...kosongBila(belumDiisi(d.dokterKematianNama), "Nama dokter pemberi keterangan sebab kematian"),
-          ...kosongBila(d.dokterKematianTtd === "", "Tanda tangan dokter pemberi keterangan sebab kematian"),
-        ]
-      : []),
-  ],
+  // Sumber tunggal dengan panel "Syarat finalisasi" di layar isian.
+  syaratFinal: (d) => kekuranganRingkasan(d).map((s) => s.label),
 };
 
 const consent: DefinisiForm<z.output<typeof consentFormSchema>> = {
@@ -462,13 +439,8 @@ const consent: DefinisiForm<z.output<typeof consentFormSchema>> = {
     pasienTtd: f(d.pasienTtd, "pasienTtd"),
     petugasTtd: f(d.petugasTtd, "petugasTtd"),
   }),
-  syaratFinal: (d) => [
-    ...kosongBila(belumDiisi(d.pasienNama), "Nama pasien / penanggung jawab yang menandatangani"),
-    ...kosongBila(d.pasienTtd === "", "Tanda tangan pasien / penanggung jawab"),
-    ...kosongBila(belumDiisi(d.petugasNama), "Nama petugas"),
-    ...kosongBila(d.petugasTtd === "", "Tanda tangan petugas"),
-    ...kosongBila(belumDiisi(d.tanggalTtd), "Tanggal tanda tangan"),
-  ],
+  // Sumber tunggal dgn daftar "Syarat finalisasi" di tampilan isian (consent.constants).
+  syaratFinal: (d) => kekuranganConsent(d).map((s) => s.label),
 };
 
 /*

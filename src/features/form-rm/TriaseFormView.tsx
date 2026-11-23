@@ -1,53 +1,52 @@
 "use client";
 
-import { useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import {
-  Activity,
-  Ambulance,
-  BedDouble,
-  Bone,
-  Car,
-  Check,
-  CheckCheck,
-  CircleAlert,
-  Droplets,
-  Ellipsis,
-  Footprints,
-  HardHat,
-  HeartOff,
-  House,
-  Info,
-  Siren,
-  Stethoscope,
-  Timer,
-  User,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
-import { Card } from "@/components/ui/Card";
+import { Activity, BedDouble, CheckCheck, CircleAlert, HeartOff, Info, Stethoscope, Timer } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Input, Label } from "@/components/ui/Field";
-import { DateTimePicker, nowLocalDateTime } from "@/components/ui/DatePicker";
-import { Switch } from "@/components/ui/Switch";
+import { Card } from "@/components/ui/Card";
+import { nowLocalDateTime } from "@/components/ui/DatePicker";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
 import { SaranNamaSaya } from "@/features/form-rm/isian/SaranNamaSaya";
-import { BidangIsian } from "@/features/form-rm/isian/kunci";
-import { LabelAsal, TandaAsal } from "@/features/form-rm/isian/TandaAsal";
+import { TandaAsal } from "@/features/form-rm/isian/TandaAsal";
+import { BidangIsian, useTerkunci } from "@/features/form-rm/isian/kunci";
 import { useIsian } from "@/features/form-rm/isian/useIsian";
 import {
+  BagianLangkah,
+  ItemId,
+  KakiLangkah,
+  KolomTeks,
+  KolomWaktu,
+  LencanaLangkah,
+  SyaratFinal,
+  TataLetakLangkah,
+  fmtTanggal,
+  type ButirSyarat,
+} from "@/features/form-rm/isian/langkah/bagian";
+import type { Langkah } from "@/features/form-rm/isian/langkah/NavLangkah";
+import { PilihanCentang } from "@/features/form-rm/isian/langkah/PilihanCentang";
+import { KARTU_PILIHAN, KONTROL_PILIHAN, PilihanRadio } from "@/features/form-rm/isian/langkah/PilihanRadio";
+import { KotakTtd } from "@/features/form-rm/persetujuan/bidang";
+import {
+  CARA_DATANG_OPTS,
   EMERGENCY_OPTS,
+  KASUS_OPTS,
   KECELAKAAN_OPTS,
+  LANGKAH_SYARAT_TRIASE,
+  LANGKAH_TRIASE,
+  SYARAT_FINAL_TRIASE,
   TRIASE_ASPEK,
   TRIASE_KATEGORI,
   angkaTtv,
   emptyTriaseForm,
   hitungKategori,
   hitungPerKategori,
+  kekuranganTriase,
   kriteriaById,
   kriteriaSel,
+  ringkasLangkahTriase,
   saranTtv,
+  type IdLangkahTriase,
+  type SyaratTriase,
   type TriaseAspekKey,
   type TriaseKat,
   type TriaseKriteria,
@@ -56,6 +55,25 @@ import { cn } from "@/lib/cn";
 import type { FormRmHeader, TriaseForm, TriaseSimrs } from "@/server/modules/form-rm/form-rm.types";
 import type { IsianForm, IzinIsian } from "@/server/modules/form-rm/isian.types";
 
+/* Tata letak isian RM.04 (tampilan pengisian saja — cetak tetap TriaseDocument):
+ * 5 langkah seperti alur di meja triase, navigasi langkah lengket (scrollspy),
+ * panel "Syarat finalisasi" (sumber tunggal `kekuranganTriase` = registri
+ * server) yang membawa ke kolomnya. Matriks pemeriksaan = satu <table>
+ * semantik: kolom kategori di wadah lebar, bertumpuk per aspek (A-B-C-D) di
+ * wadah sempit. Semua pilihan memakai radio/checkbox asli. Path kolom & ID
+ * kriteria tak berubah → simpan, penanda SIMRS, log, dan cetak tetap. */
+
+const idL = (id: IdLangkahTriase) => `rm04-langkah-${id}`;
+const idKriteria = (id: string) => `rm04-k-${id}`;
+
+/** Elemen tujuan tiap syarat finalisasi (difokuskan dari daftar syarat / kaki langkah). */
+const TUJUAN_SYARAT: Record<SyaratTriase["kolom"], string> = {
+  kriteria: idKriteria("1a1"),
+  waktuTriase: "rm04-waktu-triase",
+  petugasNama: "rm04-petugas",
+  petugasTtd: "rm04-ttd-petugas",
+};
+
 /* ------------------------------------------------------------------ warna */
 
 /**
@@ -63,33 +81,31 @@ import type { IsianForm, IzinIsian } from "@/server/modules/form-rm/isian.types"
  * warna domain triase, bukan warna status aplikasi. Kolom berpasangan dibedakan
  * pekat vs muda, dan selalu disertai label romawi (tak hanya warna).
  */
-const TONE: Record<
-  TriaseKat,
-  { head: string; soft: string; border: string; box: string; text: string; dot: string }
-> = {
-  1: { head: "bg-danger text-white", soft: "bg-danger-soft", border: "border-danger/45", box: "border-danger bg-danger", text: "text-danger", dot: "bg-danger" },
-  2: { head: "bg-[#f8cfc9] text-[#8a2114]", soft: "bg-danger-soft", border: "border-danger/45", box: "border-danger bg-danger", text: "text-danger", dot: "bg-[#e5786b]" },
-  3: { head: "bg-[#f2c230] text-[#3d2c00]", soft: "bg-[#fdf5d6]", border: "border-[#e0b020]", box: "border-[#c99400] bg-[#c99400]", text: "text-[#7a5700]", dot: "bg-[#e0b020]" },
-  4: { head: "bg-[#fae7a0] text-[#5c4300]", soft: "bg-[#fdf5d6]", border: "border-[#e0b020]", box: "border-[#c99400] bg-[#c99400]", text: "text-[#7a5700]", dot: "bg-[#f0d36b]" },
-  5: { head: "bg-success text-white", soft: "bg-success-soft", border: "border-success/45", box: "border-success bg-success", text: "text-success", dot: "bg-success" },
+const TONE: Record<TriaseKat, { head: string; soft: string; border: string; text: string }> = {
+  1: { head: "bg-danger text-white", soft: "bg-danger-soft", border: "border-danger/45", text: "text-danger" },
+  2: { head: "bg-[#f8cfc9] text-[#8a2114]", soft: "bg-danger-soft", border: "border-danger/45", text: "text-danger" },
+  3: { head: "bg-[#f2c230] text-[#3d2c00]", soft: "bg-[#fdf5d6]", border: "border-[#e0b020]", text: "text-[#7a5700]" },
+  4: { head: "bg-[#fae7a0] text-[#5c4300]", soft: "bg-[#fdf5d6]", border: "border-[#e0b020]", text: "text-[#7a5700]" },
+  5: { head: "bg-success text-white", soft: "bg-success-soft", border: "border-success/45", text: "text-success" },
 };
-
-const CARA_DATANG: { v: TriaseForm["caraDatang"]; icon: LucideIcon }[] = [
-  { v: "Sendiri", icon: User },
-  { v: "Ambulans", icon: Ambulance },
-  { v: "Diantar", icon: Users },
-  { v: "Lain-lain", icon: Ellipsis },
-];
-const KECELAKAAN_ICON: Record<string, LucideIcon> = {
-  "Kecelakaan Rumah Tangga": House,
-  "Kecelakaan Lalu Lintas": Car,
-  "Kecelakaan Kerja": HardHat,
-  "Kecelakaan Air": Droplets,
-  "Kecelakaan Pejalan Kaki": Footprints,
+/** Sorotan butir tercentang per kategori (`:has(:checked)` lebih spesifik dari warna dasar → menang di semua ukuran). */
+const CENTANG: Record<TriaseKat, string> = {
+  1: "has-checked:border-danger has-checked:bg-danger-soft",
+  2: "has-checked:border-danger/60 has-checked:bg-danger-soft",
+  3: "has-checked:border-[#c99400] has-checked:bg-[#fdf5d6]",
+  4: "has-checked:border-[#e0b020] has-checked:bg-[#fdf5d6]",
+  5: "has-checked:border-success has-checked:bg-success-soft",
+};
+const AKSEN: Record<TriaseKat, string> = {
+  1: "accent-danger",
+  2: "accent-danger",
+  3: "accent-[#c99400]",
+  4: "accent-[#c99400]",
+  5: "accent-success",
 };
 
 /** Batas kewajaran input (salah ketik), BUKAN penilaian klinis. */
-const RENTANG: Record<"tdSistolik" | "tdDiastolik" | "nadi" | "suhu" | "saturasi" | "pernapasan", [number, number]> = {
+const RENTANG: Record<KunciTtv, [number, number]> = {
   tdSistolik: [30, 300],
   tdDiastolik: [10, 200],
   nadi: [10, 300],
@@ -97,14 +113,7 @@ const RENTANG: Record<"tdSistolik" | "tdDiastolik" | "nadi" | "suhu" | "saturasi
   saturasi: [30, 100],
   pernapasan: [2, 80],
 };
-
-const SECTIONS = [
-  { id: "kedatangan", label: "Kedatangan" },
-  { id: "kasus", label: "Jenis Kasus" },
-  { id: "ttv", label: "Tanda Vital" },
-  { id: "pemeriksaan", label: "Pemeriksaan" },
-  { id: "hasil", label: "Hasil & TTD" },
-] as const;
+type KunciTtv = "tdSistolik" | "tdDiastolik" | "nadi" | "suhu" | "saturasi" | "pernapasan";
 
 /* ------------------------------------------------------------------- view */
 
@@ -129,16 +138,13 @@ export function TriaseFormView({
   // `kendali` (bukan `k`): `k` dipakai sebagai item kategori di banyak .map().
   const kendali = useIsian(isian, izin, siapkan);
   const { form, setForm } = kendali;
-  // Tab tablet/HP dibuka di kategori hasil (berguna saat isian sudah FINAL).
-  const [tab, setTab] = useState<TriaseKat>(() => hitungKategori(siapkan(isian.data)) ?? 1);
 
-  const set = <K extends keyof TriaseForm>(key: K, value: TriaseForm[K]) =>
-    setForm((f) => ({ ...f, [key]: value }));
+  const set = <K extends keyof TriaseForm>(key: K, value: TriaseForm[K]) => setForm((f) => ({ ...f, [key]: value }));
   const patch = (fn: (f: TriaseForm) => TriaseForm) => setForm(fn);
-  const toggleKriteria = (id: string) =>
+  const centangKriteria = (id: string, centang: boolean) =>
     patch((f) => ({
       ...f,
-      kriteria: f.kriteria.includes(id) ? f.kriteria.filter((x) => x !== id) : [...f.kriteria, id],
+      kriteria: centang ? (f.kriteria.includes(id) ? f.kriteria : [...f.kriteria, id]) : f.kriteria.filter((x) => x !== id),
     }));
 
   const kategori = hitungKategori(form);
@@ -146,540 +152,297 @@ export function TriaseFormView({
   const saran = saranTtv(form);
   const saranMap = new Map(saran.map((s) => [s.id, s.alasan]));
   const saranBelum = saran.filter((s) => !form.kriteria.includes(s.id));
-  const dipilih = new Set(form.kriteria);
+  const ringkas = ringkasLangkahTriase(form);
+  const kurang = kekuranganTriase(form);
+  // Daftar syarat & sorotan "langkah berikutnya" hanya untuk yang bisa mengisi (DRAF & tidak terkunci).
+  const draf = isian.status === "DRAF" && !kendali.terkunci;
+  const aktif = draf ? (LANGKAH_TRIASE.find((l) => ringkas[l.id].status !== "lengkap")?.id ?? null) : null;
 
-  const selesai: Record<(typeof SECTIONS)[number]["id"], boolean> = {
-    kedatangan:
-      !!form.kedatanganWaktu &&
-      !!form.caraDatang &&
-      (form.caraDatang !== "Lain-lain" || !!form.caraDatangLain.trim()),
-    kasus: !!form.kasus || form.doa,
-    ttv: [form.tdSistolik, form.nadi, form.suhu, form.pernapasan].every((v) => v.trim() !== ""),
-    pemeriksaan: kategori !== null,
-    hasil: !!form.emergency && !!form.waktuTriase && !!form.petugasNama.trim() && !!form.petugasTtd,
+  const langkah: Langkah[] = LANGKAH_TRIASE.map((l, i) => ({
+    id: idL(l.id),
+    no: i + 1,
+    judul: l.judul,
+    singkat: l.singkat,
+    status: ringkas[l.id].status,
+    ket: aktif === l.id ? `Berikutnya · ${ringkas[l.id].ket}` : ringkas[l.id].ket,
+  }));
+  const belum = new Set(kurang.map((s) => s.kolom));
+  const butir: ButirSyarat[] = SYARAT_FINAL_TRIASE.map((s) => ({
+    kunci: s.kolom,
+    label: s.label,
+    ok: !belum.has(s.kolom),
+    tujuan: TUJUAN_SYARAT[s.kolom],
+  }));
+
+  /** Kartu langkah (nomor, sorotan, lencana) + kaki (kekurangan syarat FINAL yang bisa diklik, "Lanjut"). */
+  const kartu = (id: IdLangkahTriase) => {
+    const i = LANGKAH_TRIASE.findIndex((l) => l.id === id);
+    return {
+      id: idL(id),
+      no: i + 1,
+      sorot: aktif === id,
+      lencana: <LencanaLangkah status={ringkas[id].status} kurang={ringkas[id].kurang} berikutnya={aktif === id} />,
+    };
   };
-  const jumlahSelesai = Object.values(selesai).filter(Boolean).length;
-
-  const berbedaDariSimrs =
-    simrs?.kategori != null && kategori !== null && simrs.kategori !== kategori;
+  const kaki = (id: IdLangkahTriase) => {
+    const berikut = LANGKAH_TRIASE[LANGKAH_TRIASE.findIndex((l) => l.id === id) + 1];
+    return (
+      <KakiLangkah
+        kurang={kurang.filter((s) => LANGKAH_SYARAT_TRIASE[s.kolom] === id).map((s) => ({ label: s.label, tujuan: TUJUAN_SYARAT[s.kolom] }))}
+        tampilKurang={ringkas[id].status !== "kosong"}
+        lanjut={berikut && { id: idL(berikut.id), judul: berikut.judul }}
+      />
+    );
+  };
 
   return (
-    <IsianFrame
-      kendali={kendali}
-      aksen={
-        kategori ? (
-          <KatPill kat={kategori} compact />
-        ) : form.doa ? (
-          <span className="rounded-full bg-fg px-2 py-0.5 text-xs font-semibold text-surface">DOA</span>
-        ) : null
-      }
-    >
-      {/* Identitas + rujukan triase SIMRS */}
-      <Card className="p-4">
-        <div className="grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <IdItem label="No. Rekam Medis" value={header.norm} mono />
-          <IdItem label="Nama Pasien" value={`${header.nama} (${jkSingkat(header.jenisKelamin)})`} strong />
-          <IdItem
-            label="Tgl Lahir / Umur"
-            value={[header.tanggalLahir ? fmtTanggal(header.tanggalLahir) : null, header.umur && `(${header.umur})`]
-              .filter(Boolean)
-              .join(" ")}
-          />
-          <IdItem label="Ruang" value={header.ruang} />
-        </div>
-        {simrs && (
-          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3 text-[13px]">
-            <span className="inline-flex items-center gap-1.5 font-medium text-fg-muted">
-              <Info className="size-4 text-fg-subtle" /> Triase di SIMRS
-            </span>
-            {simrs.kategori ? (
-              <KatPill kat={simrs.kategori as TriaseKat} suffix={TRIASE_KATEGORI[simrs.kategori - 1].simrs} />
-            ) : simrs.doa ? (
-              <span className="rounded-full bg-fg px-2 py-0.5 text-xs font-semibold text-surface">DOA</span>
-            ) : (
-              <span className="text-fg-subtle">kategori tidak dicentang</span>
-            )}
-            {simrs.zona && <span className="text-fg-muted">{simrs.zona}</span>}
-            {simrs.waktu && <span className="text-fg-muted">· {fmtLokal(simrs.waktu)}</span>}
-            {simrs.petugas && <span className="text-fg-muted">· {simrs.petugas}</span>}
-            {simrs.episodeIgd && (
-              <span className="text-fg-muted">
-                · episode IGD asal <span className="font-mono">{simrs.episodeIgd}</span>
-              </span>
-            )}
-            {simrs.keluhan && (
-              <span className="basis-full text-fg">
-                <span className="text-fg-muted">Keluhan utama:</span> {simrs.keluhan}
-              </span>
-            )}
-            {berbedaDariSimrs && kategori && (
-              <span className="inline-flex basis-full items-center gap-1.5 text-warning">
-                <CircleAlert className="size-4" />
-                Hasil form ini ({TRIASE_KATEGORI[kategori - 1].label}) berbeda dengan kategori di SIMRS — pastikan sesuai.
-              </span>
-            )}
-          </div>
-        )}
-      </Card>
+    <IsianFrame kendali={kendali} aksen={kategori ? <KatPill kat={kategori} compact /> : form.doa ? <PilDoa /> : null}>
+      <TataLetakLangkah langkah={langkah} samping={draf && <SyaratFinal butir={butir} idJudul="rm04-syarat-judul" />}>
+        <KepalaTriase header={header} simrs={simrs} kategori={kategori} />
 
-      {/* Navigasi bagian + progres */}
-      <nav
-        aria-label="Bagian formulir"
-        className="sticky top-16 z-10 -mx-4 border-b border-border bg-bg/85 px-4 py-2 backdrop-blur supports-[backdrop-filter]:bg-bg/70 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
-      >
-        <div className="flex items-center gap-3">
-          <ol className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto [scrollbar-width:none]">
-            {SECTIONS.map((s, i) => (
-              <li key={s.id} className="shrink-0">
-                <a
-                  href={`#${s.id}`}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-[13px] font-medium text-fg-muted transition-colors hover:border-border-strong hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-                >
-                  <span
-                    className={cn(
-                      "flex size-5 items-center justify-center rounded-full text-[11px] font-bold transition-colors",
-                      selesai[s.id] ? "bg-success text-white" : "bg-surface-2 text-fg-muted",
-                    )}
-                  >
-                    {selesai[s.id] ? <Check className="size-3" strokeWidth={3} /> : i + 1}
-                  </span>
-                  {s.label}
-                </a>
-              </li>
-            ))}
-          </ol>
-          <span className="hidden shrink-0 text-xs tabular-nums text-fg-subtle sm:inline">
-            {jumlahSelesai}/{SECTIONS.length} bagian
-          </span>
-        </div>
-      </nav>
-
-      {/* 1 & 2 — Kedatangan + Jenis Kasus */}
-      <BidangIsian>
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-          <SectionCard id="kedatangan" no={1} title="Kedatangan" done={selesai.kedatangan}>
-            <div className="space-y-4">
-              <div className="sm:max-w-sm">
-                <LabelAsal path="kedatanganWaktu">Tanggal &amp; Pukul Kedatangan (WITA)</LabelAsal>
-                <DateTimePicker value={form.kedatanganWaktu} onChange={(v) => set("kedatanganWaktu", v)} />
-              </div>
-              <div>
-                <LabelAsal path={["caraDatang", "caraDatangLain"]}>Cara Datang</LabelAsal>
-                {/* xl: kartu setengah lebar → 2 kolom agar label tak terjepit */}
-                <div role="radiogroup" aria-label="Cara datang" className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
-                  {CARA_DATANG.map(({ v, icon }) => (
-                    <ChoiceTile
-                      key={v}
-                      icon={icon}
-                      label={v}
-                      active={form.caraDatang === v}
-                      onClick={() =>
-                        patch((f) => ({
-                          ...f,
-                          caraDatang: f.caraDatang === v ? "" : v,
-                          caraDatangLain: v === "Lain-lain" ? f.caraDatangLain : "",
-                        }))
-                      }
-                    />
-                  ))}
-                </div>
-                <AnimatePresence initial={false}>
-                  {form.caraDatang === "Lain-lain" && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <Input
-                        autoFocus
-                        className="mt-2"
-                        value={form.caraDatangLain}
-                        onChange={(e) => set("caraDatangLain", e.target.value)}
-                        placeholder="Sebutkan cara datang (mis. rujukan puskesmas)"
-                        aria-label="Cara datang lain-lain"
-                      />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
-          </SectionCard>
-
-          <SectionCard
-            id="kasus"
-            no={2}
-            title="Jenis Kasus"
-            done={selesai.kasus}
-            action={<TandaAsal path={["kasus", "kecelakaan", "doa"]} />}
-          >
-            <div className="space-y-4">
-              <div role="radiogroup" aria-label="Jenis kasus" className="grid grid-cols-2 gap-2">
-                <ChoiceTile
-                  icon={Stethoscope}
-                  label="Non Trauma"
-                  active={form.kasus === "Non Trauma"}
-                  onClick={() =>
-                    patch((f) => ({ ...f, kasus: f.kasus === "Non Trauma" ? "" : "Non Trauma", kecelakaan: [] }))
-                  }
-                />
-                <ChoiceTile
-                  icon={Bone}
-                  label="Trauma"
-                  active={form.kasus === "Trauma"}
-                  onClick={() => patch((f) => ({ ...f, kasus: f.kasus === "Trauma" ? "" : "Trauma", kecelakaan: [] }))}
-                />
-              </div>
-              <div>
-                <Label>Kecelakaan</Label>
-                <div className="flex flex-wrap gap-2">
-                  {KECELAKAAN_OPTS.map((o) => {
-                    const Icon = KECELAKAAN_ICON[o];
-                    const on = form.kecelakaan.includes(o);
-                    return (
-                      <Chip
-                        key={o}
-                        active={on}
-                        onClick={() =>
-                          patch((f) => {
-                            const kecelakaan = on ? f.kecelakaan.filter((x) => x !== o) : [...f.kecelakaan, o];
-                            // Kecelakaan selalu kasus trauma.
-                            return { ...f, kecelakaan, kasus: kecelakaan.length ? "Trauma" : f.kasus };
-                          })
-                        }
-                      >
-                        <Icon className="size-3.5" />
-                        {o.replace("Kecelakaan ", "")}
-                      </Chip>
-                    );
-                  })}
-                </div>
-                <p className="mt-1.5 text-[11px] text-fg-subtle">Memilih jenis kecelakaan otomatis menandai kasus sebagai Trauma.</p>
-              </div>
-              <div
-                className={cn(
-                  "rounded-[var(--radius-md)] border p-3 transition-colors",
-                  form.doa ? "border-fg/40 bg-fg/[0.04]" : "border-border",
-                )}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      className={cn(
-                        "flex size-9 items-center justify-center rounded-[var(--radius-md)]",
-                        form.doa ? "bg-fg text-surface" : "bg-surface-2 text-fg-subtle",
-                      )}
-                    >
-                      <HeartOff className="size-4.5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-fg">DOA (Death on Arrival)</p>
-                      <p className="text-xs text-fg-muted">Pasien meninggal saat tiba di IGD.</p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={form.doa}
-                    tone="danger"
-                    label="DOA (Death on Arrival)"
-                    onChange={(v) =>
-                      patch((f) => ({
-                        ...f,
-                        doa: v,
-                        doaWaktu: v ? f.doaWaktu || f.kedatanganWaktu || nowLocalDateTime() : "",
-                      }))
-                    }
-                  />
-                </div>
-                {form.doa && (
-                  <div className="mt-3 sm:max-w-sm">
-                    <LabelAsal path="doaWaktu">Pukul DOA (WITA)</LabelAsal>
-                    <DateTimePicker value={form.doaWaktu} onChange={(v) => set("doaWaktu", v)} />
-                  </div>
-                )}
-              </div>
-            </div>
-          </SectionCard>
-        </div>
-      </BidangIsian>
-
-      {/* 3 — Tanda-tanda vital */}
-      <BidangIsian>
-        <SectionCard
-          id="ttv"
-          no={3}
-          title="Tanda-Tanda Vital"
-          desc="Angka yang cocok dengan ambang formulir memunculkan saran kriteria di bagian Pemeriksaan."
-          done={selesai.ttv}
-        >
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-            <VitalCard
-              label="Tekanan Darah"
-              asal={["tdSistolik", "tdDiastolik"]}
-              unit="mmHg"
-              saranIds={saran.filter((s) => /^(Sistolik|Diastolik)/.test(s.alasan)).map((s) => s.id)}
-              warning={
-                diLuarRentang("tdSistolik", form.tdSistolik) || diLuarRentang("tdDiastolik", form.tdDiastolik)
+        {/* ------------------------------------------------ 1. Kedatangan */}
+        <BagianLangkah {...kartu("kedatangan")} judul="Kedatangan" ket="Waktu pasien tiba di IGD dan cara datang.">
+          <BidangIsian className="space-y-4">
+            <KolomWaktu
+              id="rm04-kedatangan"
+              label="Tanggal & pukul kedatangan (WITA)"
+              asal="kedatanganWaktu"
+              value={form.kedatanganWaktu}
+              onChange={(v) => set("kedatanganWaktu", v)}
+            />
+            <PilihanRadio
+              id="rm04-cara-datang"
+              legend="Cara datang"
+              asal={["caraDatang", "caraDatangLain"]}
+              ringkas
+              bolehKosong
+              value={form.caraDatang}
+              onChange={(v) =>
+                patch((f) => ({
+                  ...f,
+                  caraDatang: v as TriaseForm["caraDatang"],
+                  caraDatangLain: v === "Lain-lain" ? f.caraDatangLain : "",
+                }))
               }
-            >
-              <div className="flex items-center gap-1.5">
-                <VitalInput
-                  aria-label="Tekanan darah sistolik"
-                  value={form.tdSistolik}
-                  onChange={(v) => set("tdSistolik", v)}
-                  placeholder="120"
-                />
-                <span className="text-lg text-fg-subtle">/</span>
-                <VitalInput
-                  aria-label="Tekanan darah diastolik"
-                  value={form.tdDiastolik}
-                  onChange={(v) => set("tdDiastolik", v)}
-                  placeholder="80"
+              opsi={CARA_DATANG_OPTS.map((v) => ({ value: v, label: v }))}
+            />
+            {form.caraDatang === "Lain-lain" && (
+              <div className="@md:max-w-md">
+                <KolomTeks
+                  id="rm04-cara-lain"
+                  label="Cara datang lain-lain"
+                  asal="caraDatangLain"
+                  value={form.caraDatangLain}
+                  onChange={(v) => set("caraDatangLain", v)}
+                  placeholder="Sebutkan, mis. rujukan puskesmas"
                 />
               </div>
-            </VitalCard>
-            <VitalCard
-              label="Nadi"
-              asal="nadi"
-              unit="x/menit"
-              saranIds={saran.filter((s) => s.alasan.startsWith("Nadi")).map((s) => s.id)}
-              warning={diLuarRentang("nadi", form.nadi)}
-            >
-              <VitalInput aria-label="Nadi" value={form.nadi} onChange={(v) => set("nadi", v)} placeholder="80" />
-            </VitalCard>
-            <VitalCard label="Suhu" asal="suhu" unit="°C" warning={diLuarRentang("suhu", form.suhu)}>
-              <VitalInput aria-label="Suhu" value={form.suhu} onChange={(v) => set("suhu", v)} placeholder="36.5" />
-            </VitalCard>
-            <VitalCard label="Saturasi O₂" asal="saturasi" unit="%" warning={diLuarRentang("saturasi", form.saturasi)}>
-              <VitalInput aria-label="Saturasi oksigen" value={form.saturasi} onChange={(v) => set("saturasi", v)} placeholder="98" />
-            </VitalCard>
-            <VitalCard
-              label="Pernapasan"
-              asal="pernapasan"
-              unit="x/menit"
-              saranIds={saran.filter((s) => s.alasan.startsWith("Pernapasan")).map((s) => s.id)}
-              warning={diLuarRentang("pernapasan", form.pernapasan)}
-            >
-              <VitalInput aria-label="Pernapasan" value={form.pernapasan} onChange={(v) => set("pernapasan", v)} placeholder="20" />
-            </VitalCard>
-          </div>
-        </SectionCard>
-      </BidangIsian>
+            )}
+          </BidangIsian>
+          {kaki("kedatangan")}
+        </BagianLangkah>
 
-      {/* 4 — Pemeriksaan (matriks kategori). Tab kategori di luar BidangIsian: tetap bisa dipilih saat terkunci. */}
-      <SectionCard
-        id="pemeriksaan"
-        no={4}
-        title="Pemeriksaan Triase"
-        desc="Centang semua temuan. Kategori hasil = kolom paling gawat yang memiliki temuan."
-        done={selesai.pemeriksaan}
-        action={kategori ? <KatPill kat={kategori} prefix="Hasil" /> : null}
-      >
-        <BidangIsian>
-          <SaranBar
-            saran={saran}
-            saranBelum={saranBelum}
-            onApply={(id) => toggleKriteria(id)}
-            onApplyAll={() =>
-              patch((f) => ({ ...f, kriteria: [...new Set([...f.kriteria, ...saranBelum.map((s) => s.id)])] }))
-            }
-          />
-
-          {/* Desktop lebar: matriks 1:1 seperti kertas */}
-          <div className="mt-4 hidden overflow-hidden rounded-[var(--radius-md)] border border-border xl:block">
-            <div className="grid grid-cols-[8.5rem_repeat(5,minmax(0,1fr))]">
-              <div className="flex items-end border-b border-border bg-surface-2/60 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">
-                Pemeriksaan
-              </div>
-              {TRIASE_KATEGORI.map((k) => (
-                <KatHeaderCell key={k.no} kat={k.no} n={perKat[k.no - 1]} hasil={kategori === k.no} />
-              ))}
-
-              {(["a", "b", "c"] as TriaseAspekKey[]).map((a) => (
-                <MatrixRow key={a} aspek={a} dipilih={dipilih} saranMap={saranMap} onToggle={toggleKriteria} />
-              ))}
-
-              <RowLabel>Kesadaran</RowLabel>
-              {TRIASE_KATEGORI.map((k) => (
-                <div key={k.no} className="flex items-center justify-center border-b border-l border-border p-2">
-                  <GcsPill
-                    kat={k.no}
-                    selected={form.kesadaran === String(k.no)}
-                    onClick={() => set("kesadaran", form.kesadaran === String(k.no) ? "" : String(k.no))}
-                  />
-                </div>
-              ))}
-
-              <MatrixRow aspek="d" dipilih={dipilih} saranMap={saranMap} onToggle={toggleKriteria} />
-
-              <RowLabel>Catatan</RowLabel>
-              {TRIASE_KATEGORI.map((k, i) => (
-                <div key={k.no} className="border-b border-l border-border p-1.5">
-                  <textarea
-                    rows={2}
-                    value={form.catatan[i] ?? ""}
-                    onChange={(e) => set("catatan", form.catatan.map((c, j) => (j === i ? e.target.value : c)))}
-                    placeholder="Catatan…"
-                    aria-label={`Catatan ${k.label}`}
-                    className="block w-full resize-y rounded-[var(--radius-sm)] border border-transparent bg-transparent px-1.5 py-1 text-[13px] text-fg placeholder:text-fg-subtle hover:border-border focus-visible:border-brand focus-visible:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring/40"
-                  />
-                </div>
-              ))}
-
-              <RowLabel icon={Timer} last={false}>Waktu Respon</RowLabel>
-              {TRIASE_KATEGORI.map((k) => (
-                <InfoCell key={k.no} kat={k.no} aktif={kategori === k.no} teks={k.respon} />
-              ))}
-              <RowLabel icon={BedDouble} last>Observasi</RowLabel>
-              {TRIASE_KATEGORI.map((k) => (
-                <InfoCell key={k.no} kat={k.no} aktif={kategori === k.no} teks={k.observasi} last />
-              ))}
-            </div>
-          </div>
-        </BidangIsian>
-
-        {/* Tablet/HP: tab per kategori */}
-        <div className="mt-4 xl:hidden">
-          <div role="tablist" aria-label="Kategori triase" className="grid grid-cols-5 gap-1.5">
-            {TRIASE_KATEGORI.map((k) => {
-              const aktif = tab === k.no;
-              const n = perKat[k.no - 1];
-              return (
-                <button
-                  key={k.no}
-                  type="button"
-                  role="tab"
-                  aria-selected={aktif}
-                  aria-controls="triase-tabpanel"
-                  onClick={() => setTab(k.no)}
-                  className={cn(
-                    "relative rounded-[var(--radius-md)] border-2 px-1 py-2 text-center transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring",
-                    aktif ? cn(TONE[k.no].head, "border-transparent shadow-sm") : "border-border bg-surface text-fg-muted hover:bg-surface-2",
-                  )}
-                >
-                  <span className="block text-base font-bold leading-tight">{k.romawi}</span>
-                  <span className="block truncate text-[10px] leading-tight opacity-90">{k.respon}</span>
-                  {n > 0 && (
-                    <span className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-fg text-[10px] font-bold text-surface tabular-nums">
-                      {n}
-                    </span>
-                  )}
-                  {kategori === k.no && (
-                    <span className="absolute inset-x-2 -bottom-1 h-1 rounded-full bg-fg" aria-hidden />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          <BidangIsian>
-            <div id="triase-tabpanel" role="tabpanel" className="mt-3 space-y-4">
-              <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-1 rounded-[var(--radius-md)] px-3 py-2 text-[13px]", TONE[tab].soft)}>
-                <span className={cn("font-semibold", TONE[tab].text)}>{TRIASE_KATEGORI[tab - 1].label}</span>
-                <span className="inline-flex items-center gap-1 text-fg-muted">
-                  <Timer className="size-3.5" /> {TRIASE_KATEGORI[tab - 1].respon}
+        {/* ------------------------------------------------ 2. Jenis kasus */}
+        <BagianLangkah
+          {...kartu("kasus")}
+          judul="Jenis kasus"
+          ket="Trauma atau non trauma, jenis kecelakaan, dan DOA bila pasien meninggal saat tiba."
+        >
+          <BidangIsian className="space-y-4">
+            <PilihanRadio
+              id="rm04-kasus"
+              legend="Kasus"
+              asal="kasus"
+              ringkas
+              bolehKosong
+              value={form.kasus}
+              // Kecelakaan hanya bermakna untuk kasus trauma.
+              onChange={(v) => patch((f) => ({ ...f, kasus: v as TriaseForm["kasus"], kecelakaan: v === "Trauma" ? f.kecelakaan : [] }))}
+              opsi={KASUS_OPTS.map((v) => ({ value: v, label: v }))}
+            />
+            <PilihanCentang
+              legend="Kecelakaan"
+              asal="kecelakaan"
+              keterangan="Memilih jenis kecelakaan otomatis menandai kasus sebagai Trauma."
+              opsi={KECELAKAAN_OPTS}
+              nilai={form.kecelakaan}
+              onUbah={(v) => patch((f) => ({ ...f, kecelakaan: v, kasus: v.length ? "Trauma" : f.kasus }))}
+            />
+            <div className="space-y-3">
+              <label className={cn(KARTU_PILIHAN, "@md:max-w-md has-checked:border-fg/50 has-checked:bg-fg/[0.04]")}>
+                <input
+                  id="rm04-doa"
+                  type="checkbox"
+                  checked={form.doa}
+                  onChange={(e) => {
+                    const doa = e.target.checked;
+                    patch((f) => ({ ...f, doa, doaWaktu: doa ? f.doaWaktu || f.kedatanganWaktu || nowLocalDateTime() : "" }));
+                  }}
+                  className={cn(KONTROL_PILIHAN, "mt-0.5 accent-fg")}
+                />
+                <span className="min-w-0">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <HeartOff className="size-4 text-fg-muted" aria-hidden />
+                    DOA (Death on Arrival)
+                    <TandaAsal path="doa" />
+                  </span>
+                  <span className="mt-0.5 block text-xs text-fg-muted">Pasien meninggal saat tiba di IGD.</span>
                 </span>
-                <span className="inline-flex items-center gap-1 text-fg-muted">
-                  <BedDouble className="size-3.5" /> {TRIASE_KATEGORI[tab - 1].observasi}
-                </span>
-              </div>
-              {TRIASE_ASPEK.map((a) => (
-                <div key={a.key} className="space-y-4">
-                  <AspekGroup
-                    label={a.label}
-                    en={a.en}
-                    items={kriteriaSel(a.key, tab)}
-                    dipilih={dipilih}
-                    saranMap={saranMap}
-                    onToggle={toggleKriteria}
-                  />
-                  {a.key === "c" && (
-                    <div>
-                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-fg-subtle">Kesadaran</p>
-                      <div role="radiogroup" aria-label="Kesadaran (GCS)">
-                        <GcsPill
-                          kat={tab}
-                          selected={form.kesadaran === String(tab)}
-                          onClick={() => set("kesadaran", form.kesadaran === String(tab) ? "" : String(tab))}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-              <div>
-                <Label>Catatan {TRIASE_KATEGORI[tab - 1].label}</Label>
-                <textarea
-                  rows={2}
-                  value={form.catatan[tab - 1] ?? ""}
-                  onChange={(e) => set("catatan", form.catatan.map((c, j) => (j === tab - 1 ? e.target.value : c)))}
-                  placeholder="Catatan…"
-                  className="w-full rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-                />
-              </div>
+              </label>
+              {form.doa && (
+                <KolomWaktu id="rm04-doa-waktu" label="Pukul DOA (WITA)" asal="doaWaktu" value={form.doaWaktu} onChange={(v) => set("doaWaktu", v)} />
+              )}
             </div>
           </BidangIsian>
-        </div>
-      </SectionCard>
+          {kaki("kasus")}
+        </BagianLangkah>
 
-      {/* 5 — Hasil, emergency, petugas & TTD */}
-      <BidangIsian>
-        <SectionCard id="hasil" no={5} title="Hasil Triase & Tanda Tangan" done={selesai.hasil}>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <div className="space-y-4">
-              <HasilPanel kategori={kategori} perKat={perKat} doa={form.doa} />
-              <div>
-                <Label>Status Kegawatan</Label>
-                <div role="radiogroup" aria-label="Status kegawatan" className="grid grid-cols-2 gap-2">
-                  {EMERGENCY_OPTS.map((o) => (
-                    <ChoiceTile
-                      key={o}
-                      icon={o === "True Emergency" ? Siren : Activity}
-                      label={o}
-                      active={form.emergency === o}
-                      onClick={() => set("emergency", form.emergency === o ? "" : o)}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="space-y-3 rounded-[var(--radius-md)] border border-border bg-surface-2/30 p-3">
-              <p className="text-sm font-semibold text-fg">Dokter / Perawat</p>
-              <div>
-                <LabelAsal path="waktuTriase">Tanggal &amp; Pukul Triase (WITA)</LabelAsal>
-                <DateTimePicker value={form.waktuTriase} onChange={(v) => set("waktuTriase", v)} />
-              </div>
-              <div>
-                <LabelAsal path="petugasNama" htmlFor="triase-petugas">
-                  Nama Jelas
-                </LabelAsal>
-                <Input
-                  id="triase-petugas"
-                  value={form.petugasNama}
-                  onChange={(e) => set("petugasNama", e.target.value)}
-                  placeholder="Nama dokter / perawat"
-                />
-                <SaranNamaSaya nama={form.petugasNama} onPilih={(v) => set("petugasNama", v)} />
-              </div>
-              <SignaturePad
-                label="Tanda Tangan"
-                value={form.petugasTtd}
-                onChange={(v) => set("petugasTtd", v)}
-                context={[header.nama, "Triase RM.04 — Dokter/Perawat"].filter(Boolean).join(" · ")}
-                petugas={{ nama: form.petugasNama, onNama: (v) => set("petugasNama", v), isiNamaOtomatis: true }}
+        {/* ------------------------------------------------ 3. Tanda-tanda vital */}
+        <BagianLangkah
+          {...kartu("ttv")}
+          judul="Tanda-tanda vital"
+          ket="Angka yang cocok dengan ambang formulir memunculkan saran kriteria di langkah Pemeriksaan (hanya saran)."
+        >
+          <BidangIsian>
+            <div className="grid grid-cols-2 gap-3 @3xl:grid-cols-3">
+              <KartuTekananDarah
+                sistolik={form.tdSistolik}
+                diastolik={form.tdDiastolik}
+                onSistolik={(v) => set("tdSistolik", v)}
+                onDiastolik={(v) => set("tdDiastolik", v)}
+                saranIds={saran.filter((s) => /^(Sistolik|Diastolik)/.test(s.alasan)).map((s) => s.id)}
+              />
+              <KartuVital
+                kunci="nadi"
+                label="Nadi"
+                unit="x/menit"
+                value={form.nadi}
+                onChange={(v) => set("nadi", v)}
+                placeholder="80"
+                saranIds={saran.filter((s) => s.alasan.startsWith("Nadi")).map((s) => s.id)}
+              />
+              <KartuVital kunci="suhu" label="Suhu" unit="°C" value={form.suhu} onChange={(v) => set("suhu", v)} placeholder="36,5" />
+              <KartuVital
+                kunci="saturasi"
+                label="Saturasi O₂"
+                unit="%"
+                value={form.saturasi}
+                onChange={(v) => set("saturasi", v)}
+                placeholder="98"
+                opsional
+              />
+              <KartuVital
+                kunci="pernapasan"
+                label="Pernapasan"
+                unit="x/menit"
+                value={form.pernapasan}
+                onChange={(v) => set("pernapasan", v)}
+                placeholder="20"
+                saranIds={saran.filter((s) => s.alasan.startsWith("Pernapasan")).map((s) => s.id)}
               />
             </div>
-          </div>
-        </SectionCard>
+          </BidangIsian>
+          {kaki("ttv")}
+        </BagianLangkah>
 
-      </BidangIsian>
+        {/* ------------------------------------------------ 4. Pemeriksaan */}
+        <BagianLangkah
+          {...kartu("pemeriksaan")}
+          judul="Pemeriksaan triase"
+          ket="Centang semua temuan per aspek. Kategori hasil = kolom paling gawat yang memiliki temuan."
+          aksi={kategori ? <KatPill kat={kategori} prefix="Hasil" /> : null}
+        >
+          <BidangIsian>
+            <SaranBar
+              saran={saran}
+              saranBelum={saranBelum}
+              onApply={(id) => centangKriteria(id, true)}
+              onApplyAll={() => patch((f) => ({ ...f, kriteria: [...new Set([...f.kriteria, ...saranBelum.map((s) => s.id)])] }))}
+            />
+            <MatriksTriase
+              form={form}
+              perKat={perKat}
+              kategori={kategori}
+              saranMap={saranMap}
+              onKriteria={centangKriteria}
+              onKesadaran={(v) => set("kesadaran", v)}
+              onCatatan={(i, v) => patch((f) => ({ ...f, catatan: f.catatan.map((c, j) => (j === i ? v : c)) }))}
+            />
+          </BidangIsian>
+          {kaki("pemeriksaan")}
+        </BagianLangkah>
+
+        {/* ------------------------------------------------ 5. Hasil & tanda tangan */}
+        <BagianLangkah
+          {...kartu("hasil")}
+          judul="Hasil triase & tanda tangan"
+          ket="Kategori dihitung otomatis dari pemeriksaan. Lengkapi status kegawatan, lalu waktu, nama, dan tanda tangan petugas."
+        >
+          {draf && <SyaratFinal butir={butir} idJudul="rm04-syarat-judul-ponsel" className="mb-5 xl:hidden" />}
+          <BidangIsian>
+            <div className="grid grid-cols-1 gap-6 @3xl:grid-cols-2">
+              <div className="space-y-4">
+                <HasilPanel kategori={kategori} perKat={perKat} doa={form.doa} simrs={simrs} />
+                <PilihanRadio
+                  id="rm04-emergency"
+                  legend="Status kegawatan"
+                  ringkas
+                  bolehKosong
+                  value={form.emergency}
+                  onChange={(v) => set("emergency", v as TriaseForm["emergency"])}
+                  opsi={EMERGENCY_OPTS.map((v) => ({ value: v, label: v }))}
+                />
+              </div>
+              <KotakTtd
+                ikon={Stethoscope}
+                peran="Dokter / perawat"
+                nama={form.petugasNama}
+                sudah={form.petugasTtd !== ""}
+                idTtd={TUJUAN_SYARAT.petugasTtd}
+              >
+                <div className="mb-3 space-y-3">
+                  <KolomWaktu
+                    id={TUJUAN_SYARAT.waktuTriase}
+                    label="Tanggal & pukul triase (WITA)"
+                    asal="waktuTriase"
+                    wajib
+                    value={form.waktuTriase}
+                    onChange={(v) => set("waktuTriase", v)}
+                  />
+                  <div>
+                    <KolomTeks
+                      id={TUJUAN_SYARAT.petugasNama}
+                      label="Nama jelas"
+                      asal="petugasNama"
+                      wajib
+                      value={form.petugasNama}
+                      onChange={(v) => set("petugasNama", v)}
+                      placeholder="Nama dokter / perawat"
+                    />
+                    <SaranNamaSaya nama={form.petugasNama} onPilih={(v) => set("petugasNama", v)} />
+                  </div>
+                </div>
+                <SignaturePad
+                  label="Tanda tangan"
+                  value={form.petugasTtd}
+                  onChange={(v) => set("petugasTtd", v)}
+                  context={[header.nama, "Triase RM.04 — Dokter/Perawat"].filter(Boolean).join(" · ")}
+                  petugas={{ nama: form.petugasNama, onNama: (v) => set("petugasNama", v), isiNamaOtomatis: true }}
+                />
+              </KotakTtd>
+            </div>
+          </BidangIsian>
+          {kaki("hasil")}
+        </BagianLangkah>
+      </TataLetakLangkah>
     </IsianFrame>
   );
 }
 
-/* ----------------------------------------------------------------- helpers */
+/* ================================================================== kepala */
 
-const fmtTanggal = (iso: string) =>
-  new Date(iso).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+const jkSingkat = (jk: string) => (jk === "Laki-Laki" ? "L" : jk === "Perempuan" ? "P" : "-");
+
 /** "YYYY-MM-DDTHH:mm" (jam dinding) → "29 Sep 08.05". */
 function fmtLokal(s: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(s);
@@ -687,205 +450,229 @@ function fmtLokal(s: string): string {
   const bln = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"][Number(m[2]) - 1];
   return `${Number(m[3])} ${bln} ${m[4]}.${m[5]}`;
 }
-const jkSingkat = (jk: string) => (jk === "Laki-Laki" ? "L" : jk === "Perempuan" ? "P" : "-");
 
-function diLuarRentang(key: keyof typeof RENTANG, v: string): boolean {
+/** Identitas pasien + rujukan triase SIMRS (baca-saja) dan peringatan bila kategori berbeda. */
+function KepalaTriase({ header, simrs, kategori }: { header: FormRmHeader; simrs: TriaseSimrs | null; kategori: TriaseKat | null }) {
+  const berbeda = simrs?.kategori != null && kategori !== null && simrs.kategori !== kategori;
+  return (
+    <Card className="p-4">
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-4">
+        <ItemId label="No. rekam medis" value={header.norm} mono />
+        <ItemId label="Nama pasien" value={`${header.nama} (${jkSingkat(header.jenisKelamin)})`} strong />
+        <ItemId
+          label="Tgl lahir / umur"
+          value={[header.tanggalLahir ? fmtTanggal(header.tanggalLahir) : null, header.umur && `(${header.umur})`].filter(Boolean).join(" ")}
+        />
+        <ItemId label="Ruang" value={header.ruang} />
+      </dl>
+      {simrs && (
+        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3 text-[13px]">
+          <span className="inline-flex items-center gap-1.5 font-medium text-fg-muted">
+            <Info className="size-4 text-fg-subtle" aria-hidden /> Triase di SIMRS
+          </span>
+          {simrs.kategori ? (
+            <KatPill kat={simrs.kategori as TriaseKat} suffix={TRIASE_KATEGORI[simrs.kategori - 1].simrs} />
+          ) : simrs.doa ? (
+            <PilDoa />
+          ) : (
+            <span className="text-fg-subtle">kategori tidak dicentang</span>
+          )}
+          {simrs.zona && <span className="text-fg-muted">{simrs.zona}</span>}
+          {simrs.waktu && <span className="text-fg-muted">· {fmtLokal(simrs.waktu)}</span>}
+          {simrs.petugas && <span className="text-fg-muted">· {simrs.petugas}</span>}
+          {simrs.episodeIgd && (
+            <span className="text-fg-muted">
+              · episode IGD asal <span className="font-mono">{simrs.episodeIgd}</span>
+            </span>
+          )}
+          {simrs.keluhan && (
+            <span className="basis-full text-fg">
+              <span className="text-fg-muted">Keluhan utama:</span> {simrs.keluhan}
+            </span>
+          )}
+          {berbeda && kategori && (
+            <span className="inline-flex basis-full items-center gap-1.5 font-medium text-warning">
+              <CircleAlert className="size-4 shrink-0" aria-hidden />
+              Hasil form ini ({TRIASE_KATEGORI[kategori - 1].label}) berbeda dengan kategori di SIMRS — pastikan sesuai.
+            </span>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/* ================================================================= kolom */
+
+/** Tanggal & pukul (WITA) + pintasan "Sekarang" (dihitung saat diklik) selama masih kosong. */
+/* =========================================================== tanda vital */
+
+function diLuarRentang(key: KunciTtv, v: string): boolean {
   if (!v.trim()) return false;
   const n = angkaTtv(v);
   const [lo, hi] = RENTANG[key];
   return !Number.isFinite(n) || n < lo || n > hi;
 }
 
-function IdItem({ label, value, mono, strong }: { label: string; value: string; mono?: boolean; strong?: boolean }) {
-  return (
-    <div className="min-w-0">
-      <p className="text-xs text-fg-muted">{label}</p>
-      <p className={cn("truncate text-fg", mono && "font-mono", strong && "font-semibold")}>{value || "—"}</p>
-    </div>
-  );
-}
+const idTtv = (k: KunciTtv) => `rm04-ttv-${k}`;
 
-function SectionCard({
+/** Angka tanda vital besar & mudah dibaca; hanya digit, koma/titik desimal. */
+function InputVital({
   id,
-  no,
-  title,
-  desc,
-  done,
-  action,
-  children,
-}: {
-  id: string;
-  no: number;
-  title: string;
-  desc?: string;
-  done: boolean;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <Card id={id} className="scroll-mt-32 p-4 sm:p-5">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <span
-            className={cn(
-              "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-colors",
-              done ? "bg-success text-white" : "bg-brand-soft text-brand-soft-fg",
-            )}
-            aria-hidden
-          >
-            {done ? <Check className="size-4" strokeWidth={3} /> : no}
-          </span>
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-fg">{title}</h2>
-            {desc && <p className="mt-0.5 text-xs text-fg-muted">{desc}</p>}
-          </div>
-        </div>
-        {action}
-      </div>
-      {children}
-    </Card>
-  );
-}
-
-/** Pilihan besar ber-ikon (perilaku radio: klik lagi untuk batal). */
-function ChoiceTile({
-  icon: Icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: LucideIcon;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={active}
-      onClick={onClick}
-      className={cn(
-        "relative flex items-center gap-2.5 rounded-[var(--radius-md)] border px-3 py-2.5 text-left text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring",
-        active
-          ? "border-brand bg-brand-soft text-brand-soft-fg shadow-xs"
-          : "border-border bg-surface text-fg-muted hover:border-border-strong hover:bg-surface-2 hover:text-fg",
-      )}
-    >
-      <span
-        className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] transition-colors",
-          active ? "bg-brand text-brand-fg" : "bg-surface-2 text-fg-subtle",
-        )}
-      >
-        <Icon className="size-4" />
-      </span>
-      <span className="min-w-0 leading-tight">{label}</span>
-      {active && <Check className="ml-auto size-4 shrink-0" />}
-    </button>
-  );
-}
-
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring",
-        active
-          ? "border-brand bg-brand-soft text-brand-soft-fg"
-          : "border-border bg-surface text-fg-muted hover:bg-surface-2 hover:text-fg",
-      )}
-    >
-      {children}
-      {active && <Check className="size-3.5" />}
-    </button>
-  );
-}
-
-function VitalCard({
-  label,
-  asal,
-  unit,
-  saranIds = [],
-  warning,
-  children,
-}: {
-  label: string;
-  /** Path kolom untuk penanda SIMRS / diubah. */
-  asal: string | readonly string[];
-  unit: string;
-  saranIds?: string[];
-  warning?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className={cn(
-        "rounded-[var(--radius-md)] border bg-surface p-3 transition-colors",
-        warning ? "border-warning/60" : "border-border focus-within:border-brand",
-      )}
-    >
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-xs font-medium text-fg-muted">{label}</span>
-          <TandaAsal path={asal} />
-        </span>
-        <span className="shrink-0 text-[11px] text-fg-subtle">{unit}</span>
-      </div>
-      {children}
-      <div className="mt-1.5 flex min-h-5 flex-wrap items-center gap-1">
-        {warning ? (
-          <span className="inline-flex items-center gap-1 text-[11px] text-warning">
-            <CircleAlert className="size-3" /> Di luar rentang wajar — periksa kembali
-          </span>
-        ) : (
-          saranIds.map((id) => {
-            const kr = kriteriaById(id);
-            return kr ? <KatPill key={id} kat={kr.kat} compact /> : null;
-          })
-        )}
-      </div>
-    </div>
-  );
-}
-
-function VitalInput({
   value,
   onChange,
   placeholder,
-  ...rest
+  luar,
+  idPesan,
 }: {
+  id: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
-  "aria-label": string;
+  luar: boolean;
+  idPesan: string;
 }) {
   return (
     <input
-      {...rest}
+      id={id}
       inputMode="decimal"
+      autoComplete="off"
+      enterKeyHint="next"
       value={value}
       placeholder={placeholder}
+      aria-invalid={luar}
+      aria-describedby={luar ? idPesan : undefined}
       onChange={(e) => onChange(e.target.value.replace(/[^\d.,]/g, "").slice(0, 6))}
-      className="h-11 w-full min-w-0 rounded-[var(--radius-sm)] border border-transparent bg-surface-2/60 px-2 text-center text-xl font-semibold tabular-nums text-fg placeholder:font-normal placeholder:text-fg-subtle/60 focus-visible:border-brand focus-visible:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring/40"
+      className="h-11 w-full min-w-0 rounded-[var(--radius-sm)] border border-transparent bg-surface-2/60 px-2 text-center text-xl font-semibold tabular-nums text-fg placeholder:font-normal placeholder:text-fg-subtle/60 focus-visible:border-brand focus-visible:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring/40 aria-invalid:border-warning"
     />
   );
 }
 
-function KatPill({
-  kat,
-  prefix,
-  suffix,
-  compact,
+/** Peringatan salah ketik (di luar rentang wajar) atau saran kategori dari ambang formulir. */
+function PesanVital({ id, luar, saranIds }: { id: string; luar: boolean; saranIds: readonly string[] }) {
+  return (
+    <div className="mt-1.5 flex min-h-5 flex-wrap items-center gap-1">
+      {luar ? (
+        <p id={id} className="inline-flex items-center gap-1 text-[11px] text-warning">
+          <CircleAlert className="size-3 shrink-0" aria-hidden /> Di luar rentang wajar — periksa kembali
+        </p>
+      ) : (
+        saranIds.map((sid) => {
+          const kr = kriteriaById(sid);
+          return kr ? (
+            <span key={sid} className="inline-flex items-center gap-1 text-[11px] text-fg-muted">
+              <span className="sr-only">Sesuai ambang</span>
+              <KatPill kat={kr.kat} compact />
+            </span>
+          ) : null;
+        })
+      )}
+    </div>
+  );
+}
+
+function KartuVital({
+  kunci,
+  label,
+  unit,
+  value,
+  onChange,
+  placeholder,
+  saranIds = [],
+  opsional,
 }: {
-  kat: TriaseKat;
-  prefix?: string;
-  suffix?: string;
-  compact?: boolean;
+  kunci: Exclude<KunciTtv, "tdSistolik" | "tdDiastolik">;
+  label: string;
+  unit: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  saranIds?: readonly string[];
+  opsional?: boolean;
 }) {
+  const id = idTtv(kunci);
+  const luar = diLuarRentang(kunci, value);
+  return (
+    <div className={cn("min-w-0 rounded-[var(--radius-md)] border bg-surface p-3 transition-colors", luar ? "border-warning/60" : "border-border focus-within:border-brand")}>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <label htmlFor={id} className="truncate text-xs font-medium text-fg-muted">
+            {label}
+            <span className="sr-only"> ({unit})</span>
+            {opsional && <span className="font-normal text-fg-subtle"> (opsional)</span>}
+          </label>
+          <TandaAsal path={kunci} />
+        </span>
+        <span aria-hidden className="shrink-0 text-[11px] text-fg-subtle">
+          {unit}
+        </span>
+      </div>
+      <InputVital id={id} value={value} onChange={onChange} placeholder={placeholder} luar={luar} idPesan={`${id}-pesan`} />
+      <PesanVital id={`${id}-pesan`} luar={luar} saranIds={saranIds} />
+    </div>
+  );
+}
+
+/** Tekanan darah = dua angka (sistolik / diastolik) dalam satu grup berlegend. */
+function KartuTekananDarah({
+  sistolik,
+  diastolik,
+  onSistolik,
+  onDiastolik,
+  saranIds,
+}: {
+  sistolik: string;
+  diastolik: string;
+  onSistolik: (v: string) => void;
+  onDiastolik: (v: string) => void;
+  saranIds: readonly string[];
+}) {
+  const luarS = diLuarRentang("tdSistolik", sistolik);
+  const luarD = diLuarRentang("tdDiastolik", diastolik);
+  const idPesan = "rm04-ttv-td-pesan";
+  return (
+    <fieldset
+      className={cn(
+        "col-span-2 m-0 min-w-0 rounded-[var(--radius-md)] border bg-surface p-3 transition-colors @3xl:col-span-1",
+        luarS || luarD ? "border-warning/60" : "border-border focus-within:border-brand",
+      )}
+    >
+      <legend className="float-left mb-1.5 flex w-full items-center justify-between gap-2 p-0">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-xs font-medium text-fg-muted">
+            Tekanan darah<span className="sr-only"> (mmHg)</span>
+          </span>
+          <TandaAsal path={["tdSistolik", "tdDiastolik"]} />
+        </span>
+        <span aria-hidden className="shrink-0 text-[11px] text-fg-subtle">
+          mmHg
+        </span>
+      </legend>
+      <div className="clear-both grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-x-1.5">
+        <div className="min-w-0">
+          <InputVital id={idTtv("tdSistolik")} value={sistolik} onChange={onSistolik} placeholder="120" luar={luarS} idPesan={idPesan} />
+          <label htmlFor={idTtv("tdSistolik")} className="mt-0.5 block text-center text-[11px] text-fg-subtle">
+            Sistolik
+          </label>
+        </div>
+        <span aria-hidden className="pt-2 text-lg text-fg-subtle">
+          /
+        </span>
+        <div className="min-w-0">
+          <InputVital id={idTtv("tdDiastolik")} value={diastolik} onChange={onDiastolik} placeholder="80" luar={luarD} idPesan={idPesan} />
+          <label htmlFor={idTtv("tdDiastolik")} className="mt-0.5 block text-center text-[11px] text-fg-subtle">
+            Diastolik
+          </label>
+        </div>
+      </div>
+      <PesanVital id={idPesan} luar={luarS || luarD} saranIds={saranIds} />
+    </fieldset>
+  );
+}
+
+/* ============================================================ pemeriksaan */
+
+function KatPill({ kat, prefix, suffix, compact }: { kat: TriaseKat; prefix?: string; suffix?: string; compact?: boolean }) {
   const k = TRIASE_KATEGORI[kat - 1];
   return (
     <span
@@ -896,12 +683,29 @@ function KatPill({
       )}
     >
       {prefix && <span className="font-medium opacity-85">{prefix}:</span>}
-      {compact ? `Kat ${k.romawi}` : k.label}
+      {compact ? (
+        <>
+          <span aria-hidden>Kat {k.romawi}</span>
+          <span className="sr-only">{k.label}</span>
+        </>
+      ) : (
+        k.label
+      )}
       {suffix && <span className="font-medium opacity-85">· {suffix}</span>}
     </span>
   );
 }
 
+function PilDoa() {
+  return (
+    <span className="rounded-full bg-fg px-2 py-0.5 text-xs font-semibold text-surface">
+      <span aria-hidden>DOA</span>
+      <span className="sr-only">DOA (Death on Arrival)</span>
+    </span>
+  );
+}
+
+/** Saran kriteria dari ambang tanda vital — HANYA saran (tak pernah mencentang sendiri). */
 function SaranBar({
   saran,
   saranBelum,
@@ -913,10 +717,12 @@ function SaranBar({
   onApply: (id: string) => void;
   onApplyAll: () => void;
 }) {
+  const terkunci = useTerkunci();
+  if (terkunci) return null;
   if (saran.length === 0) {
     return (
       <p className="flex items-center gap-2 rounded-[var(--radius-md)] bg-surface-2/60 px-3 py-2 text-xs text-fg-muted">
-        <Activity className="size-4 shrink-0 text-fg-subtle" />
+        <Activity className="size-4 shrink-0 text-fg-subtle" aria-hidden />
         Isi tanda vital (tekanan darah, nadi, pernapasan) untuk melihat saran kriteria sesuai ambang formulir.
       </p>
     );
@@ -924,312 +730,394 @@ function SaranBar({
   if (saranBelum.length === 0) {
     return (
       <p className="flex items-center gap-2 rounded-[var(--radius-md)] bg-success-soft px-3 py-2 text-xs text-success">
-        <CheckCheck className="size-4 shrink-0" />
+        <CheckCheck className="size-4 shrink-0" aria-hidden />
         Semua kriteria yang sesuai tanda vital sudah dicentang.
       </p>
     );
   }
   return (
-    <div className="rounded-[var(--radius-md)] border border-brand/25 bg-brand-soft/60 p-3">
+    <section aria-labelledby="rm04-saran-judul" className="rounded-[var(--radius-md)] border border-brand/25 bg-brand-soft/60 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="flex items-center gap-2 text-sm font-semibold text-brand-soft-fg">
-          <Activity className="size-4" /> Saran dari tanda vital
-        </p>
+        <h3 id="rm04-saran-judul" className="flex items-center gap-2 text-sm font-semibold text-brand-soft-fg">
+          <Activity className="size-4" aria-hidden /> Saran dari tanda vital
+        </h3>
         <Button size="sm" variant="secondary" icon={<CheckCheck className="size-4" />} onClick={onApplyAll}>
           Centang semua ({saranBelum.length})
         </Button>
       </div>
-      <div className="mt-2.5 flex flex-wrap gap-2">
+      <ul className="mt-2.5 flex flex-wrap gap-2">
         {saranBelum.map((s) => {
           const kr = kriteriaById(s.id);
           if (!kr) return null;
           return (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => onApply(s.id)}
-              className="group inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-surface py-1 pl-1 pr-3 text-left text-[13px] text-fg shadow-xs transition-colors hover:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
-            >
-              <KatPill kat={kr.kat} compact />
-              <span className="min-w-0 truncate">{kr.label}</span>
-              <span className="hidden shrink-0 text-fg-subtle sm:inline">· {s.alasan}</span>
-              <span className="shrink-0 text-xs font-semibold text-brand group-hover:underline">Centang</span>
-            </button>
+            <li key={s.id} className="max-w-full">
+              <button
+                type="button"
+                onClick={() => onApply(s.id)}
+                className="group inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-surface py-1 pl-1 pr-3 text-left text-[13px] text-fg shadow-xs transition-colors hover:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring pointer-coarse:min-h-10"
+              >
+                <KatPill kat={kr.kat} compact />
+                <span className="min-w-0 truncate">{kr.label}</span>
+                <span className="hidden shrink-0 text-fg-subtle sm:inline">· {s.alasan}</span>
+                <span className="shrink-0 text-xs font-semibold text-brand group-hover:underline">Centang</span>
+              </button>
+            </li>
           );
         })}
-      </div>
+      </ul>
       <p className="mt-2 text-[11px] text-fg-muted">
         Saran hanya mencocokkan angka dengan ambang di formulir — tetap nilai kondisi klinis pasien sebelum mencentang.
       </p>
-    </div>
+    </section>
   );
 }
 
-function KatHeaderCell({ kat, n, hasil }: { kat: TriaseKat; n: number; hasil: boolean }) {
-  const k = TRIASE_KATEGORI[kat - 1];
-  return (
-    <div className={cn("relative border-b border-l border-border px-3 py-2", TONE[kat].head)}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-bold">{k.label}</span>
-        {n > 0 && (
-          <span className="rounded-full bg-white/90 px-1.5 text-[11px] font-bold tabular-nums text-fg">{n}</span>
-        )}
-      </div>
-      <div className="flex items-center gap-1 text-[11px] opacity-90">
-        <Timer className="size-3" /> {k.respon}
-      </div>
-      {hasil && <span className="absolute inset-x-0 bottom-0 h-1 bg-fg" aria-hidden />}
-    </div>
-  );
-}
+/*
+ * Matriks pemeriksaan = SATU <table> semantik (baris = aspek, kolom =
+ * kategori) yang beradaptasi pada lebar kartunya (@container kartu langkah):
+ * ≥ 48rem → tabel 1:1 seperti kertas; lebih sempit → bertumpuk per aspek
+ * (urutan A-B-C-D seperti alur pemeriksaan), kepala kolom disembunyikan dan
+ * nama kategori ditampilkan di setiap sel. Satu set kontrol → id unik.
+ */
+const TR = "block rounded-[var(--radius-md)] border border-border bg-surface @3xl:table-row @3xl:rounded-none @3xl:border-0";
+const TH_BARIS =
+  "block border-b border-border bg-surface-2/60 px-3 py-2 text-left align-top @3xl:table-cell @3xl:w-[8.5rem] @3xl:bg-surface-2/40";
+const TD = "block border-b border-border p-2 last:border-b-0 @3xl:table-cell @3xl:border-l @3xl:p-1.5 @3xl:align-top @3xl:last:border-b";
+/** Butir pilihan: pil bersentuh-besar saat bertumpuk; baris ringkas di dalam sel tabel. */
+const BUTIR = cn(
+  "flex cursor-pointer items-start gap-2 rounded-[var(--radius-sm)] border border-border bg-surface px-2.5 py-2 text-sm leading-snug text-fg transition-colors",
+  "pointer-coarse:min-h-11 hover:border-border-strong has-focus-visible:ring-2 has-focus-visible:ring-brand-ring",
+  "has-disabled:cursor-default has-disabled:hover:border-border has-checked:font-medium",
+  "@3xl:w-full @3xl:bg-transparent @3xl:px-1.5 @3xl:py-1 @3xl:text-[13px]",
+);
 
-function RowLabel({
-  children,
-  icon: Icon,
-  last,
-}: {
-  children: React.ReactNode;
-  icon?: LucideIcon;
-  last?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-1.5 bg-surface-2/40 px-3 py-2 text-[13px] font-semibold text-fg",
-        !last && "border-b border-border",
-      )}
-    >
-      {Icon && <Icon className="size-3.5 text-fg-subtle" />}
-      {children}
-    </div>
-  );
-}
-
-function MatrixRow({
-  aspek,
-  dipilih,
+function MatriksTriase({
+  form,
+  perKat,
+  kategori,
   saranMap,
-  onToggle,
+  onKriteria,
+  onKesadaran,
+  onCatatan,
 }: {
-  aspek: TriaseAspekKey;
-  dipilih: Set<string>;
+  form: TriaseForm;
+  perKat: readonly number[];
+  kategori: TriaseKat | null;
   saranMap: Map<string, string>;
-  onToggle: (id: string) => void;
+  onKriteria: (id: string, centang: boolean) => void;
+  onKesadaran: (v: string) => void;
+  onCatatan: (i: number, v: string) => void;
 }) {
-  const a = TRIASE_ASPEK.find((x) => x.key === aspek)!;
-  return (
-    <>
-      <div className="border-b border-border bg-surface-2/40 px-3 py-2">
-        <p className="text-[13px] font-semibold text-fg">{a.label}</p>
-        <p className="text-[11px] text-fg-subtle">{a.en}</p>
-      </div>
-      {TRIASE_KATEGORI.map((k) => (
-        <div key={k.no} className="space-y-0.5 border-b border-l border-border p-1.5">
-          {kriteriaSel(aspek, k.no).map((kr) => (
-            <KriteriaItem
-              key={kr.id}
-              kr={kr}
-              checked={dipilih.has(kr.id)}
-              saran={saranMap.get(kr.id)}
-              onToggle={() => onToggle(kr.id)}
-            />
-          ))}
-        </div>
-      ))}
-    </>
-  );
-}
+  const terkunci = useTerkunci();
+  const dipilih = new Set(form.kriteria);
+  const barisAspek = (aspek: TriaseAspekKey) => {
+    const a = TRIASE_ASPEK.find((x) => x.key === aspek)!;
+    return (
+      <tr key={aspek} className={TR}>
+        <th scope="row" className={TH_BARIS}>
+          <span className="block text-[13px] font-semibold text-fg">{a.label}</span>
+          <span className="block text-[11px] font-normal text-fg-subtle">{a.en}</span>
+        </th>
+        {TRIASE_KATEGORI.map((k) => (
+          <td key={k.no} className={TD}>
+            <KepalaSel kat={k.no} />
+            <ul className="flex flex-wrap gap-1.5 @3xl:block @3xl:space-y-0.5">
+              {kriteriaSel(aspek, k.no).map((kr) => (
+                <li key={kr.id} className="max-w-full">
+                  <ButirKriteria
+                    kr={kr}
+                    checked={dipilih.has(kr.id)}
+                    saran={saranMap.get(kr.id)}
+                    onUbah={(c) => onKriteria(kr.id, c)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </td>
+        ))}
+      </tr>
+    );
+  };
 
-function AspekGroup({
-  label,
-  en,
-  items,
-  dipilih,
-  saranMap,
-  onToggle,
-}: {
-  label: string;
-  en: string;
-  items: readonly TriaseKriteria[];
-  dipilih: Set<string>;
-  saranMap: Map<string, string>;
-  onToggle: (id: string) => void;
-}) {
   return (
-    <div>
-      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
-        {label} <span className="font-normal normal-case">({en})</span>
-      </p>
-      {items.length === 0 ? (
-        <p className="text-xs text-fg-subtle">—</p>
-      ) : (
-        <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-          {items.map((kr) => (
-            <KriteriaItem
-              key={kr.id}
-              kr={kr}
-              checked={dipilih.has(kr.id)}
-              saran={saranMap.get(kr.id)}
-              onToggle={() => onToggle(kr.id)}
-              roomy
-            />
+    <div className="mt-4 @3xl:overflow-clip @3xl:rounded-[var(--radius-md)] @3xl:border @3xl:border-border">
+      <table className="block w-full border-separate border-spacing-0 @3xl:table @3xl:table-fixed">
+        <caption className="sr-only">Pemeriksaan triase — baris: aspek pemeriksaan; kolom: Kategori I sampai V</caption>
+        <thead className="hidden @3xl:table-header-group">
+          <tr>
+            <th
+              scope="col"
+              className="w-[8.5rem] border-b border-border bg-surface-2 px-3 py-2 text-left align-bottom text-xs font-semibold text-fg-muted xl:sticky xl:top-16 xl:z-[1]"
+            >
+              Pemeriksaan
+            </th>
+            {TRIASE_KATEGORI.map((k) => (
+              <th
+                key={k.no}
+                scope="col"
+                className={cn("border-b border-l border-border px-3 py-2 text-left align-top font-normal xl:sticky xl:top-16 xl:z-[1]", TONE[k.no].head)}
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-bold">{k.label}</span>
+                  {perKat[k.no - 1] > 0 && (
+                    <span className="rounded-full bg-white/90 px-1.5 text-[11px] font-bold tabular-nums text-fg">
+                      <span className="sr-only">temuan: </span>
+                      {perKat[k.no - 1]}
+                    </span>
+                  )}
+                </span>
+                <span className="flex items-center gap-1 text-[11px] opacity-90">
+                  <Timer className="size-3" aria-hidden /> {k.respon}
+                </span>
+                {kategori === k.no && <span className="sr-only"> — kategori hasil</span>}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="block space-y-3 @3xl:table-row-group @3xl:space-y-0">
+          {barisAspek("a")}
+          {barisAspek("b")}
+          {barisAspek("c")}
+
+          {/* Kesadaran (dilingkari di kertas): satu pilihan → radio asli bergrup (nama sama) lintas kolom. */}
+          <tr className={TR}>
+            <th scope="row" className={TH_BARIS}>
+              <span className="block text-[13px] font-semibold text-fg">Kesadaran</span>
+              <span className="block text-[11px] font-normal text-fg-subtle">GCS — pilih satu</span>
+              {form.kesadaran && !terkunci && (
+                <button
+                  type="button"
+                  onClick={() => onKesadaran("")}
+                  className="mt-1 rounded-[var(--radius-sm)] px-1 py-0.5 text-[11px] font-medium text-fg-muted underline-offset-2 hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+                >
+                  Kosongkan pilihan
+                </button>
+              )}
+            </th>
+            {TRIASE_KATEGORI.map((k) => (
+              // Bertumpuk: sel sebaris (inline-block) → lima pil GCS mengalir dalam satu kartu.
+              <td key={k.no} className="inline-block p-1 align-top @3xl:table-cell @3xl:border-b @3xl:border-l @3xl:border-border @3xl:p-1.5">
+                <label className={cn(BUTIR, CENTANG[k.no], "@3xl:border-transparent")}>
+                  <input
+                    id={`rm04-gcs-${k.no}`}
+                    type="radio"
+                    name="rm04-kesadaran"
+                    value={String(k.no)}
+                    checked={form.kesadaran === String(k.no)}
+                    onChange={() => onKesadaran(String(k.no))}
+                    className={cn(KONTROL_PILIHAN, "mt-0.5", AKSEN[k.no])}
+                  />
+                  <span className="tabular-nums">
+                    {k.gcs}
+                    <span className="sr-only"> — {k.label}</span>
+                  </span>
+                  <span aria-hidden className="@3xl:hidden">
+                    <KatPill kat={k.no} compact />
+                  </span>
+                </label>
+              </td>
+            ))}
+          </tr>
+
+          {barisAspek("d")}
+
+          <tr className={TR}>
+            <th scope="row" className={TH_BARIS}>
+              <span className="block text-[13px] font-semibold text-fg">Catatan</span>
+              <span className="block text-[11px] font-normal text-fg-subtle">opsional, per kategori</span>
+            </th>
+            {TRIASE_KATEGORI.map((k, i) => (
+              <td key={k.no} className={TD}>
+                <label htmlFor={`rm04-catatan-${k.no}`} className="mb-1 block text-xs font-medium text-fg-muted @3xl:sr-only">
+                  Catatan {k.label}
+                </label>
+                <textarea
+                  id={`rm04-catatan-${k.no}`}
+                  rows={1}
+                  value={form.catatan[i] ?? ""}
+                  onChange={(e) => onCatatan(i, e.target.value)}
+                  placeholder="Catatan…"
+                  maxLength={300}
+                  // field-sizing: tinggi mengikuti isi; peramban lama tetap 2 baris + gulir.
+                  className="block min-h-[2.75rem] max-h-[10rem] w-full resize-y rounded-[var(--radius-sm)] border border-border bg-surface px-2 py-1.5 text-[13px] text-fg [field-sizing:content] placeholder:text-fg-subtle focus-visible:border-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring/40 pointer-coarse:text-base @3xl:border-transparent @3xl:bg-transparent @3xl:hover:border-border"
+                />
+              </td>
+            ))}
+          </tr>
+        </tbody>
+        {/* Baris tetap formulir kertas (waktu respon & ruang observasi) — saat bertumpuk tampil di panel hasil. */}
+        <tfoot className="hidden @3xl:table-footer-group">
+          {(
+            [
+              { judul: "Waktu respon", ikon: Timer, teks: (k: (typeof TRIASE_KATEGORI)[number]) => k.respon, akhir: false },
+              { judul: "Observasi", ikon: BedDouble, teks: (k: (typeof TRIASE_KATEGORI)[number]) => k.observasi, akhir: true },
+            ] as const
+          ).map((b) => (
+            <tr key={b.judul}>
+              <th scope="row" className={cn("bg-surface-2/40 px-3 py-2 text-left text-[13px] font-semibold text-fg", !b.akhir && "border-b border-border")}>
+                <span className="flex items-center gap-1.5">
+                  <b.ikon className="size-3.5 text-fg-subtle" aria-hidden />
+                  {b.judul}
+                </span>
+              </th>
+              {TRIASE_KATEGORI.map((k) => (
+                <td
+                  key={k.no}
+                  className={cn(
+                    "border-l border-border px-3 py-2 text-[13px] transition-colors",
+                    !b.akhir && "border-b",
+                    kategori === k.no ? cn(TONE[k.no].soft, "font-semibold", TONE[k.no].text) : "text-fg-muted",
+                  )}
+                >
+                  {b.teks(k)}
+                </td>
+              ))}
+            </tr>
           ))}
-        </div>
-      )}
+        </tfoot>
+      </table>
     </div>
   );
 }
 
-function KriteriaItem({
+/** Nama kategori di dalam sel — hanya saat bertumpuk (kepala kolom tabel tersembunyi). */
+function KepalaSel({ kat }: { kat: TriaseKat }) {
+  return (
+    <div aria-hidden className="mb-1.5 @3xl:hidden">
+      <KatPill kat={kat} />
+    </div>
+  );
+}
+
+function ButirKriteria({
   kr,
   checked,
   saran,
-  onToggle,
-  roomy,
+  onUbah,
 }: {
   kr: TriaseKriteria;
   checked: boolean;
+  /** Alasan saran dari tanda vital (mis. "Nadi 130 x/menit"), bila cocok. */
   saran?: string;
-  onToggle: () => void;
-  roomy?: boolean;
+  onUbah: (centang: boolean) => void;
 }) {
-  const t = TONE[kr.kat];
+  const disarankan = !!saran && !checked;
   return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={checked}
-      onClick={onToggle}
-      title={saran && !checked ? `Sesuai tanda vital: ${saran}` : undefined}
-      className={cn(
-        "group flex w-full items-start gap-2 rounded-[var(--radius-sm)] border text-left leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring",
-        roomy ? "px-2.5 py-2 text-sm" : "px-1.5 py-1 text-[13px]",
-        checked
-          ? cn(t.soft, t.border, "font-medium text-fg")
-          : saran
-            ? "border-dashed border-brand/60 bg-brand-soft/40 text-fg"
-            : "border-transparent text-fg-muted hover:bg-surface-2 hover:text-fg",
-      )}
-    >
-      <span
-        className={cn(
-          "mt-px flex size-4 shrink-0 items-center justify-center rounded-[5px] border transition-colors",
-          checked ? cn(t.box, "text-white") : "border-border-strong bg-surface group-hover:border-fg-subtle",
-        )}
-      >
-        {checked && <Check className="size-3" strokeWidth={3.5} />}
+    <label className={cn(BUTIR, CENTANG[kr.kat], disarankan ? "border-dashed border-brand/60 bg-brand-soft/40" : "@3xl:border-transparent")}>
+      <input
+        id={idKriteria(kr.id)}
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onUbah(e.target.checked)}
+        className={cn(KONTROL_PILIHAN, "mt-0.5", AKSEN[kr.kat])}
+      />
+      {/* Label tanpa spasi (mis. "Stridor/Gurgling/Snoring"): titik patah setelah "/", cadangan overflow-wrap → tak meluber ke kolom sebelah. */}
+      <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+        {kr.label.split("/").map((bagian, i, semua) => (
+          <span key={i}>
+            {bagian}
+            {i < semua.length - 1 && (
+              <>
+                /<wbr />
+              </>
+            )}
+          </span>
+        ))}
+        {/* Nama unik untuk pembaca layar ("Bebas" ada di beberapa kategori). */}
+        <span className="sr-only">
+          {" "}
+          — {TRIASE_KATEGORI[kr.kat - 1].label}
+          {disarankan ? `, disarankan dari tanda vital (${saran})` : ""}
+        </span>
       </span>
-      <span className="min-w-0 flex-1">{kr.label}</span>
-      {saran && !checked && (
-        <span className="mt-px inline-flex shrink-0 items-center gap-0.5 rounded-full bg-brand px-1.5 text-[10px] font-semibold leading-4 text-brand-fg">
+      {disarankan && (
+        <span
+          aria-hidden
+          className="mt-px inline-flex shrink-0 items-center gap-0.5 rounded-full bg-brand px-1.5 text-[10px] font-semibold leading-4 text-brand-fg"
+        >
           <Activity className="size-2.5" />
           TTV
         </span>
       )}
-    </button>
+    </label>
   );
 }
 
-function GcsPill({ kat, selected, onClick }: { kat: TriaseKat; selected: boolean; onClick: () => void }) {
-  const t = TONE[kat];
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      aria-label={`Kesadaran ${TRIASE_KATEGORI[kat - 1].gcs} (${TRIASE_KATEGORI[kat - 1].label})`}
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring",
-        selected ? cn(t.soft, t.border, t.text) : "border-dashed border-border-strong text-fg-muted hover:bg-surface-2 hover:text-fg",
-      )}
-    >
-      {selected && <Check className="size-3.5" strokeWidth={3} />}
-      {TRIASE_KATEGORI[kat - 1].gcs}
-    </button>
-  );
-}
+/* ================================================================== hasil */
 
-function InfoCell({ kat, aktif, teks, last }: { kat: TriaseKat; aktif: boolean; teks: string; last?: boolean }) {
-  return (
-    <div
-      className={cn(
-        "border-l border-border px-3 py-2 text-[13px] transition-colors",
-        !last && "border-b",
-        aktif ? cn(TONE[kat].soft, "font-semibold", TONE[kat].text) : "text-fg-muted",
-      )}
-    >
-      {teks}
-    </div>
-  );
-}
-
-function HasilPanel({ kategori, perKat, doa }: { kategori: TriaseKat | null; perKat: number[]; doa: boolean }) {
+function HasilPanel({
+  kategori,
+  perKat,
+  doa,
+  simrs,
+}: {
+  kategori: TriaseKat | null;
+  perKat: readonly number[];
+  doa: boolean;
+  simrs: TriaseSimrs | null;
+}) {
   const k = kategori ? TRIASE_KATEGORI[kategori - 1] : null;
+  const berbeda = simrs?.kategori != null && kategori !== null && simrs.kategori !== kategori;
   return (
     <div className="space-y-2">
-      <AnimatePresence mode="wait" initial={false}>
-        {k ? (
-          <motion.div
-            key={k.no}
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.18 }}
-            className={cn("rounded-[var(--radius-lg)] p-4 shadow-xs", TONE[k.no].head)}
-            aria-live="polite"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">Hasil triase</p>
-                <p className="mt-0.5 text-2xl font-bold leading-tight">{k.label}</p>
-              </div>
-              <span className="text-4xl font-black leading-none opacity-90">{k.romawi}</span>
+      {/* Live region selalu ada → perubahan kategori diumumkan sekali, tanpa membaca ulang seluruh panel. */}
+      <p className="sr-only" aria-live="polite">
+        {k ? `Hasil triase ${k.label}, waktu respon ${k.respon}.` : ""}
+      </p>
+      {k ? (
+        <div className={cn("rounded-[var(--radius-lg)] p-4 shadow-xs", TONE[k.no].head)}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold opacity-80">Hasil triase</p>
+              <p className="mt-0.5 text-2xl font-bold leading-tight">{k.label}</p>
             </div>
-            <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <dt className="text-[11px] uppercase tracking-wide opacity-80">Waktu respon</dt>
-                <dd className="font-semibold">{k.respon}</dd>
-              </div>
-              <div>
-                <dt className="text-[11px] uppercase tracking-wide opacity-80">Observasi</dt>
-                <dd className="font-semibold">{k.observasi}</dd>
-              </div>
-            </dl>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="kosong"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="rounded-[var(--radius-lg)] border border-dashed border-border-strong p-4 text-center"
-          >
-            <p className="text-sm font-semibold text-fg">Kategori belum ditentukan</p>
-            <p className="mt-0.5 text-xs text-fg-muted">Centang temuan di bagian Pemeriksaan — hasil dihitung otomatis.</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <div className="grid grid-cols-5 gap-1.5" aria-label="Jumlah temuan per kategori">
+            <span aria-hidden className="text-4xl font-black leading-none opacity-90">
+              {k.romawi}
+            </span>
+          </div>
+          <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <dt className="text-[11px] opacity-80">Waktu respon</dt>
+              <dd className="font-semibold">{k.respon}</dd>
+            </div>
+            <div>
+              <dt className="text-[11px] opacity-80">Observasi</dt>
+              <dd className="font-semibold">{k.observasi}</dd>
+            </div>
+          </dl>
+        </div>
+      ) : (
+        <div className="rounded-[var(--radius-lg)] border border-dashed border-border-strong p-4 text-center">
+          <p className="text-sm font-semibold text-fg">Kategori belum ditentukan</p>
+          <p className="mt-0.5 text-xs text-fg-muted">Centang temuan di langkah Pemeriksaan — hasil dihitung otomatis.</p>
+        </div>
+      )}
+      <dl className="grid grid-cols-5 gap-1.5">
         {TRIASE_KATEGORI.map((kt) => {
           const n = perKat[kt.no - 1];
           return (
             <div
               key={kt.no}
-              className={cn(
-                "rounded-[var(--radius-sm)] border px-1 py-1 text-center",
-                n > 0 ? cn(TONE[kt.no].soft, TONE[kt.no].border) : "border-border",
-              )}
+              className={cn("rounded-[var(--radius-sm)] border px-1 py-1 text-center", n > 0 ? cn(TONE[kt.no].soft, TONE[kt.no].border) : "border-border")}
             >
-              <p className={cn("text-[11px] font-bold", n > 0 ? TONE[kt.no].text : "text-fg-subtle")}>{kt.romawi}</p>
-              <p className="text-xs tabular-nums text-fg-muted">{n}</p>
+              <dt className={cn("text-[11px] font-bold", n > 0 ? TONE[kt.no].text : "text-fg-subtle")}>
+                <span aria-hidden>{kt.romawi}</span>
+                <span className="sr-only">Temuan {kt.label}</span>
+              </dt>
+              <dd className="text-xs tabular-nums text-fg-muted">{n}</dd>
             </div>
           );
         })}
-      </div>
+      </dl>
+      {berbeda && k && (
+        <p className="flex items-start gap-1.5 text-xs font-medium text-warning">
+          <CircleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+          Berbeda dengan kategori di SIMRS ({TRIASE_KATEGORI[(simrs?.kategori ?? 1) - 1].label}) — pastikan sesuai.
+        </p>
+      )}
       {doa && (
         <p className="flex items-center gap-1.5 text-xs font-medium text-fg">
-          <HeartOff className="size-3.5" /> Pasien tercatat DOA (Death on Arrival).
+          <HeartOff className="size-3.5" aria-hidden /> Pasien tercatat DOA (Death on Arrival).
         </p>
       )}
     </div>
