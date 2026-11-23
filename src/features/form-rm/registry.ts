@@ -4,7 +4,7 @@ import { emptyConsentForm, CONSENT_JENIS, kekuranganConsent } from "./consent.co
 import type { StrukturDeklaratif } from "./deklaratif";
 import { emptyEdukasiForm, EDUKASI_JENIS, kekuranganEdukasi } from "./edukasi.constants";
 import { morse } from "./forms/morse";
-import { emptyRingkasanForm, lengkapiRingkasan, RINGKASAN_JENIS } from "./ringkasan.constants";
+import { emptyRingkasanForm, kekuranganRingkasan, lengkapiRingkasan, RINGKASAN_JENIS } from "./ringkasan.constants";
 import { cekTtdPernyataan, emptyRm22Form, kekuranganRm22, ringkasRm22, type Rm22Data } from "./rm22.constants";
 import { cekTtdRm33, emptyRm33Form, kekuranganRm33, ringkasRm33, type Rm33Data } from "./rm33.constants";
 import { cekTtdRm41, emptyRm41Form, kekuranganRm41 } from "./rm41.constants";
@@ -180,9 +180,6 @@ export type RingkasanIsianForm = {
   judul: string;
   lencana?: { label: string; nada: "success" | "danger" | "warning" | "neutral" };
 };
-
-const kosongBila = (kondisi: boolean, pesan: string) => (kondisi ? [pesan] : []);
-const belumDiisi = (s: string) => s.trim() === "";
 
 /*
  * SIMGOS membuat NOPEN BARU untuk rawat inap (514 dari 560 episode RI dalam 90
@@ -418,17 +415,8 @@ const ringkasan: DefinisiForm<z.output<typeof ringkasanFormSchema>> = {
     dokterMerawatTtd: f(d.dokterMerawatTtd, "dokterMerawatTtd"),
     dokterKematianTtd: f(d.dokterKematianTtd, "dokterKematianTtd"),
   }),
-  syaratFinal: (d) => [
-    ...kosongBila(belumDiisi(d.dokterMerawatNama), "Nama dokter yang merawat"),
-    ...kosongBila(d.dokterMerawatTtd === "", "Tanda tangan dokter yang merawat"),
-    ...(d.sebabKematianAktif
-      ? [
-          ...kosongBila(belumDiisi(d.skA), "Sebab kematian langsung (I.a)"),
-          ...kosongBila(belumDiisi(d.dokterKematianNama), "Nama dokter pemberi keterangan sebab kematian"),
-          ...kosongBila(d.dokterKematianTtd === "", "Tanda tangan dokter pemberi keterangan sebab kematian"),
-        ]
-      : []),
-  ],
+  // Sumber tunggal dengan panel "Syarat finalisasi" di layar isian.
+  syaratFinal: (d) => kekuranganRingkasan(d).map((s) => s.label),
 };
 
 const consent: DefinisiForm<z.output<typeof consentFormSchema>> = {

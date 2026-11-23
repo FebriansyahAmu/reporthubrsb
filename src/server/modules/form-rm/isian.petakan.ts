@@ -2,6 +2,7 @@ import { terisi, type SumberId } from "@/features/form-rm/asal";
 import { jkDariHeader, umurTahun } from "@/features/form-rm/persetujuan/informasi";
 import type { KodeForm } from "@/features/form-rm/registry";
 import { tindakanRujukan } from "@/features/form-rm/rm33.constants";
+import { hitungLamaRawat } from "@/features/form-rm/ringkasan.constants";
 import { GOLONGAN_DARAH } from "@/features/form-rm/rm50.constants";
 import { bulatSetengahJam, TEMPAT_RS } from "@/features/form-rm/rm70.constants";
 import type { DiagnosaRow, TriaseSimgosRow } from "./form-rm.dal";
@@ -70,14 +71,8 @@ const waktu = (s: string | null | undefined) => (WAKTU_RE.test(bersih(s)) ? bers
 /** "2026-09-29T08:04:00.000Z" (jam dinding di field UTC) → "2026-09-29T08:04". */
 const jamDinding = (iso: string) => iso.slice(0, 16);
 
-/** Selisih hari kalender masuk → keluar ("" bila tak lengkap / terbalik). */
-export function hitungLamaRawat(masuk: string, keluar: string): string {
-  const a = WAKTU_RE.exec(masuk);
-  const b = WAKTU_RE.exec(keluar);
-  if (!a || !b) return "";
-  const hari = (Date.UTC(+b[1], +b[2] - 1, +b[3]) - Date.UTC(+a[1], +a[2] - 1, +a[3])) / 86_400_000;
-  return hari >= 0 ? String(hari) : "";
-}
+/** Selisih hari kalender masuk → keluar — satu sumber dengan pintasan "Hitung dari tanggal" di layar isian RM.01. */
+export { hitungLamaRawat };
 
 /** Nomor telepon yang masuk akal (≥ 6 digit); isian sampah ("-", "000") dibuang. */
 function telp(s: string | null | undefined): string {
