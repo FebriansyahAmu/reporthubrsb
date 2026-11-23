@@ -5,20 +5,28 @@ import {
   emptyRm50Form,
   FASE_TTV,
   jamFase,
+  jumlahTtvSalah,
   kantongKosong,
   kedaluwarsa,
+  kekuranganRinciRm50,
   kekuranganRm50,
+  kurangKantong,
+  kurangKantongRinci,
   LANGKAH_RM50,
   MAKS_KANTONG,
   PESAN_PARAF,
   ringkasRm50,
+  statusKantong,
   statusLangkahRm50,
   suhuNaik,
+  tahunTransfusiSah,
+  ttvSalahFormat,
   TEKS_RM50,
   waktuRingkas,
   type KantongRm50,
   type Rm50Data,
 } from "./rm50.constants";
+import { definisiForm } from "./registry";
 import { rm50FormSchema } from "./skema";
 
 const P1 = "ttd:aaaaaaaaaaaaaaaaaaaaaaaa";
@@ -176,5 +184,71 @@ describe("RM.50 ringkasan isian", () => {
     expect(ringkasRm50({ ...lengkap(), kantong: [kantong("a1b2c3d4", { reaksi: "Menggigil" })] }).lencana).toEqual({ label: "Ada reaksi", nada: "danger" });
     expect(ringkasRm50(emptyRm50Form())).toEqual({ judul: "Transfusi", lencana: { label: "Belum ada kantong", nada: "neutral" } });
     expect(ringkasRm50({ kantong: "rusak" } as never).lencana.label).toBe("Belum ada kantong");
+  });
+});
+
+describe("RM.50 syarat FINAL sumber tunggal (layar isian)", () => {
+  const sebagian = (): Rm50Data => ({
+    ...emptyRm50Form(),
+    alergi: "ya",
+    pernahTransfusi: "ya",
+    transfusiTahun: "2030",
+    waktu: "2026-10-12T09:00",
+    kantongKeadaan: "tidakUtuh",
+    kantong: [kantong("kantong01", { jenis: "", ttv: { ...kantong("x").ttv, saat: { td: "110/70", n: "", r: "", s: "" } }, paraf: "" }), kantong("kantong02")],
+  });
+
+  it("pesan rinci = kekuranganRm50 (urutan sama) = syaratFinal registri", () => {
+    for (const d of [emptyRm50Form(), sebagian(), lengkap()]) {
+      const r = kekuranganRinciRm50(d);
+      const pesan = kekuranganRm50(d);
+      for (const l of LANGKAH_RM50) expect(r[l.id].map((x) => x.pesan)).toEqual(pesan[l.id]);
+      expect(definisiForm("RM.50")!.syaratFinal?.(d)).toEqual(Object.values(pesan).flat());
+    }
+  });
+
+  it("setiap kekurangan membawa kolom asal; kolom kantong membawa id baris", () => {
+    const r = kekuranganRinciRm50(sebagian());
+    expect(r.transfusi.map((x) => x.kolom)).toEqual(["ruang", "dokter"]);
+    expect(r.riwayat.map((x) => x.kolom)).toEqual(["alergi-ket", "tahun", "golongan"]);
+    expect(r.penerimaan.map((x) => x.kolom)).toEqual(["kantong-ket", "diterima"]);
+    expect(r.monitoring).toEqual([
+      { pesan: "Kantong 1: jenis darah", kolom: "jenis", kantong: "kantong01" },
+      // TTV: fokus ke sel kosong PERTAMA pada fase itu (TD sudah terisi → N).
+      { pesan: "Kantong 1: TTV 60 mnt saat", kolom: "saat-n", kantong: "kantong01" },
+      { pesan: "Kantong 1: paraf", kolom: "paraf", kantong: "kantong01" },
+    ]);
+    expect(kekuranganRinciRm50(emptyRm50Form()).monitoring).toEqual([{ pesan: "Minimal satu kantong darah", kolom: "tambah" }]);
+    expect(kurangKantong(sebagian().kantong[0], 0)).toEqual(kurangKantongRinci(sebagian().kantong[0], 0).map((x) => x.pesan));
+  });
+
+  it("tahun transfusi sebelumnya: 19xx/20xx dan tidak sesudah tahun transfusi ini", () => {
+    expect(tahunTransfusiSah("2024", "2026-10-12T09:00")).toBe(true);
+    expect(tahunTransfusiSah("2026", "2026-10-12T09:00")).toBe(true);
+    expect(tahunTransfusiSah("2027", "2026-10-12T09:00")).toBe(false);
+    expect(tahunTransfusiSah("1899", "")).toBe(false);
+    expect(tahunTransfusiSah("2030", "")).toBe(true);
+  });
+
+  it("status kartu kantong: kosong / sebagian / lengkap", () => {
+    expect(statusKantong(kantongKosong("kosong01"), 0)).toBe("kosong");
+    expect(statusKantong({ ...kantongKosong("isi00001"), jenis: "PRC" }, 0)).toBe("sebagian");
+    expect(statusKantong({ ...kantongKosong("ttv00001"), ttv: { ...kantongKosong("x").ttv, awal: { td: "-", n: "", r: "", s: "" } } }, 0)).toBe("sebagian");
+    expect(statusKantong(kantong("penuh001"), 0)).toBe("lengkap");
+  });
+
+  it("format TTV: sama dengan skema server ('-' sah; '120/', '3,7', '1234' salah)", () => {
+    expect(ttvSalahFormat("td", "")).toBe(false);
+    expect(ttvSalahFormat("td", "-")).toBe(false);
+    expect(ttvSalahFormat("td", "120/80")).toBe(false);
+    expect(ttvSalahFormat("td", "120/")).toBe(true);
+    expect(ttvSalahFormat("s", "3,7")).toBe(true);
+    expect(ttvSalahFormat("s", "37,2")).toBe(false);
+    expect(ttvSalahFormat("n", "1234")).toBe(true);
+    const k = kantong("salah001", { ttv: { ...kantong("x").ttv, awal: { td: "120/", n: "88", r: "20", s: "3,7" } } });
+    expect(jumlahTtvSalah(k)).toBe(2);
+    // Sel yang ditandai layar persis sel yang ditolak skema (seluruh isian gagal tersimpan).
+    expect(rm50FormSchema.safeParse({ ...lengkap(), kantong: [k] }).success).toBe(false);
+    expect(jumlahTtvSalah(kantong("benar001"))).toBe(0);
   });
 });

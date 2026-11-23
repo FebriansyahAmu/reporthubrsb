@@ -1,9 +1,9 @@
 "use client";
 
-import { Activity, BedDouble, CheckCheck, CircleAlert, Clock, HeartOff, Info, Stethoscope, Timer } from "lucide-react";
+import { Activity, BedDouble, CheckCheck, CircleAlert, HeartOff, Info, Stethoscope, Timer } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { DateTimePicker, nowLocalDateTime } from "@/components/ui/DatePicker";
+import { nowLocalDateTime } from "@/components/ui/DatePicker";
 import { SignaturePad } from "@/features/form-rm/SignaturePad";
 import { IsianFrame } from "@/features/form-rm/isian/IsianFrame";
 import { SaranNamaSaya } from "@/features/form-rm/isian/SaranNamaSaya";
@@ -15,10 +15,9 @@ import {
   ItemId,
   KakiLangkah,
   KolomTeks,
-  LabelKolom,
+  KolomWaktu,
   LencanaLangkah,
   SyaratFinal,
-  TOMBOL_KECIL,
   TataLetakLangkah,
   fmtTanggal,
   type ButirSyarat,
@@ -506,42 +505,6 @@ function KepalaTriase({ header, simrs, kategori }: { header: FormRmHeader; simrs
 /* ================================================================= kolom */
 
 /** Tanggal & pukul (WITA) + pintasan "Sekarang" (dihitung saat diklik) selama masih kosong. */
-function KolomWaktu({
-  id,
-  label,
-  asal,
-  wajib,
-  value,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  asal: string;
-  wajib?: boolean;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const terkunci = useTerkunci();
-  return (
-    <div>
-      <LabelKolom htmlFor={id} asal={asal} wajib={wajib}>
-        {label}
-      </LabelKolom>
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="min-w-0 flex-1 @md:max-w-xs">
-          <DateTimePicker id={id} value={value} onChange={onChange} />
-        </div>
-        {!terkunci && !value && (
-          <button type="button" onClick={() => onChange(nowLocalDateTime())} className={cn(TOMBOL_KECIL, "h-10")}>
-            <Clock className="size-3.5" aria-hidden />
-            Sekarang
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /* =========================================================== tanda vital */
 
 function diLuarRentang(key: KunciTtv, v: string): boolean {

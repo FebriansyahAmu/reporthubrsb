@@ -181,6 +181,25 @@ export function kedaluwarsa(k: Pick<KantongRm50, "kadaluarsa" | "waktu">): boole
 /** TTV satu fase terisi semua (angka atau "-"). */
 export const ttvLengkap = (t: TtvRm50 | undefined) => KOLOM_TTV.every((c) => !kosong(t?.[c]));
 
+/**
+ * Nilai TTV yang terisi tetapi tidak sesuai pola kertas (mis. "120/" atau "3,7").
+ * Skema server menolak pola ini → SELURUH isian gagal tersimpan; layar menandai
+ * sel yang bersangkutan agar petugas tahu yang harus dibetulkan.
+ */
+export const ttvSalahFormat = (c: KolomTtv, v: string | undefined) => !!v && !POLA_TTV[c].test(v);
+
+/** Petunjuk format per kolom TTV (pesan di bawah sel yang salah). */
+export const CONTOH_TTV: Record<KolomTtv, string> = {
+  td: "Tulis seperti 120/80, atau “-”",
+  n: "Tulis angka, mis. 88, atau “-”",
+  r: "Tulis angka, mis. 20, atau “-”",
+  s: "Tulis seperti 36,5, atau “-”",
+};
+
+/** Jumlah sel TTV yang salah format pada satu kantong. */
+export const jumlahTtvSalah = (k: Pick<KantongRm50, "ttv">) =>
+  FASE_TTV.reduce((n, f) => n + KOLOM_TTV.filter((c) => ttvSalahFormat(c, k.ttv?.[f.id]?.[c])).length, 0);
+
 /* ------------------------------------------------------------ alur pengisian */
 
 export const LANGKAH_RM50 = [
@@ -194,46 +213,86 @@ export type IdLangkahRm50 = (typeof LANGKAH_RM50)[number]["id"];
 /** "Kantong 2" — label baris pada daftar kekurangan. */
 export const labelKantong = (i: number) => `Kantong ${i + 1}`;
 
-export function kurangKantong(k: KantongRm50, i: number): string[] {
+/**
+ * Satu kekurangan syarat FINAL + kolom asalnya (`kolom`; `kantong` = id baris
+ * bila kolom milik kartu kantong). Layar isian memetakan ke id elemen untuk
+ * memindahkan fokus; server hanya memakai `pesan` (lewat `kekuranganRm50`).
+ */
+export type KurangRm50 = { pesan: string; kolom: string; kantong?: string };
+
+const butir = (syarat: boolean, pesan: string, kolom: string, kantong?: string): KurangRm50[] =>
+  bila(syarat, pesan).map((p) => (kantong ? { pesan: p, kolom, kantong } : { pesan: p, kolom }));
+
+/** Tahun lalu yang sah untuk "Pernah transfusi … Tahun": 19xx/20xx dan tidak sesudah tahun transfusi ini. */
+export function tahunTransfusiSah(tahun: string, waktuTransfusi: string): boolean {
+  const kini = pisahWaktu(waktuTransfusi).ymd.slice(0, 4);
+  return /^(19|20)\d{2}$/.test(tahun) && !(kini && tahun > kini);
+}
+
+export function kurangKantongRinci(k: KantongRm50, i: number): KurangRm50[] {
   const L = labelKantong(i);
+  const id = k.id;
   return [
-    ...bila(!pisahWaktu(k.waktu).tanggal, `${L}: tanggal/jam`),
-    ...bila(kosong(k.jenis), `${L}: jenis darah`),
-    ...bila(kosong(k.noSeri), `${L}: no. seri kantong`),
-    ...bila(!tanggalPanjang(k.kadaluarsa ?? ""), `${L}: tanggal kadaluarsa`),
-    ...bila(kosong(k.isi), `${L}: isi (ml)`),
-    ...FASE_TTV.flatMap((f) => bila(!ttvLengkap(k.ttv?.[f.id]), `${L}: TTV ${f.singkat}`)),
-    ...bila(kosong(k.reaksi), `${L}: reaksi (tulis "Tidak ada" bila tidak ada)`),
-    ...bila(kosong(k.parafNama), `${L}: nama petugas`),
-    ...bila(k.paraf === "", `${L}: paraf`),
+    ...butir(!pisahWaktu(k.waktu).tanggal, `${L}: tanggal/jam`, "waktu", id),
+    ...butir(kosong(k.jenis), `${L}: jenis darah`, "jenis", id),
+    ...butir(kosong(k.noSeri), `${L}: no. seri kantong`, "seri", id),
+    ...butir(!tanggalPanjang(k.kadaluarsa ?? ""), `${L}: tanggal kadaluarsa`, "kadaluarsa", id),
+    ...butir(kosong(k.isi), `${L}: isi (ml)`, "isi", id),
+    // Fokus ke sel TTV pertama yang masih kosong pada fase itu.
+    ...FASE_TTV.flatMap((f) =>
+      butir(!ttvLengkap(k.ttv?.[f.id]), `${L}: TTV ${f.singkat}`, `${f.id}-${KOLOM_TTV.find((c) => kosong(k.ttv?.[f.id]?.[c])) ?? "td"}`, id),
+    ),
+    ...butir(kosong(k.reaksi), `${L}: reaksi (tulis "Tidak ada" bila tidak ada)`, "reaksi", id),
+    ...butir(kosong(k.parafNama), `${L}: nama petugas`, "paraf-nama", id),
+    ...butir(k.paraf === "", `${L}: paraf`, "paraf", id),
   ];
 }
 
-export function kekuranganRm50(d: Rm50Data): Record<IdLangkahRm50, string[]> {
-  const tahunTransfusi = pisahWaktu(d.waktu).ymd.slice(0, 4);
+export const kurangKantong = (k: KantongRm50, i: number): string[] => kurangKantongRinci(k, i).map((x) => x.pesan);
+
+/** Kekurangan syarat FINAL per langkah beserta kolomnya (sumber tunggal — server & layar). */
+export function kekuranganRinciRm50(d: Rm50Data): Record<IdLangkahRm50, KurangRm50[]> {
   return {
     transfusi: [
-      ...bila(!pisahWaktu(d.waktu).tanggal, "Tanggal & jam transfusi"),
-      ...bila(kosong(d.ruangRawat), "Ruang rawat"),
-      ...bila(kosong(d.dokter), "Dokter yang merawat"),
+      ...butir(!pisahWaktu(d.waktu).tanggal, "Tanggal & jam transfusi", "waktu"),
+      ...butir(kosong(d.ruangRawat), "Ruang rawat", "ruang"),
+      ...butir(kosong(d.dokter), "Dokter yang merawat", "dokter"),
     ],
     riwayat: [
-      ...bila(d.alergi === "", "Riwayat alergi: tidak / ya"),
-      ...bila(d.alergi === "ya" && kosong(d.alergiKet), "Sebutkan alergi"),
-      ...bila(d.pernahTransfusi === "", "Pernah transfusi darah: tidak / ya"),
-      ...bila(
-        d.pernahTransfusi === "ya" && (!/^(19|20)\d{2}$/.test(d.transfusiTahun) || (!!tahunTransfusi && d.transfusiTahun > tahunTransfusi)),
-        "Tahun transfusi sebelumnya",
-      ),
-      ...bila(d.golonganDarah === "", "Golongan darah"),
+      ...butir(d.alergi === "", "Riwayat alergi: tidak / ya", "alergi"),
+      ...butir(d.alergi === "ya" && kosong(d.alergiKet), "Sebutkan alergi", "alergi-ket"),
+      ...butir(d.pernahTransfusi === "", "Pernah transfusi darah: tidak / ya", "pernah"),
+      ...butir(d.pernahTransfusi === "ya" && !tahunTransfusiSah(d.transfusiTahun, d.waktu), "Tahun transfusi sebelumnya", "tahun"),
+      ...butir(d.golonganDarah === "", "Golongan darah", "golongan"),
     ],
     penerimaan: [
-      ...bila(d.kantongKeadaan === "", "Keadaan kantong darah: utuh / tidak utuh"),
-      ...bila(d.kantongKeadaan === "tidakUtuh" && kosong(d.kantongKet), "Keterangan kantong tidak utuh"),
-      ...bila(!pisahWaktu(d.diterimaWaktu).tanggal, "Tanggal & jam darah diterima"),
+      ...butir(d.kantongKeadaan === "", "Keadaan kantong darah: utuh / tidak utuh", "keadaan"),
+      ...butir(d.kantongKeadaan === "tidakUtuh" && kosong(d.kantongKet), "Keterangan kantong tidak utuh", "kantong-ket"),
+      ...butir(!pisahWaktu(d.diterimaWaktu).tanggal, "Tanggal & jam darah diterima", "diterima"),
     ],
-    monitoring: [...bila((d.kantong ?? []).length === 0, "Minimal satu kantong darah"), ...(d.kantong ?? []).flatMap(kurangKantong)],
+    monitoring: [
+      ...butir((d.kantong ?? []).length === 0, "Minimal satu kantong darah", "tambah"),
+      ...(d.kantong ?? []).flatMap(kurangKantongRinci),
+    ],
   };
+}
+
+export function kekuranganRm50(d: Rm50Data): Record<IdLangkahRm50, string[]> {
+  const r = kekuranganRinciRm50(d);
+  return {
+    transfusi: r.transfusi.map((x) => x.pesan),
+    riwayat: r.riwayat.map((x) => x.pesan),
+    penerimaan: r.penerimaan.map((x) => x.pesan),
+    monitoring: r.monitoring.map((x) => x.pesan),
+  };
+}
+
+/** Status satu kartu kantong: lengkap / sebagian (ada isi) / kosong. */
+export function statusKantong(k: KantongRm50, i: number): StatusLangkah {
+  const terisi =
+    adaIsi(k.waktu, k.jenis, k.noSeri, k.kadaluarsa, k.isi, k.reaksi, k.parafNama, k.paraf) ||
+    FASE_TTV.some((f) => KOLOM_TTV.some((c) => !kosong(k.ttv?.[f.id]?.[c])));
+  return statusDari(kurangKantong(k, i), terisi);
 }
 
 export function statusLangkahRm50(d: Rm50Data, id: IdLangkahRm50, kurang: readonly string[]): StatusLangkah {

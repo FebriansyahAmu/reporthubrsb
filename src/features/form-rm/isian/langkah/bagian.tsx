@@ -1,7 +1,8 @@
 "use client";
 
-import { ArrowDown, Check, ChevronRight, Circle, ListChecks } from "lucide-react";
+import { ArrowDown, Check, ChevronRight, Circle, Clock, ListChecks } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { DateTimePicker, nowLocalDateTime } from "@/components/ui/DatePicker";
 import { Input } from "@/components/ui/Field";
 import { useTerkunci } from "@/features/form-rm/isian/kunci";
 import { TandaAsal } from "@/features/form-rm/isian/TandaAsal";
@@ -153,10 +154,13 @@ export function KakiLangkah({
   kurang,
   tampilKurang,
   lanjut,
+  fokus = fokusKe,
 }: {
   kurang: readonly { label: string; tujuan: string }[];
   tampilKurang: boolean;
   lanjut?: { id: string; judul: string };
+  /** Pemindah fokus (bawaan `fokusKe`); formulir dengan panel tertutup membukanya lebih dulu. */
+  fokus?: (id: string) => void;
 }) {
   const terkunci = useTerkunci();
   const daftar = tampilKurang && !terkunci ? kurang : [];
@@ -171,7 +175,7 @@ export function KakiLangkah({
               <li key={x.label}>
                 <button
                   type="button"
-                  onClick={() => fokusKe(x.tujuan)}
+                  onClick={() => fokus(x.tujuan)}
                   className="rounded-full bg-warning-soft px-2 py-0.5 text-left text-[11px] text-warning transition-colors hover:bg-warning/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring pointer-coarse:min-h-9"
                 >
                   {x.label}
@@ -211,11 +215,14 @@ export function SyaratFinal({
   butir,
   idJudul,
   className,
+  fokus = fokusKe,
 }: {
   butir: readonly ButirSyarat[];
   /** id judul (unik per instans — panel samping & versi ponsel). */
   idJudul: string;
   className?: string;
+  /** Pemindah fokus (bawaan `fokusKe`); formulir dengan panel tertutup membukanya lebih dulu. */
+  fokus?: (id: string) => void;
 }) {
   const total = butir.length;
   const ok = butir.filter((b) => b.ok).length;
@@ -258,7 +265,7 @@ export function SyaratFinal({
             ) : (
               <button
                 type="button"
-                onClick={() => fokusKe(s.tujuan)}
+                onClick={() => fokus(s.tujuan)}
                 className="flex w-full items-start gap-2 rounded-[var(--radius-sm)] px-1.5 py-1 text-left text-xs text-fg transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring pointer-coarse:min-h-10"
               >
                 <Circle className="mt-px size-3.5 shrink-0 text-fg-subtle" aria-hidden />
@@ -348,6 +355,43 @@ export function KolomTeks({
         enterKeyHint="next"
         className={KONTROL}
       />
+    </div>
+  );
+}
+
+/** Tanggal & jam (WITA) + pintasan "Sekarang" selama kosong dan tidak terkunci. */
+export function KolomWaktu({
+  id,
+  label,
+  asal,
+  wajib,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  asal?: string;
+  wajib?: boolean;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const terkunci = useTerkunci();
+  return (
+    <div>
+      <LabelKolom htmlFor={id} asal={asal} wajib={wajib}>
+        {label}
+      </LabelKolom>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-0 flex-1 @md:max-w-xs">
+          <DateTimePicker id={id} value={value} onChange={onChange} />
+        </div>
+        {!terkunci && !value && (
+          <button type="button" onClick={() => onChange(nowLocalDateTime())} className={cn(TOMBOL_KECIL, "h-10")}>
+            <Clock className="size-3.5" aria-hidden />
+            Sekarang
+          </button>
+        )}
+      </div>
     </div>
   );
 }
