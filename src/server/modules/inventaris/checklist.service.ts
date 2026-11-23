@@ -1,5 +1,6 @@
 import "server-only";
 import { getAppDb } from "@/server/db/app.client";
+import { ruanganSaya } from "./petugas.service";
 import type { SessionUser } from "@/server/auth/session";
 import { BusinessRuleError, NotFoundError } from "@/server/lib/errors";
 import { isStatusAset, type StatusAset } from "./barang.schema";
@@ -306,13 +307,17 @@ export async function listChecklist(q: OverviewQuery): Promise<ChecklistOverview
 
 /* ------------------------------------------------------------------- refs */
 
-export async function getChecklistRefs() {
+/**
+ * Referensi pemilih Checklist: ruangan aktif, kondisi aktif, dan `ruanganSaya`
+ * (ruangan tempat akun ini menjadi petugas / PJ — lihat petugas.service).
+ */
+export async function getChecklistRefs(userId: string) {
   const db = getAppDb();
-  const [ruangan, kondisi] = await Promise.all([
+  const [ruanganPj, kondisi] = await Promise.all([
     db.invRuangan.findMany({
       where: { aktif: true },
       orderBy: [{ urutan: "asc" }, { kodePrefix: "asc" }],
-      select: { id: true, kodePrefix: true, nama: true },
+      select: { id: true, kodePrefix: true, nama: true, pjNip: true },
     }),
     db.invKondisi.findMany({
       where: { aktif: true },
@@ -320,7 +325,10 @@ export async function getChecklistRefs() {
       select: { id: true, nama: true, kode: true, tone: true },
     }),
   ]);
-  return { ruangan, kondisi };
+  const saya = await ruanganSaya(userId, ruanganPj);
+  // NIP PJ tidak dikirim ke klien — cukup hasil pencocokannya.
+  const ruangan = ruanganPj.map(({ id, kodePrefix, nama }) => ({ id, kodePrefix, nama }));
+  return { ruangan, kondisi, ruanganSaya: saya };
 }
 
 /* ----------------------------------------------------------------- mutasi */

@@ -2,6 +2,7 @@ import "server-only";
 import { getAppDb } from "@/server/db/app.client";
 import { BusinessRuleError, NotFoundError } from "@/server/lib/errors";
 import type { RefEntity, RefInput } from "./pengaturan.schema";
+import { namaAkun } from "./petugas.service";
 
 /** Deteksi pelanggaran unik Prisma (P2002). */
 function isUniqueError(e: unknown): boolean {
@@ -28,8 +29,22 @@ export async function listRef(entity: RefEntity) {
       return db.invSumberAnggaran.findMany({ orderBy: [{ urutan: "asc" }, { nama: "asc" }] });
     case "kategori":
       return db.invKategori.findMany({ orderBy: [{ urutan: "asc" }, { nama: "asc" }] });
-    case "ruangan":
-      return db.invRuangan.findMany({ orderBy: [{ urutan: "asc" }, { kodePrefix: "asc" }] });
+    case "ruangan": {
+      // + petugas (nama saja) untuk kolom "Petugas" di Pengaturan › Ruangan.
+      const rows = await db.invRuangan.findMany({
+        orderBy: [{ urutan: "asc" }, { kodePrefix: "asc" }],
+        include: {
+          petugas: {
+            orderBy: { createdAt: "asc" },
+            select: { user: { select: { id: true, name: true, gelarDepan: true, gelarBelakang: true, isActive: true } } },
+          },
+        },
+      });
+      return rows.map(({ petugas, ...r }) => ({
+        ...r,
+        petugas: petugas.map((p) => ({ id: p.user.id, nama: namaAkun(p.user), aktif: p.user.isActive })),
+      }));
+    }
   }
 }
 

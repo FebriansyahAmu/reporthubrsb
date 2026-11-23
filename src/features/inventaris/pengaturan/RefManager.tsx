@@ -61,6 +61,7 @@ export function RefManager({
   canManage,
   emptyHint,
   inlineFields = [],
+  reloadKey = 0,
 }: {
   entity: string;
   title: string;
@@ -71,12 +72,14 @@ export function RefManager({
   emptyHint?: string;
   /** Field yang bisa diedit langsung di dalam sel tabel (mis. ["pjNama","pjNip"]). */
   inlineFields?: string[];
+  /** Naikkan nilainya untuk memuat ulang daftar dari luar (mis. setelah atur petugas). */
+  reloadKey?: number;
 }) {
   const toast = useToast();
   const base = `/api/inventaris/pengaturan/${entity}`;
   const { result, loading, error, reload } = useAsyncData<RefRow[]>(
     () => apiCall(base, "GET") as Promise<RefRow[]>,
-    [entity],
+    [entity, reloadKey],
   );
   const rows = result ?? [];
 

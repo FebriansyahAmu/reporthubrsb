@@ -3,8 +3,9 @@
 import type { PageMeta } from "@/lib/types";
 import type { UserDetail, UserListItem, RoleItem } from "@/server/modules/master/master.mapper";
 import type { SimgosPenggunaHit } from "@/server/modules/auth/simgos-pengguna.dal";
+import type { RuanganPenggunaDetail, RuanganRingkas } from "@/server/modules/inventaris/petugas.types";
 
-export type { UserDetail, UserListItem, RoleItem, SimgosPenggunaHit };
+export type { UserDetail, UserListItem, RoleItem, SimgosPenggunaHit, RuanganPenggunaDetail, RuanganRingkas };
 
 export type RoleOption = { key: string; name: string };
 export type MasterPerms = { create: boolean; update: boolean; delete: boolean };
@@ -48,7 +49,9 @@ async function send<T>(url: string, method: string, body?: unknown): Promise<Env
   });
   const json = (await res.json().catch(() => ({}))) as Envelope<T>;
   if (!res.ok) {
-    const msg = json.error?.message ?? "Terjadi kesalahan.";
+    // Galat 422 tingkat formulir (mis. "2 ruangan tidak ditemukan…") lebih jelas dari "Input tidak valid".
+    const formErr = (json.error?.details as { formErrors?: unknown } | undefined)?.formErrors;
+    const msg = (Array.isArray(formErr) && typeof formErr[0] === "string" ? formErr[0] : null) ?? json.error?.message ?? "Terjadi kesalahan.";
     throw new ApiError(msg, res.status, extractFieldErrors(json.error?.details));
   }
   return json;
@@ -99,6 +102,24 @@ export async function searchSimgosUsers(q: string): Promise<SimgosPenggunaHit[]>
     "GET",
   );
   return json.data;
+}
+
+/* ------------------------------------- ruangan tugas (Checklist Pemeliharaan) */
+
+/** Ruangan Inventaris aktif untuk pemilih "Ruangan tugas". */
+export async function fetchOpsiRuangan(): Promise<RuanganRingkas[]> {
+  return (await send<RuanganRingkas[]>("/api/master/pengguna/opsi-ruangan", "GET")).data;
+}
+
+export async function fetchRuanganPengguna(id: string): Promise<RuanganPenggunaDetail> {
+  return (await send<RuanganPenggunaDetail>(`/api/master/pengguna/${encodeURIComponent(id)}/ruangan`, "GET")).data;
+}
+
+/** Ganti seluruh ruangan tugas akun (daftar lengkap). */
+export async function simpanRuanganPengguna(id: string, ruanganIds: string[]): Promise<RuanganPenggunaDetail> {
+  return (
+    await send<RuanganPenggunaDetail>(`/api/master/pengguna/${encodeURIComponent(id)}/ruangan`, "PUT", { ruanganIds })
+  ).data;
 }
 
 /* --------------------------------------------------------------------- peran */
