@@ -93,6 +93,30 @@ combobox + listbox): ketik untuk menyaring prefix/nama (tanpa beda huruf besar/k
 kelompok **Ruangan saya** di atas lalu **Semua ruangan**, sorot teks yang cocok,
 ↑/↓/Enter/Esc, tombol hapus pilihan, popover di portal (tidak terpotong `overflow`).
 
+### 4.1b Ruangan tugas dari sisi akun — Master › Pengguna (23 Nov 2026)
+
+Pemetaan yang sama (`inv_ruangan_petugas`, tanpa tabel baru) kini juga bisa diatur dari
+**form Tambah/Edit Akun** — bagian *Checklist Pemeliharaan › Ruangan tugas*:
+combobox yang bisa diketik (kode/nama) untuk menambah, cip dengan tombol ×
+untuk melepas, info ruangan yang otomatis termasuk karena NIP PJ. Tabel pengguna
+mendapat kolom **Ruangan tugas** (maks 2 kode + "+n"; ikon centang = otomatis dari NIP PJ).
+Kedua layar (Pengaturan › Ruangan › Petugas dan Master › Pengguna) selalu sinkron.
+
+**API baru** (hak `master.pengguna`)
+- `GET /api/master/pengguna/opsi-ruangan` — ruangan aktif `{id, kodePrefix, nama, aktif}` (view; tanpa PJ/NIP).
+- `GET /api/master/pengguna/[id]/ruangan` — `{akun, ruangan, otomatisPj}` (view).
+- `PUT /api/master/pengguna/[id]/ruangan` — `{ ruanganIds: string[] }` maks 100 (update);
+  ruangan BARU harus ada & aktif, ruangan lama yang kini nonaktif boleh dipertahankan; ganti
+  seluruh daftar dalam satu transaksi + audit `inventaris.pengguna.ruangan` (target = akun)
+  di transaksi yang sama; tanpa perubahan → tanpa tulis; body ≤ 8 KB (413); lintas situs 403.
+- `GET /api/master/pengguna` kini memuat `ruangan: {kodePrefix, nama, otomatis}[]` (ruangan
+  aktif); gagal baca tabel Inventaris → kolom kosong, daftar akun tetap terbuka.
+
+Form akun menyimpan data akun dulu, lalu ruangan (hanya bila berubah). Gagal menyimpan
+ruangan saat **Edit** → modal tetap terbuka dengan pesan "Perubahan akun tersimpan, tetapi
+ruangan tugas gagal disimpan"; saat **Tambah** → akun tetap dibuat + peringatan untuk
+mengatur lewat Edit (form "Buat" tidak diulang agar username tak bentrok).
+
 ### 4.2 Warna kartu menurut kondisi
 
 - Warna diambil dari `tone` kondisi di Pengaturan (bukan dari nama), sehingga tetap benar

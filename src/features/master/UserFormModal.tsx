@@ -8,16 +8,22 @@ import { Input, Label } from "@/components/ui/Field";
 import { Select } from "@/components/ui/Select";
 import { DateTextInput } from "@/components/ui/DateTextInput";
 import { Switch } from "@/components/ui/Switch";
+import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/cn";
 import { AGAMA_VALUES, generatePassword } from "@/features/master/master.constants";
 import { SimgosUserCombobox } from "@/features/master/SimgosUserCombobox";
+import { RuanganTugasField } from "@/features/master/RuanganTugasField";
 import {
   ApiError,
   createUser,
+  fetchOpsiRuangan,
+  fetchRuanganPengguna,
   fetchUserDetail,
   revokeUserSessions,
+  simpanRuanganPengguna,
   updateUser,
   type RoleOption,
+  type RuanganRingkas,
   type SimgosPenggunaHit,
 } from "@/features/master/master.client";
 
@@ -92,6 +98,18 @@ export function UserFormModal({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [tglLahirValid, setTglLahirValid] = useState(true);
+  const toast = useToast();
+
+  // Ruangan tugas (Checklist Pemeliharaan) — disimpan lewat endpoint terpisah
+  // setelah data akun tersimpan. `ruanganAwal` null = belum termuat → tak dikirim.
+  const [opsiRuangan, setOpsiRuangan] = useState<RuanganRingkas[] | null>(null);
+  const [ruangan, setRuangan] = useState<RuanganRingkas[]>([]);
+  const [ruanganAwal, setRuanganAwal] = useState<string[] | null>(mode === "create" ? [] : null);
+  const [otomatisPj, setOtomatisPj] = useState<RuanganRingkas[]>([]);
+  const [ruanganGalat, setRuanganGalat] = useState<string | null>(null);
+  const ruanganBerubah =
+    ruanganAwal !== null &&
+    (ruangan.length !== ruanganAwal.length || ruangan.some((r) => !ruanganAwal.includes(r.id)));
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -147,6 +165,33 @@ export function UserFormModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Ruangan tugas: opsi ruangan aktif + (edit) pemetaan akun saat ini.
+  useEffect(() => {
+    let batal = false;
+    const gagal = (e: unknown) => {
+      if (batal) return;
+      setRuanganGalat(e instanceof Error ? e.message : "Ruangan tugas tidak dapat dimuat.");
+      setOpsiRuangan([]);
+    };
+    fetchOpsiRuangan()
+      .then((o) => !batal && setOpsiRuangan(o))
+      .catch(gagal);
+    if (mode === "edit" && userId) {
+      fetchRuanganPengguna(userId)
+        .then((d) => {
+          if (batal) return;
+          setRuangan(d.ruangan);
+          setRuanganAwal(d.ruangan.map((r) => r.id));
+          setOtomatisPj(d.otomatisPj);
+        })
+        .catch(gagal);
+    }
+    return () => {
+      batal = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function clientValidate(): string | null {
     if (mode === "create" && form.authSource === "SIMGOS" && !form.simgosLogin.trim())
       return "Pilih akun SIMGOS yang ditautkan.";
@@ -183,9 +228,10 @@ export function UserFormModal({
         agama: form.agama,
         phone: form.phone.trim(),
       };
+      const ruanganIds = ruangan.map((r) => r.id);
       if (mode === "create") {
         const uname = form.username.trim().toLowerCase();
-        await createUser({
+        const created = await createUser({
           ...profile,
           authSource: form.authSource,
           username: uname,
@@ -193,9 +239,35 @@ export function UserFormModal({
             ? { simgosLogin: form.simgosLogin.trim() }
             : { password: form.password }),
         });
-        onSaved(`Akun "${uname}" berhasil dibuat.`);
+        let pesan = `Akun "${uname}" berhasil dibuat.`;
+        if (ruanganIds.length) {
+          try {
+            await simpanRuanganPengguna(created.id, ruanganIds);
+            pesan = `Akun "${uname}" berhasil dibuat dengan ${ruanganIds.length} ruangan tugas.`;
+          } catch (e) {
+            // Akun sudah ada → jangan biarkan form "Buat" diulang (username bentrok).
+            toast.warning(
+              "Ruangan tugas belum tersimpan",
+              `${e instanceof Error ? e.message : "Gagal menyimpan ruangan."} Atur lewat Edit akun.`,
+            );
+          }
+        }
+        onSaved(pesan);
       } else if (userId) {
         await updateUser(userId, profile);
+        if (ruanganBerubah) {
+          try {
+            const d = await simpanRuanganPengguna(userId, ruanganIds);
+            setRuanganAwal(d.ruangan.map((r) => r.id));
+          } catch (e) {
+            setError(
+              `Perubahan akun tersimpan, tetapi ruangan tugas gagal disimpan: ${
+                e instanceof Error ? e.message : "coba lagi"
+              }`,
+            );
+            return;
+          }
+        }
         onSaved("Perubahan akun tersimpan.");
       }
       onClose();
@@ -429,6 +501,26 @@ export function UserFormModal({
                   Akhiri semua sesi
                 </Button>
               </div>
+            )}
+          </section>
+
+          {/* ---- Ruangan tugas (Inventaris › Checklist Pemeliharaan) ---- */}
+          <section className="space-y-3">
+            <SubHead>Checklist Pemeliharaan</SubHead>
+            {ruanganGalat ? (
+              <p className="flex items-start gap-2 rounded-[var(--radius-md)] border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning">
+                <AlertCircle className="mt-px size-3.5 shrink-0" />
+                <span>Ruangan tugas tidak dapat dimuat ({ruanganGalat}). Data akun lain tetap bisa disimpan.</span>
+              </p>
+            ) : (
+              <RuanganTugasField
+                id="akun-ruangan-tugas"
+                opsi={ruanganAwal === null ? null : opsiRuangan}
+                value={ruangan}
+                otomatisPj={otomatisPj}
+                onChange={setRuangan}
+                disabled={saving}
+              />
             )}
           </section>
 

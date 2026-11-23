@@ -1,5 +1,6 @@
 import "server-only";
 import { fullName, maskNik } from "@/features/master/master.constants";
+import type { RuanganChip } from "@/server/modules/inventaris/petugas.types";
 
 const p2 = (n: number) => String(n).padStart(2, "0");
 
@@ -44,6 +45,8 @@ export type UserListItem = {
   isActive: boolean;
   mustChangePassword: boolean;
   lastLoginAt: string | null;
+  /** Ruangan tugas aktif (Checklist Pemeliharaan Inventaris); diisi service. */
+  ruangan: RuanganChip[];
 };
 
 export type UserDetail = {
@@ -82,6 +85,7 @@ export function toUserListItem(u: UserRow): UserListItem {
     isActive: u.isActive,
     mustChangePassword: u.mustChangePassword,
     lastLoginAt: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
+    ruangan: [],
   };
 }
 

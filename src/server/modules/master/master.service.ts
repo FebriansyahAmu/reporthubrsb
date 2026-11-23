@@ -4,6 +4,7 @@ import { revokeAllUserTokens } from "@/server/modules/auth/auth.dal";
 import { writeAudit } from "@/server/lib/audit";
 import { invalidateRole } from "@/server/rbac/permissions";
 import { AppError, BusinessRuleError, NotFoundError } from "@/server/lib/errors";
+import { ruanganUntukDaftarPengguna } from "@/server/modules/inventaris/petugas.service";
 import * as dal from "./master.dal";
 import {
   toRoleItem,
@@ -66,8 +67,9 @@ export async function listUsers(
     skip: (q.page - 1) * q.pageSize,
     take: q.pageSize,
   });
+  const ruangan = await ruanganUntukDaftarPengguna(rows.map((r) => ({ id: r.id, nip: r.nip })));
   return {
-    data: rows.map(toUserListItem),
+    data: rows.map((r) => ({ ...toUserListItem(r), ruangan: ruangan.get(r.id) ?? [] })),
     meta: {
       page: q.page,
       pageSize: q.pageSize,

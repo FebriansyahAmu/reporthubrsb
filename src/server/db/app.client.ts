@@ -1,13 +1,20 @@
 import "server-only";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-import { PrismaClient } from "@/generated/app/client";
+import { Prisma, PrismaClient } from "@/generated/app/client";
 
 /**
  * Prisma client DB APLIKASI (reporthub) — READ-WRITE (users, refresh token, dst).
  * TERPISAH dari SIMGOS. Lazy + singleton; koneksi via driver adapter (config
  * object, karena adapter mariadb menolak URL string mysql://).
  */
-const globalForApp = globalThis as unknown as { appClient?: PrismaClient };
+const globalForApp = globalThis as unknown as { appClient?: PrismaClient; appClientKunci?: string };
+
+/**
+ * Sidik daftar model client hasil generate. Dev saja: setelah `db:app:generate`
+ * (model baru), client lama di globalThis tak mengenal model itu → dibuat ulang
+ * tanpa harus me-restart dev server. Sama di semua salinan modul → tak berganti-ganti.
+ */
+const KUNCI_MODEL = Object.values(Prisma.ModelName).join(",");
 
 function createClient(): PrismaClient {
   const raw = process.env.DATABASE_URL_APP;
@@ -37,8 +44,13 @@ function createClient(): PrismaClient {
  */
 export function getAppDb(): PrismaClient {
   const existing = globalForApp.appClient;
-  if (existing) return existing;
+  if (existing) {
+    if (process.env.NODE_ENV === "production" || globalForApp.appClientKunci === KUNCI_MODEL) return existing;
+    // Dev: model berubah sejak client dibuat → tutup pool lama, buat ulang.
+    void existing.$disconnect().catch(() => {});
+  }
   const client = createClient();
   globalForApp.appClient = client;
+  globalForApp.appClientKunci = KUNCI_MODEL;
   return client;
 }

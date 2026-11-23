@@ -1,4 +1,5 @@
 /** Helper murni petugas ruangan (tanpa DB) — dipakai service & diuji unit. */
+import type { RuanganChip } from "./petugas.types";
 
 /** NIP tanpa spasi (data PJ kerap ditempel dengan spasi pemisah). */
 export function normNip(v: string | null | undefined): string {
@@ -23,4 +24,41 @@ export function namaAkun(u: { name: string; gelarDepan: string | null; gelarBela
   const depan = u.gelarDepan?.trim();
   const belakang = u.gelarBelakang?.trim();
   return `${depan ? `${depan} ` : ""}${u.name.trim()}${belakang ? `, ${belakang}` : ""}`;
+}
+
+/**
+ * Ruangan AKTIF per akun untuk tabel pengguna — sama dengan "Ruangan saya" di
+ * Checklist: pemetaan manual dulu (urutan masukan), lalu ruangan yang NIP PJ-nya
+ * sama dengan NIP akun; ruangan yang sama tak diulang.
+ */
+export function ruanganPerAkun(
+  akun: { id: string; nip: string | null }[],
+  petugas: { userId: string; ruangan: { id: string; kodePrefix: string; nama: string; aktif: boolean } }[],
+  ruanganPj: { id: string; kodePrefix: string; nama: string; pjNip: string | null }[],
+): Map<string, RuanganChip[]> {
+  const out = new Map<string, RuanganChip[]>();
+  const sudah = new Map<string, Set<string>>();
+  for (const a of akun) {
+    out.set(a.id, []);
+    sudah.set(a.id, new Set());
+  }
+  for (const p of petugas) {
+    const daftar = out.get(p.userId);
+    const ids = sudah.get(p.userId);
+    if (!daftar || !ids || !p.ruangan.aktif || ids.has(p.ruangan.id)) continue;
+    ids.add(p.ruangan.id);
+    daftar.push({ kodePrefix: p.ruangan.kodePrefix, nama: p.ruangan.nama, otomatis: false });
+  }
+  for (const a of akun) {
+    const n = normNip(a.nip);
+    if (!nipBermakna(n)) continue;
+    const daftar = out.get(a.id)!;
+    const ids = sudah.get(a.id)!;
+    for (const r of ruanganPj) {
+      if (ids.has(r.id) || normNip(r.pjNip) !== n) continue;
+      ids.add(r.id);
+      daftar.push({ kodePrefix: r.kodePrefix, nama: r.nama, otomatis: true });
+    }
+  }
+  return out;
 }

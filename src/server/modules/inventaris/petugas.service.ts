@@ -1,14 +1,25 @@
 import "server-only";
 import { getAppDb } from "@/server/db/app.client";
 import { NotFoundError, ValidationError } from "@/server/lib/errors";
-import type { PetugasPutInput } from "./petugas.schema";
-import { namaAkun, nipBermakna, normNip, samarkanNip } from "./petugas.util";
-import type { AkunRingkas, PenggunaHit, PetugasRuanganDetail } from "./petugas.types";
+import type { PetugasPutInput, RuanganPenggunaPutInput } from "./petugas.schema";
+import { namaAkun, nipBermakna, normNip, ruanganPerAkun, samarkanNip } from "./petugas.util";
+import type {
+  AkunRingkas,
+  PenggunaHit,
+  PetugasRuanganDetail,
+  RuanganChip,
+  RuanganPenggunaDetail,
+  RuanganRingkas,
+} from "./petugas.types";
 
 export { namaAkun, normNip };
 
 /** Aksi audit penggantian daftar petugas ruangan. */
 export const AKSI_PETUGAS_RUANGAN = "inventaris.ruangan.petugas";
+/** Aksi audit penggantian ruangan tugas satu akun (dari Master › Pengguna). */
+export const AKSI_RUANGAN_PENGGUNA = "inventaris.pengguna.ruangan";
+
+const PILIH_RUANGAN = { id: true, kodePrefix: true, nama: true, aktif: true } as const;
 
 type AkunRow = {
   id: string;
@@ -180,4 +191,147 @@ export async function ruanganSaya(
   const cocokPj = nipBermakna(nip);
   const dipetakan = new Set(petugas.map((p) => p.ruanganId));
   return ruangan.filter((r) => dipetakan.has(r.id) || (cocokPj && normNip(r.pjNip) === nip)).map((r) => r.id);
+}
+
+/* ------------------------------------------- dari sisi akun (Master › Pengguna) */
+
+/** Ruangan aktif untuk pemilih ruangan tugas di form akun (urut kode). */
+export async function listOpsiRuangan(): Promise<RuanganRingkas[]> {
+  return getAppDb().invRuangan.findMany({
+    where: { aktif: true },
+    orderBy: [{ kodePrefix: "asc" }],
+    select: PILIH_RUANGAN,
+  });
+}
+
+/** Ruangan aktif yang NIP PJ-nya sama dengan NIP akun (tanpa spasi). */
+async function ruanganPjAkun(db: Db, nip: string | null): Promise<RuanganRingkas[]> {
+  const n = normNip(nip);
+  if (!nipBermakna(n)) return [];
+  const kandidat = await db.invRuangan.findMany({
+    where: { aktif: true, pjNip: { not: null } },
+    orderBy: [{ kodePrefix: "asc" }],
+    select: { ...PILIH_RUANGAN, pjNip: true },
+  });
+  return kandidat
+    .filter((r) => normNip(r.pjNip) === n)
+    .map((r) => ({ id: r.id, kodePrefix: r.kodePrefix, nama: r.nama, aktif: r.aktif }));
+}
+
+/** Ruangan tugas satu akun: dipetakan manual + otomatis lewat NIP PJ. */
+export async function listRuanganPengguna(userId: string): Promise<RuanganPenggunaDetail> {
+  const db = getAppDb();
+  const akun = await db.user.findUnique({ where: { id: userId }, select: { ...PILIH_AKUN, nip: true } });
+  if (!akun) throw new NotFoundError("Pengguna tidak ditemukan.");
+  const [rows, pj] = await Promise.all([
+    db.invRuanganPetugas.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+      select: { ruangan: { select: PILIH_RUANGAN } },
+    }),
+    ruanganPjAkun(db, akun.nip),
+  ]);
+  return { akun: ringkas(akun), ruangan: rows.map((r) => r.ruangan), otomatisPj: pj };
+}
+
+/**
+ * Ganti seluruh ruangan tugas satu akun (satu transaksi + jejak audit di
+ * transaksi yang sama). Ruangan BARU harus ada & aktif; ruangan lama yang kini
+ * nonaktif boleh dipertahankan. Tanpa perubahan → tidak menulis apa pun.
+ * Tabelnya sama dengan Pengaturan › Ruangan › Petugas → kedua layar selalu sinkron.
+ */
+export async function setRuanganPengguna(
+  userId: string,
+  input: RuanganPenggunaPutInput,
+  aktor: { id: string; nama: string; ip: string | null },
+): Promise<RuanganPenggunaDetail> {
+  const db = getAppDb();
+  const ids = [...new Set(input.ruanganIds)];
+
+  await db.$transaction(async (tx) => {
+    const akun = await tx.user.findUnique({ where: { id: userId }, select: PILIH_AKUN });
+    if (!akun) throw new NotFoundError("Pengguna tidak ditemukan.");
+
+    const lama = await tx.invRuanganPetugas.findMany({
+      where: { userId },
+      select: { ruanganId: true, ruangan: { select: PILIH_RUANGAN } },
+    });
+    const lamaIds = new Set(lama.map((l) => l.ruanganId));
+    const tambahIds = ids.filter((id) => !lamaIds.has(id));
+    const hapus = lama.filter((l) => !ids.includes(l.ruanganId));
+
+    const ruanganBaru = tambahIds.length
+      ? await tx.invRuangan.findMany({ where: { id: { in: tambahIds } }, select: PILIH_RUANGAN })
+      : [];
+    const ketemu = new Set(ruanganBaru.map((r) => r.id));
+    const salah = tambahIds.filter((id) => !ketemu.has(id)).length + ruanganBaru.filter((r) => !r.aktif).length;
+    if (salah > 0) {
+      throw new ValidationError({
+        formErrors: [`${salah} ruangan tidak ditemukan atau nonaktif. Muat ulang lalu pilih lagi.`],
+        fieldErrors: {},
+      });
+    }
+    if (tambahIds.length === 0 && hapus.length === 0) return;
+
+    if (hapus.length) {
+      await tx.invRuanganPetugas.deleteMany({ where: { userId, ruanganId: { in: hapus.map((h) => h.ruanganId) } } });
+    }
+    if (tambahIds.length) {
+      await tx.invRuanganPetugas.createMany({
+        data: tambahIds.map((ruanganId) => ({ ruanganId, userId, dibuatOleh: aktor.nama.slice(0, 191) })),
+        skipDuplicates: true,
+      });
+    }
+    const ringkasR = (r: RuanganRingkas) => ({ id: r.id, kodePrefix: r.kodePrefix, nama: r.nama });
+    await tx.auditLog.create({
+      data: {
+        actorId: aktor.id,
+        actorName: aktor.nama,
+        action: AKSI_RUANGAN_PENGGUNA,
+        targetId: akun.id,
+        metadata: {
+          akun: { username: akun.username, nama: namaAkun(akun) },
+          ditambah: ruanganBaru.map(ringkasR),
+          dihapus: hapus.map((h) => ringkasR(h.ruangan)),
+          jumlah: ids.length,
+        },
+        ip: aktor.ip,
+      },
+    });
+  });
+
+  return listRuanganPengguna(userId);
+}
+
+/**
+ * Ruangan aktif per akun untuk kolom tabel Master › Pengguna (2 kueri untuk satu
+ * halaman). Gagal (mis. migrasi Inventaris belum dijalankan) → peta kosong, agar
+ * daftar pengguna — jalan masuk admin — tetap terbuka.
+ */
+export async function ruanganUntukDaftarPengguna(
+  akun: { id: string; nip: string | null }[],
+): Promise<Map<string, RuanganChip[]>> {
+  if (akun.length === 0) return new Map();
+  const db = getAppDb();
+  try {
+    const perluPj = akun.some((a) => nipBermakna(normNip(a.nip)));
+    const [petugas, ruanganPj] = await Promise.all([
+      db.invRuanganPetugas.findMany({
+        where: { userId: { in: akun.map((a) => a.id) } },
+        orderBy: { createdAt: "asc" },
+        select: { userId: true, ruangan: { select: PILIH_RUANGAN } },
+      }),
+      perluPj
+        ? db.invRuangan.findMany({
+            where: { aktif: true, pjNip: { not: null } },
+            orderBy: [{ kodePrefix: "asc" }],
+            select: { id: true, kodePrefix: true, nama: true, pjNip: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    return ruanganPerAkun(akun, petugas, ruanganPj);
+  } catch (e) {
+    console.warn("[inventaris] ruangan tugas pengguna tak terbaca:", e instanceof Error ? e.message : e);
+    return new Map();
+  }
 }

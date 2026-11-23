@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { CheckCircle2, KeyRound, Pencil, Search, Server, ShieldAlert, UserPlus, UsersRound } from "lucide-react";
+import { BadgeCheck, CheckCircle2, KeyRound, Pencil, Search, Server, ShieldAlert, UserPlus, UsersRound } from "lucide-react";
+import { cn } from "@/lib/cn";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -144,7 +145,8 @@ export function PenggunaView({
               <TH>Pengguna</TH>
               <TH className="hidden md:table-cell">NIP</TH>
               <TH>Peran</TH>
-              <TH className="hidden lg:table-cell">No. HP/WA</TH>
+              <TH className="hidden lg:table-cell">Ruangan tugas</TH>
+              <TH className="hidden xl:table-cell">No. HP/WA</TH>
               <TH>Status</TH>
               <TH className="hidden xl:table-cell">Login terakhir</TH>
               <TH align="right">Aksi</TH>
@@ -174,7 +176,10 @@ export function PenggunaView({
                   <TD>
                     <Badge tone="brand">{u.roleName}</Badge>
                   </TD>
-                  <TD className="hidden tabular-nums text-fg-muted lg:table-cell">{u.phone ?? "—"}</TD>
+                  <TD className="hidden lg:table-cell">
+                    <RuanganSel ruangan={u.ruangan} />
+                  </TD>
+                  <TD className="hidden tabular-nums text-fg-muted xl:table-cell">{u.phone ?? "—"}</TD>
                   <TD>
                     <div className="flex flex-col items-start gap-1">
                       <Badge tone={u.isActive ? "success" : "neutral"} dot>
@@ -255,6 +260,41 @@ function IconBtn({ label, onClick, children }: { label: string; onClick: () => v
     >
       {children}
     </button>
+  );
+}
+
+/** Ruangan tugas di tabel: maks 2 kode + "+n"; nama lengkap untuk pembaca layar & tooltip. */
+function RuanganSel({ ruangan }: { ruangan: UserListItem["ruangan"] }) {
+  if (ruangan.length === 0) return <span className="text-xs text-fg-subtle">—</span>;
+  const tampil = ruangan.slice(0, 2);
+  const sisa = ruangan.slice(2);
+  const label = (r: (typeof ruangan)[number]) => `${r.kodePrefix} ${r.nama}${r.otomatis ? " (PJ)" : ""}`;
+  return (
+    <ul role="list" className="flex max-w-56 flex-wrap gap-1" title={ruangan.map(label).join("\n")}>
+      {tampil.map((r) => (
+        <li
+          key={r.kodePrefix}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-mono text-[11px] font-semibold ring-1 ring-inset",
+            r.otomatis ? "bg-brand-soft text-brand-soft-fg ring-brand/20" : "bg-surface-2 text-fg-muted ring-border",
+          )}
+        >
+          {r.otomatis && <BadgeCheck className="size-3" aria-hidden />}
+          {r.kodePrefix}
+          <span className="sr-only">
+            {" "}
+            {r.nama}
+            {r.otomatis ? ", otomatis dari NIP PJ" : ""}
+          </span>
+        </li>
+      ))}
+      {sisa.length > 0 && (
+        <li className="rounded-full px-1 py-0.5 text-[11px] text-fg-subtle">
+          +{sisa.length}
+          <span className="sr-only"> ruangan lain: {sisa.map(label).join(", ")}</span>
+        </li>
+      )}
+    </ul>
   );
 }
 

@@ -71,6 +71,8 @@ export function Combobox({
   invalid,
   className,
   "aria-label": ariaLabel,
+  "aria-describedby": ariaDescribedBy,
+  listLabel,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -84,7 +86,11 @@ export function Combobox({
   size?: "sm" | "md";
   invalid?: boolean;
   className?: string;
+  /** Hanya bila tak ada `<label for={id}>` yang terlihat. */
   "aria-label"?: string;
+  "aria-describedby"?: string;
+  /** Nama daftar opsi (listbox) bila input dinamai lewat `<label for>`. */
+  listLabel?: string;
 }) {
   const groups = useMemo(() => normGroups(options), [options]);
   const selected = useMemo(() => {
@@ -180,6 +186,7 @@ export function Combobox({
           type="text"
           role="combobox"
           aria-label={ariaLabel}
+          aria-describedby={ariaDescribedBy}
           aria-expanded={open}
           aria-controls={listId}
           aria-autocomplete="list"
@@ -244,7 +251,7 @@ export function Combobox({
         <ul
           id={listId}
           role="listbox"
-          aria-label={ariaLabel}
+          aria-label={listLabel ?? ariaLabel}
           onMouseDown={(e) => e.preventDefault()}
           className="max-h-72 min-w-[14rem] overflow-y-auto p-1 outline-none"
         >

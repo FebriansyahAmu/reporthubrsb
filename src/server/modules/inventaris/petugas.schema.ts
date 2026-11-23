@@ -21,4 +21,15 @@ export const penggunaQuerySchema = z.strictObject({
   q: z.string().trim().max(60).optional().default(""),
 });
 
+/** Batas ruangan tugas per akun (64 ruangan aktif saat ini; satu PJ sampai 12). */
+export const MAKS_RUANGAN_PENGGUNA = 100;
+
+/** PUT ruangan tugas satu akun (dari Master › Pengguna): daftar lengkap, mengganti daftar lama. */
+export const ruanganPenggunaPutSchema = z.strictObject({
+  ruanganIds: z
+    .array(idSchema)
+    .max(MAKS_RUANGAN_PENGGUNA, `Maksimal ${MAKS_RUANGAN_PENGGUNA} ruangan per akun`),
+});
+
 export type PetugasPutInput = z.infer<typeof petugasPutSchema>;
+export type RuanganPenggunaPutInput = z.infer<typeof ruanganPenggunaPutSchema>;
