@@ -4,38 +4,52 @@ import { useState } from "react";
 import { useMeasure } from "@/components/charts/useMeasure";
 import { fmtDayLong, fmtDayShort, nf, niceMax } from "@/components/charts/format";
 import { cn } from "@/lib/cn";
-import type { HariRingkas } from "@/server/modules/surat-kontrol/surat-kontrol.filter";
 
 const H = 216;
 const M = { top: 10, right: 8, bottom: 22, left: 30 };
-const SERI = [
+
+export type SeriBatang<K extends string> = { key: K; label: string; color: string };
+
+/** Seri bawaan audit BPJS ↔ SIMRS (status temuan). */
+export const SERI_AUDIT = [
   { key: "masalah", label: "Bermasalah", color: "var(--danger)" },
   { key: "tinjau", label: "Perlu ditinjau", color: "var(--warning)" },
   { key: "sesuai", label: "Sesuai", color: "var(--success)" },
-] as const;
+] as const satisfies readonly SeriBatang<string>[];
 
 /**
- * Sebaran surat per tanggal rencana — batang bertumpuk per status (status =
- * warna cadangan; legenda & tooltip selalu berlabel). Klik batang = saring
- * daftar ke tanggal itu (klik lagi = lepas). Keyboard: Tab ke batang, Enter.
+ * Sebaran per tanggal — batang bertumpuk per seri status (warna = penanda
+ * cadangan; legenda & tooltip selalu berlabel). Klik batang = saring daftar ke
+ * tanggal itu (klik lagi = lepas). Keyboard: Tab ke batang, Enter/Spasi.
  */
-export function SebaranHarianChart({
+export function SebaranHarianChart<K extends string>({
   data,
+  seri,
   hariIni,
   aktif,
   onPilih,
+  satuan,
+  judul,
 }: {
-  data: HariRingkas[];
+  data: ({ tanggal: string } & Record<K, number>)[];
+  /** Urutan = dari dasar batang ke atas. */
+  seri: readonly SeriBatang<K>[];
   hariIni: string;
   aktif: string | null;
   onPilih: (tanggal: string | null) => void;
+  /** Kata benda untuk label aksesibel, mis. "surat" / "pasien". */
+  satuan: string;
+  /** Label aksesibel grafik. */
+  judul: string;
 }) {
+  const SERI = seri;
+  const totalHari = (d: { tanggal: string } & Record<K, number>) => SERI.reduce((n, s) => n + d[s.key], 0);
   const [ref, width] = useMeasure<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const n = data.length;
   const innerW = Math.max(0, width - M.left - M.right);
   const innerH = H - M.top - M.bottom;
-  const maxY = niceMax(Math.max(1, ...data.map((d) => d.masalah + d.tinjau + d.sesuai)));
+  const maxY = niceMax(Math.max(1, ...data.map(totalHari)));
   const band = n ? innerW / n : innerW;
   const barW = Math.max(3, Math.min(22, band * 0.68));
   const x = (i: number) => M.left + (i + 0.5) * band;
@@ -49,7 +63,7 @@ export function SebaranHarianChart({
     <div>
       <div ref={ref} className="relative h-[216px]" onMouseLeave={() => setHover(null)}>
         {width > 0 && (
-          <svg width={width} height={H} role="img" aria-label="Sebaran surat per tanggal rencana menurut status audit">
+          <svg width={width} height={H} role="group" aria-label={judul}>
             {[0, 0.5, 1].map((f) => {
               const v = Math.round(maxY * f);
               return (
@@ -60,7 +74,7 @@ export function SebaranHarianChart({
               );
             })}
             {data.map((d, i) => {
-              const total = d.masalah + d.tinjau + d.sesuai;
+              const total = totalHari(d);
               const dipilih = aktif === d.tanggal;
               const redup = aktif != null && !dipilih;
               let dasar = 0;
@@ -69,7 +83,7 @@ export function SebaranHarianChart({
                   key={d.tanggal}
                   role="button"
                   tabIndex={total > 0 ? 0 : -1}
-                  aria-label={`${fmtDayLong(d.tanggal)}: ${total} surat, ${d.masalah} bermasalah, ${d.tinjau} perlu ditinjau`}
+                  aria-label={`${fmtDayLong(d.tanggal)}: ${total} ${satuan}${SERI.map((s) => `, ${d[s.key]} ${s.label.toLowerCase()}`).join("")}`}
                   aria-pressed={dipilih}
                   className="cursor-pointer outline-none [&:focus-visible>rect.fokus]:stroke-[var(--brand)]"
                   onMouseEnter={() => setHover(i)}
@@ -108,7 +122,7 @@ export function SebaranHarianChart({
         )}
         {hd && (
           <div
-            className="pointer-events-none absolute top-0 z-10 w-40 -translate-x-1/2 rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-xs shadow-md"
+            className="pointer-events-none absolute top-0 z-10 w-48 -translate-x-1/2 rounded-[var(--radius-md)] border border-border bg-surface px-3 py-2 text-xs shadow-md"
             style={{ left: tipLeft }}
           >
             <p className="font-semibold text-fg">{fmtDayLong(hd.tanggal)}{hd.tanggal === hariIni ? " · hari ini" : ""}</p>

@@ -53,7 +53,7 @@ import {
 import type { AuditSuratKontrol, SuratKontrolBaris } from "@/server/modules/surat-kontrol/surat-kontrol.types";
 import { DetailSurat } from "./DetailSurat";
 import { JamBentrokView } from "./JamBentrokView";
-import { SebaranHarianChart } from "./SebaranHarianChart";
+import { SERI_AUDIT, SebaranHarianChart } from "./SebaranHarianChart";
 import { SelisihBadge } from "./SelisihBadge";
 import { fetchAuditSuratKontrol, unduhEksporSuratKontrol, type JenisPilihan } from "./suratKontrol.client";
 
@@ -369,7 +369,15 @@ export function AuditSuratKontrolView({ bolehEkspor }: { bolehEkspor: boolean })
                 <h2 className="text-sm font-semibold text-fg">Sebaran per tanggal rencana</h2>
                 <span className="text-[11px] text-fg-subtle">titik = hari ini</span>
               </div>
-              <SebaranHarianChart data={harian} hariIni={d.hariIni} aktif={tanggal} onPilih={(t) => { setTanggal(t); setPage(1); }} />
+              <SebaranHarianChart
+                data={harian}
+                seri={SERI_AUDIT}
+                hariIni={d.hariIni}
+                aktif={tanggal}
+                satuan="surat"
+                judul="Sebaran surat per tanggal rencana menurut status audit"
+                onPilih={(t) => { setTanggal(t); setPage(1); }}
+              />
             </Card>
             <Card className="p-4">
               <div className="mb-3 flex items-baseline justify-between gap-2">
@@ -464,20 +472,22 @@ export function AuditSuratKontrolView({ bolehEkspor }: { bolehEkspor: boolean })
                   />
                 ) : (
                   <>
-                    <div className="relative overflow-x-auto">
-                      <table className="w-full min-w-[780px] text-sm">
-                        <thead>
-                          <tr className="border-b border-border bg-surface-2/50 text-left text-[11px] font-semibold tracking-wide text-fg-muted uppercase">
-                            <th scope="col" className="px-4 py-2">Surat</th>
-                            <th scope="col" className="px-2 py-2">Pasien</th>
-                            <th scope="col" className="px-2 py-2">Poli · dokter</th>
-                            <th scope="col" className="px-2 py-2">Rencana BPJS</th>
-                            <th scope="col" className="px-2 py-2">Jadwal SIMRS</th>
-                            <th scope="col" className="px-4 py-2">Temuan</th>
+                    <div className="@container">
+                    <div role="region" aria-label="Daftar surat" tabIndex={0} className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-ring @max-3xl:overflow-visible">
+                      <table className="w-full border-separate border-spacing-0 text-sm @max-3xl:block @max-3xl:p-3">
+                        <caption className="sr-only">Surat BPJS dibandingkan dengan jadwal SIMRS</caption>
+                        <thead className="@max-3xl:hidden">
+                          <tr className="bg-surface-2/50 text-left text-[11px] font-semibold tracking-wide text-fg-muted uppercase">
+                            <th scope="col" className="border-b border-border px-4 py-2">Surat</th>
+                            <th scope="col" className="border-b border-border px-2 py-2">Pasien</th>
+                            <th scope="col" className="border-b border-border px-2 py-2">Poli · dokter</th>
+                            <th scope="col" className="border-b border-border px-2 py-2">Rencana BPJS</th>
+                            <th scope="col" className="border-b border-border px-2 py-2">Jadwal SIMRS</th>
+                            <th scope="col" className="border-b border-border px-4 py-2">Temuan</th>
                           </tr>
                         </thead>
                         <tbody
-                          className="divide-y divide-border"
+                          className="@max-3xl:block @max-3xl:space-y-2"
                           onKeyDown={(e) => {
                             if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                               e.preventDefault();
@@ -490,6 +500,7 @@ export function AuditSuratKontrolView({ bolehEkspor }: { bolehEkspor: boolean })
                           ))}
                         </tbody>
                       </table>
+                    </div>
                     </div>
                     <div className="flex flex-col items-center justify-between gap-3 border-t border-border px-4 py-3 sm:flex-row">
                       <p className="text-xs text-fg-muted">
@@ -543,6 +554,10 @@ export function AuditSuratKontrolView({ bolehEkspor }: { bolehEkspor: boolean })
     </div>
   );
 }
+
+/** Label kolom saat tabel bertumpuk jadi kartu (container query < 48rem). */
+const LABEL_TUMPUK =
+  "@max-3xl:before:mb-0.5 @max-3xl:before:block @max-3xl:before:text-[11px] @max-3xl:before:font-medium @max-3xl:before:text-fg-subtle @max-3xl:before:content-[attr(data-label)]";
 
 const TITIK: Record<string, string> = { danger: "bg-danger", warning: "bg-warning", accent: "bg-accent", neutral: "bg-fg-subtle", success: "bg-success" };
 
@@ -648,9 +663,17 @@ function Baris({ b, aktif, sorot, onPilih }: { b: SuratKontrolBaris; aktif: bool
   const peringkat = (t: TemuanKey) => (t === sorot ? 0 : TEMUAN[t].berat === "info" ? 2 : 1);
   const tampilTemuan = [...b.temuan].sort((x, y) => peringkat(x) - peringkat(y)).slice(0, 2);
   const sisa = b.temuan.length - tampilTemuan.length;
+  const sel = "border-b border-border px-2 py-2 align-top @max-3xl:block @max-3xl:border-0 @max-3xl:p-0";
   return (
-    <tr onClick={onPilih} aria-selected={aktif} className={cn("cursor-pointer transition-colors", aktif ? "bg-brand-soft" : "hover:bg-surface-2/50")}>
-      <td className="px-4 py-2 align-top">
+    <tr
+      onClick={onPilih}
+      className={cn(
+        "cursor-pointer transition-colors",
+        "@max-3xl:grid @max-3xl:grid-cols-2 @max-3xl:gap-x-3 @max-3xl:gap-y-2.5 @max-3xl:rounded-[var(--radius-md)] @max-3xl:border @max-3xl:p-3",
+        aktif ? "bg-brand-soft @max-3xl:border-brand" : "hover:bg-surface-2/50 @max-3xl:border-border",
+      )}
+    >
+      <th scope="row" className={cn(sel, "px-4 text-left font-normal @max-3xl:col-span-2")}>
         <button
           id={`sk-${b.key}`}
           type="button"
@@ -667,22 +690,22 @@ function Baris({ b, aktif, sorot, onPilih }: { b: SuratKontrolBaris; aktif: bool
             <span className="block text-[10px] whitespace-nowrap text-fg-subtle">{JENIS_KONTROL[b.jenis].label}{b.bpjs?.tglTerbit ? ` · terbit ${formatDate(b.bpjs.tglTerbit)}` : ""}</span>
           </span>
         </button>
-      </td>
-      <td className="px-2 py-2 align-top">
+      </th>
+      <td data-label="Pasien" className={cn(sel, LABEL_TUMPUK)}>
         <span className="block max-w-44 truncate text-xs font-medium text-fg" title={b.pasien ?? undefined}>{b.pasien ?? "Tanpa nama"}</span>
         <span className="block font-mono text-[10px] text-fg-subtle">
           {b.simrs?.kunjungan?.norm ? `RM ${b.simrs.kunjungan.norm}` : b.bpjs?.noKartu ? `Kartu ${b.bpjs.noKartu}` : "—"}
         </span>
       </td>
-      <td className="px-2 py-2 align-top">
+      <td data-label="Poli · dokter" className={cn(sel, LABEL_TUMPUK)}>
         <span className="block max-w-40 truncate text-xs text-fg" title={b.poli ?? undefined}>{b.poli ?? "—"}</span>
         <span className="block max-w-40 truncate text-[10px] text-fg-muted" title={b.dokter ?? undefined}>{b.dokter ?? "—"}</span>
       </td>
-      <td className="px-2 py-2 align-top text-xs whitespace-nowrap text-fg tabular">
+      <td data-label="Rencana BPJS" className={cn(sel, LABEL_TUMPUK, "text-xs whitespace-nowrap text-fg tabular")}>
         {b.bpjs ? formatDate(b.bpjs.tglRencana) : <span className="text-fg-subtle">—</span>}
         {b.bpjs?.sepTerbit === true && <span className="block text-[10px] text-success">SEP kontrol terbit</span>}
       </td>
-      <td className="px-2 py-2 align-top text-xs whitespace-nowrap tabular">
+      <td data-label="Jadwal SIMRS" className={cn(sel, LABEL_TUMPUK, "text-xs whitespace-nowrap tabular")}>
         {b.simrs ? (
           <>
             <span className={cn(b.simrs.aktif ? "text-fg" : "text-fg-subtle line-through")}>{formatDate(b.simrs.tanggal)}</span>
@@ -693,7 +716,7 @@ function Baris({ b, aktif, sorot, onPilih }: { b: SuratKontrolBaris; aktif: bool
           <span className="text-fg-subtle">tidak ada</span>
         )}
       </td>
-      <td className="px-4 py-2 align-top">
+      <td data-label="Temuan" className={cn(sel, LABEL_TUMPUK, "pr-4")}>
         {b.temuan.length === 0 ? (
           <span className="inline-flex items-center gap-1 text-xs text-success"><CheckCircle2 className="size-3.5" /> Sesuai</span>
         ) : (

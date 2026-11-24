@@ -1,6 +1,9 @@
 # Audit Surat Kontrol
 
-Menu baru di workspace **Audit Trail RME** (`/audit-rme/surat-kontrol`). Fitur ini membandingkan Surat Kontrol dan SPRI yang **terbit di BPJS** dengan **jadwal di SIMRS**. Tujuannya menemukan tanggal rencana yang tidak sama, jadwal yang hilang atau batal, poli yang berbeda, dan jam yang menumpuk.
+Menu di workspace **Audit Trail RME** (`/audit-rme/surat-kontrol`) dengan dua tab:
+
+- **Terbit saat pulang** (bawaan, sejak 24 Nov 2026) — apakah Surat Kontrol pasien BPJS terbit di BPJS **pada tanggal yang sama dengan tanggal pasien pulang** (rawat inap & rawat jalan). Pasien yang belum punya Surat Kontrol disorot. Lihat §10.
+- **Jadwal BPJS ↔ SIMRS** (`?tampilan=bpjs`) — Surat Kontrol dan SPRI yang **terbit di BPJS** dibandingkan dengan **jadwal di SIMRS**: tanggal rencana yang tidak sama, jadwal yang hilang atau batal, poli yang berbeda, dan jam yang menumpuk (§1–§9).
 
 Fitur ini **read-only**: tidak ada data SIMGOS yang diubah. Perbaikan jadwal (mis. jam yang sama) direncanakan sebagai tahap terpisah.
 
@@ -127,3 +130,109 @@ Cakupan UI: tabel lebar penuh, drawer perbandingan dan navigasinya, saringan tem
 
 - Perbaikan jam yang sama (pembagian jam per dokter). Perlu keputusan karena **menulis** ke SIMGOS, yang saat ini dilarang.
 - Pemetaan dokter SIMRS ↔ kode DPJP BPJS: `bpjs.dpjp` kosong, sehingga dokter belum dibandingkan otomatis.
+
+## 10. Terbit saat pulang (24 Nov 2026)
+
+**Aturan RS:** Surat Kontrol pasien BPJS harus terbit di BPJS pada **tanggal yang sama** dengan tanggal pasien pulang. Berlaku untuk rawat inap dan rawat jalan.
+
+### Populasi
+
+| Layanan | Episode | Tanggal pulang | Wajib Surat Kontrol |
+|---|---|---|---|
+| Rawat Inap | `layanan.pasien_pulang` aktif, kunjungan pulang di ruangan `JENIS_KUNJUNGAN = 3`, penjamin terbaru BPJS (`penjamin.JENIS = 2`) | `pasien_pulang.TANGGAL` | Cara keluar **1 Diizinkan pulang** (ref. 45). Pulang paksa, dirujuk, lari, pindah RS, meninggal, DOA = tidak wajib. |
+| Rawat Jalan | Kunjungan poli `JENIS_KUNJUNGAN = 1` (leg utama, `REF IS NULL`), penjamin BPJS | `DATE(kunjungan.MASUK)` | Ya, kecuali **dirujuk** (`pendaftaran.rujukan_keluar` / `bpjs.rujukan`) atau **lanjut rawat inap** (SPRI dari kunjungan / leg RI di NOPEN sama). |
+
+Rawat jalan tidak punya catatan "rujuk balik ke FKTP" di SIMGOS (`bpjs.prb` kosong). Pasien rawat jalan yang memang dikembalikan ke FKTP tetap tampil sebagai **Belum terbit**, dan petugas memutuskannya dari daftar.
+
+### Tanggal terbit & penautan surat
+
+- **Tanggal terbit = `tglTerbitKontrol` BPJS.** Sumbernya webservice BPJS (live) atau cache SIMGOS `bpjs.monitoring_rencana_kontrol` (hanya dibaca).
+- ⚠️ **Bukan `jadwal_kontrol.DIBUAT_TANGGAL`.** Kolom itu `ON UPDATE CURRENT_TIMESTAMP`, sehingga ikut berubah setiap kali baris diperbarui (mis. saat surat dipakai). Okt 2026: 56 dari 173 jadwal punya `DIBUAT_TANGGAL` lebih lambat daripada tanggal terbit BPJS.
+- **Surat ↔ episode ditautkan lewat:**
+  - SEP asal = SEP episode (`pendaftaran.penjamin.NOMOR`);
+  - jadwal SIMRS (`jadwal_kontrol.KUNJUNGAN` = kunjungan pulang);
+  - catatan lokal (`bpjs.rencana_kontrol.nomor`).
+- **Surat dianggap terhapus** hanya bila catatan lokalnya berstatus hapus.
+- **Acuan penilaian** = surat aktif dengan tanggal terbit **paling awal**. Satu SEP bisa punya lebih dari satu surat (19 SEP sejak Agu 2026).
+- **Webservice BPJS hanya dipanggil bila perlu:**
+  - ada surat yang tanggal terbitnya belum ada di cache (jendela tanggal rencana surat-surat itu, maks. 60 hari);
+  - pengguna menekan **Segarkan dari BPJS** (rencana `from` s.d. 60 hari).
+
+  Pemanggilan memakai klien yang sama dengan tab BPJS ↔ SIMRS (cache 5 menit, maks. 2 panggilan bersamaan, segar ≥ 30 detik). Webservice menulis cache `bpjs.monitoring_rencana_kontrol`; perilaku ini sudah disetujui (§1). Cakupan cache sangat tinggi (Nov 2026: 168 dari 169 surat RI), jadi umumnya tidak ada panggilan sama sekali. Bila webservice gagal, data tetap dari cache dan layar menampilkan peringatan.
+
+### Status
+
+| Status | Dinilai | Aturan |
+|---|---|---|
+| Terbit di hari pulang | ✓ | tanggal terbit = tanggal pulang |
+| Terbit sebelum pulang | ✓ | tanggal terbit < tanggal pulang |
+| Terbit setelah pulang | ✓ | tanggal terbit > tanggal pulang |
+| Belum terbit | ✓ | tanpa surat aktif, dan wajib kontrol. Disorot merah; ditandai bila sudah ada jadwal SIMRS tanpa nomor BPJS (belum di-bridging). |
+| Tanggal terbit belum terbaca | — | surat aktif tanpa tanggal terbit dari BPJS/cache |
+| Tidak wajib kontrol | — | tanpa surat dan tidak wajib (cara pulang / dirujuk / lanjut RI). Bila punya surat, tanggalnya tetap dinilai. |
+
+**Kepatuhan** = terbit di hari pulang ÷ (empat status yang dinilai).
+
+### Tampilan
+
+- **Saringan:**
+  - tanggal pulang: Hari ini / Kemarin / 7 hari terakhir / Bulan ini (bawaan, s.d. hari ini) / Bulan lalu / Dari–Sampai, maks. 31 hari, tidak melewati hari ini;
+  - cari: nama, RM, NOPEN, SEP, nomor surat, dokter, ruangan.
+- **Ringkasan kepatuhan:**
+  - persentase besar dan batang komposisi 100%;
+  - empat tombol status (sekaligus saringan);
+  - perbandingan Rawat Inap vs Rawat Jalan (klik = saring layanan).
+- **Sorotan Belum terbit:** jumlah pasien, yang pulang hari ini (masih bisa tepat waktu), dan umur terlama. Tombol **Tampilkan pasien belum terbit** menyaring dan menggulir ke daftar.
+- **Grafik:**
+  - sebaran per tanggal pulang: batang bertumpuk, klik = saring tanggal;
+  - per ruangan/poli: belum terbit terbanyak dulu, klik = saring.
+- **Daftar pasien:**
+  - `<table>` semantik (judul baris = pasien); di wadah < 48rem baris bertumpuk jadi kartu berlabel (container query);
+  - baris belum terbit berlatar merah lembut;
+  - kolom **Terbit vs pulang** berisi "jejak" hari −3…+3 (garis = hari pulang, titik = hari terbit, garis putus merah = belum terbit sampai hari ini) dan teks selisihnya;
+  - ↑/↓ memindah baris, Enter membuka laci.
+- **Laci rincian:**
+  - urutan kejadian Pasien pulang → Surat Kontrol terbit → Rencana kontrol (poli, dokter, SEP kontrol, jadwal SIMRS);
+  - semua surat episode;
+  - saran tindak lanjut;
+  - Sebelumnya/Berikutnya.
+- **Tab halaman:** pilihan lewat aktivasi (panah memindah fokus, Enter/Spasi memilih) karena memilih tab mengubah URL dan memuat data. Panel tetap terpasang saat berpindah tab. Tab "Terbit saat pulang" menampilkan jumlah pasien belum terbit.
+
+### Ekspor Excel
+
+Tombol **Ekspor Excel** (izin `print`), `GET /api/audit-rme/surat-kontrol/pulang/ekspor`, dengan saringan sama dengan layar. Isinya 3 lembar:
+- Terbit Saat Pulang;
+- Ringkasan (per status & per layanan);
+- Per Ruangan.
+
+Meta-audit fail-closed tetap `audit-rme.surat-kontrol.ekspor`, dengan `metadata.tampilan = "terbit-saat-pulang"`; kata kunci cari disamarkan.
+
+### Berkas
+
+| Lapisan | Berkas |
+|---|---|
+| Konstanta & tipe | `surat-kontrol.pulang.constants.ts`, `surat-kontrol.pulang.types.ts` |
+| Penilaian, saringan, ringkasan (murni, server & klien) | `surat-kontrol.pulang.ts` (+ `.test.ts`) |
+| SIMGOS (SELECT saja) | `surat-kontrol.pulang.dal.ts` |
+| Layanan | `surat-kontrol.pulang.service.ts` |
+| Skema | `surat-kontrol.schema.ts` (`pulangQuerySchema`, `eksporPulangQuerySchema`, `tentukanRentangPulang`) |
+| Ekspor | `surat-kontrol.ekspor.ts` (`buatEksporTerbitPulang`) |
+| API | `src/app/api/audit-rme/surat-kontrol/pulang/route.ts`, `…/pulang/ekspor/route.ts` |
+| UI | `src/features/surat-kontrol/SuratKontrolHalaman.tsx` (tab), `TerbitPulangView.tsx`, `TerbitPulangDetail.tsx`, `pulang.ui.tsx`; `SebaranHarianChart.tsx` kini menerima seri; tabel `AuditSuratKontrolView.tsx` kini bertumpuk di layar sempit |
+
+### Validasi (24 Nov 2026, data nyata, dev :3000)
+
+| Uji | Hasil |
+|---|---|
+| Unit | 19 uji baru (`surat-kontrol.pulang.test.ts`: aturan status, acuan surat terawal, saringan, ringkasan, rentang, skema); seluruh suite 819 ✓ |
+| API vs oracle SQL independen | Okt 2026: 268/268 episode (RI 165, RJ 103) status sama; Nov 2026 (s.d. 24): 276/276 |
+| Validasi & RBAC | 422 (rentang > 31 hari, tanggal tak sah, `segar` salah); 401 tanpa sesi; 403 modul lain; 403 ekspor tanpa `print`; halaman → `/403` |
+| Ekspor | isi lembar = baris layar (44 belum terbit Okt); 3 lembar; meta-audit tercatat tanpa PHI, kata kunci disamarkan |
+| UI Chrome headless | tab (aktivasi manual, garis bawah, `?tampilan=`), angka kepatuhan = API, sorotan & saringan belum terbit, layanan, ruangan, ↑/↓ + Enter → laci (urutan kejadian, Berikutnya, Escape), tab BPJS ↔ SIMRS (tabel semantik), 768/390/360 px (tabel bertumpuk, tanpa gulir-x, target sentuh ≥ 44 px), tanpa galat JS/CSP |
+
+Okt 2026: kepatuhan 60,6% (137 dari 226 dinilai):
+- 41 terbit **sebelum** pulang;
+- 4 terbit setelah pulang;
+- 44 belum terbit, sebagian besar rawat jalan.
+
+Respons API ± 0,5 dtk dari cache. Bila perlu melengkapi dari BPJS, ± 2–6 dtk. Surat yang tanggalnya tetap tak ditemukan baru dicari ulang setelah 30 menit.

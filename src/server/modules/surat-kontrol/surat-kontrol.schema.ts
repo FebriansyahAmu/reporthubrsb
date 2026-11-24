@@ -2,6 +2,13 @@ import { z } from "zod";
 import { ValidationError } from "@/server/lib/errors";
 import { MAKS_HARI_KE_DEPAN, RENTANG_MAKS_HARI, STATUS_AUDIT_KEYS, TEMUAN_KEYS, type StatusAudit, type TemuanKey } from "./surat-kontrol.constants";
 import { tambahHari } from "./surat-kontrol.filter";
+import {
+  LAYANAN_PULANG_KEYS,
+  RENTANG_PULANG_MAKS_HARI,
+  STATUS_PULANG_KEYS,
+  type LayananPulang,
+  type StatusPulang,
+} from "./surat-kontrol.pulang.constants";
 
 const isoTanggal = z
   .string()
@@ -27,6 +34,38 @@ export const eksporQuerySchema = suratKontrolQuerySchema.omit({ segar: true }).e
   q: z.string().trim().max(80).optional(),
 });
 export type EksporQuery = z.infer<typeof eksporQuerySchema>;
+
+/** "Terbit saat pulang": rentang TANGGAL PULANG (tidak boleh melewati hari ini). */
+export const pulangQuerySchema = z.object({
+  from: isoTanggal.optional(),
+  to: isoTanggal.optional(),
+  /** "1" = segarkan tanggal terbit dari webservice BPJS (dibatasi tiap 30 dtk per rentang). */
+  segar: z.literal("1").optional(),
+});
+export type PulangQuery = z.infer<typeof pulangQuerySchema>;
+
+export const eksporPulangQuerySchema = pulangQuerySchema.omit({ segar: true }).extend({
+  layanan: z.enum(LAYANAN_PULANG_KEYS as [LayananPulang, ...LayananPulang[]]).optional(),
+  status: z.enum(STATUS_PULANG_KEYS as [StatusPulang, ...StatusPulang[]]).optional(),
+  ruangan: z.string().trim().max(120).optional(),
+  tanggal: isoTanggal.optional(),
+  q: z.string().trim().max(80).optional(),
+});
+export type EksporPulangQuery = z.infer<typeof eksporPulangQuerySchema>;
+
+/** Rentang tanggal pulang bawaan = awal bulan s.d. hari ini (WITA); maks. 31 hari, tak melewati hari ini. */
+export function tentukanRentangPulang(q: { from?: string; to?: string }, hariIni: string): { from: string; to: string } {
+  const lebar = RENTANG_PULANG_MAKS_HARI - 1;
+  let to = q.to ?? (q.from ? tambahHari(q.from, lebar) : hariIni);
+  let from = q.from ?? (q.to ? tambahHari(to, -lebar) : `${hariIni.slice(0, 8)}01`);
+  if (from > to) [from, to] = [to, from];
+  if (to > hariIni) to = hariIni;
+  if (from > to) from = to;
+  if (tambahHari(from, lebar) < to) {
+    throw new ValidationError({ formErrors: [], fieldErrors: { to: [`Rentang maksimal ${RENTANG_PULANG_MAKS_HARI} hari`] } });
+  }
+  return { from, to };
+}
 
 /** Rentang bawaan = bulan berjalan (WITA); validasi batas lebar & tanggal depan. */
 export function tentukanRentang(q: { from?: string; to?: string }, hariIni: string): { from: string; to: string } {
