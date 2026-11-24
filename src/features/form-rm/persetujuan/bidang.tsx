@@ -560,31 +560,6 @@ export function KotakSaksi({
   );
 }
 
-/* ================================================================ pilihan */
-
-/** Pilihan jenis kelamin bergaya segmen (dipakai RM.41). */
-export function PilihJk({ id, nilai, onUbah }: { id: string; nilai: "" | JkPilihan; onUbah: (v: "" | JkPilihan) => void }) {
-  return (
-    <div id={id} role="radiogroup" aria-label="Jenis kelamin" className="inline-flex h-10 w-full rounded-[var(--radius-md)] border border-border bg-surface-2 p-1">
-      {JK_PILIHAN.map((jk) => (
-        <button
-          key={jk}
-          type="button"
-          role="radio"
-          aria-checked={nilai === jk}
-          onClick={() => onUbah(nilai === jk ? "" : jk)}
-          className={cn(
-            "flex-1 rounded-[calc(var(--radius-md)-3px)] text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring",
-            nilai === jk ? "bg-surface text-fg shadow-sm ring-1 ring-border" : "text-fg-muted hover:text-fg",
-          )}
-        >
-          {jk}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 /** Nama · umur (tahun) · jenis kelamin (radio asli) · alamat — dipakai untuk yang menyatakan & pasien. Semua wajib sebelum FINAL. */
 function IdentitasOrang({
   awalan,
