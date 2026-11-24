@@ -31,7 +31,7 @@ const JENIS_KUNJUNGAN_LABEL: Record<number, string> = { 1: "Rawat Jalan", 2: "IG
 
 type Master = { dokter: Map<number, string | null>; poli: Map<string, string> };
 const masterCache = createTtlCache<Master>("surat-kontrol-master", { ttlMs: 10 * 60_000, max: 1 });
-const muatMaster = () =>
+export const muatMaster = () =>
   masterCache
     .get("semua", async () => {
       const dokter = await queryDokterMaster();
@@ -49,7 +49,7 @@ const keLokal = (r: RencanaLokalRow): LokalSurat => ({
 });
 
 /** Pesan galat webservice yang aman ditampilkan (tanpa detail internal). */
-function pesanGalat(e: unknown): string {
+export function pesanGalat(e: unknown): string {
   if (e instanceof Error) {
     if (e.name === "TimeoutError" || e.name === "AbortError") return "Webservice BPJS tidak merespons dalam 30 detik.";
     if (/^(Webservice|BPJS)/.test(e.message)) return e.message;

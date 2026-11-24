@@ -4,6 +4,8 @@ import { apiGet } from "@/lib/api-client";
 import { downloadFromEndpoint } from "@/lib/download";
 // Hanya tipe (dihapus saat kompilasi) — tidak menarik kode server-only ke klien.
 import type { FilterTampilan } from "@/server/modules/surat-kontrol/surat-kontrol.filter";
+import type { FilterPulang } from "@/server/modules/surat-kontrol/surat-kontrol.pulang";
+import type { AuditTerbitPulang } from "@/server/modules/surat-kontrol/surat-kontrol.pulang.types";
 import type { AuditSuratKontrol } from "@/server/modules/surat-kontrol/surat-kontrol.types";
 
 export type JenisPilihan = "2" | "1" | "semua";
@@ -35,5 +37,29 @@ export async function unduhEksporSuratKontrol(r: Rentang, f: FilterTampilan): Pr
     q: f.q?.trim() || undefined,
   })}`;
   const { headers } = await downloadFromEndpoint(url, `audit-surat-kontrol_${r.from}_${r.to}.xlsx`);
+  return headers.get("X-Ekspor-Kode");
+}
+
+export type RentangPulang = { from: string; to: string };
+
+export function fetchTerbitPulang(r: RentangPulang, opts?: { segar?: boolean; signal?: AbortSignal }): Promise<AuditTerbitPulang> {
+  return apiGet<AuditTerbitPulang>(
+    `/api/audit-rme/surat-kontrol/pulang?${qs({ from: r.from, to: r.to, segar: opts?.segar ? "1" : undefined })}`,
+    { signal: opts?.signal },
+  );
+}
+
+/** Unduh Excel "Terbit saat pulang" dengan filter layar. Mengembalikan kode ekspor. */
+export async function unduhEksporTerbitPulang(r: RentangPulang, f: FilterPulang): Promise<string | null> {
+  const url = `/api/audit-rme/surat-kontrol/pulang/ekspor?${qs({
+    from: r.from,
+    to: r.to,
+    layanan: f.layanan,
+    status: f.status,
+    ruangan: f.ruangan,
+    tanggal: f.tanggal,
+    q: f.q?.trim() || undefined,
+  })}`;
+  const { headers } = await downloadFromEndpoint(url, `terbit-surat-kontrol-saat-pulang_${r.from}_${r.to}.xlsx`);
   return headers.get("X-Ekspor-Kode");
 }
