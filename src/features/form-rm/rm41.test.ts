@@ -11,6 +11,7 @@ import {
   statusLangkahRm41,
   TEKS_RM41,
   TEKS_SELAKU,
+  tujuanRm41,
   type Rm41Data,
 } from "./rm41.constants";
 import { rm41FormSchema } from "./skema";
@@ -122,5 +123,18 @@ describe("RM.41 aturan TTD (cekPerubahan)", () => {
     // Kembali ke selaku semula setelah TTD dikosongkan dan disimpan: TTD lama tak bisa dipasang lagi.
     const tengah = { ...lama, selaku: "anak" as const, pernyataTtd: "" };
     expect(cekTtdRm41(tengah, { ...tengah, selaku: "istri", pernyataTtd: T3 })).toBe(PESAN_GANTI_SELAKU);
+  });
+});
+
+describe("RM.41 syarat → kolom layar isian", () => {
+  it("setiap pesan kekurangan punya tujuan kolom unik (rm41-…)", () => {
+    const semua = Object.values(kekuranganRm41(emptyRm41Form())).flat();
+    expect(semua).toHaveLength(15);
+    const tujuan = semua.map((p) => tujuanRm41(p));
+    expect(tujuan.every((x) => x !== null && x.startsWith("rm41-"))).toBe(true);
+    expect(new Set(tujuan).size).toBe(semua.length);
+    expect(tujuanRm41("Selaku: diri sendiri atau hubungan dengan pasien")).toBe("rm41-selaku");
+    expect(tujuanRm41("Tanda tangan yang menyatakan")).toBe("rm41-ttd-pernyata");
+    expect(tujuanRm41("pesan tak dikenal")).toBeNull();
   });
 });

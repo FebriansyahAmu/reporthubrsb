@@ -146,6 +146,34 @@ export function kekuranganRm41(d: Rm41Data): Record<IdLangkahRm41, string[]> {
   };
 }
 
+/**
+ * Pesan kekurangan → id kolomnya di layar isian (panel "Syarat finalisasi" &
+ * kaki langkah memindahkan fokus ke sana). Teks pesan = `kekuranganRm41`.
+ */
+const KOLOM_PESAN_RM41: Record<string, string> = {
+  "Selaku: diri sendiri atau hubungan dengan pasien": "selaku",
+  "Nama yang menyatakan": "nama",
+  "Umur yang menyatakan": "umur",
+  "Alamat yang menyatakan": "alamat",
+  "Nama pasien": "pasien-nama",
+  "Jenis kelamin pasien (L / P)": "pasien-jk",
+  "Tanggal lahir pasien": "pasien-lahir",
+  "Nomor RM pasien": "pasien-norm",
+  "Alasan pulang atas permintaan sendiri": "alasan",
+  "Tanggal & jam pernyataan": "waktu",
+  "Nama petugas RS": "petugas",
+  "Tanda tangan petugas RS": "ttd-petugas",
+  "Nama saksi": "saksi",
+  "Tanda tangan saksi": "ttd-saksi",
+  "Tanda tangan yang menyatakan": "ttd-pernyata",
+};
+
+/** id elemen kolom untuk satu pesan kekurangan (`rm41-…`); null = pesan tak dikenal. */
+export function tujuanRm41(pesan: string): string | null {
+  const k = KOLOM_PESAN_RM41[pesan];
+  return k ? `rm41-${k}` : null;
+}
+
 export function statusLangkahRm41(d: Rm41Data, id: IdLangkahRm41, kurang: readonly string[]): StatusLangkah {
   const tersentuh: Record<IdLangkahRm41, boolean> = {
     pernyata: d.selaku !== "" || adaIsi(d.pernyataNama, d.pernyataUmur, d.pernyataAlamat),
