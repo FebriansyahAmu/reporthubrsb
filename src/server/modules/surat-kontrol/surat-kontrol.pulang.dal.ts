@@ -53,14 +53,21 @@ export type EpisodeRow = {
   dirujuk: boolean;
   /** RJ: dilanjutkan rawat inap (SPRI dari kunjungan ini / leg RI di NOPEN sama). */
   lanjutRi: boolean;
+  /** RJ: kunjungan KONTROL PASCA RAWAT INAP (SEP memakai Surat Kontrol dari SEP rawat inap). */
+  pascaRi: boolean;
+  /** RJ: nomor Surat Kontrol yang dipakai kunjungan ini (`penjamin.NO_SURAT`). */
+  suratDipakai: string | null;
+  /** RJ: SEP asal surat yang dipakai (pasca RI = SEP rawat inap). */
+  sepAsalSurat: string | null;
 };
 
-type EpisodeMentah = Omit<EpisodeRow, "cara" | "dokterId" | "norm" | "dirujuk" | "lanjutRi"> & {
+type EpisodeMentah = Omit<EpisodeRow, "cara" | "dokterId" | "norm" | "dirujuk" | "lanjutRi" | "pascaRi"> & {
   cara: Num;
   dokterId: Num;
   norm: Num;
   dirujuk: Num;
   lanjutRi: Num;
+  pascaRi: Num;
 };
 
 const petakanEpisode = (r: EpisodeMentah): EpisodeRow => ({
@@ -76,6 +83,9 @@ const petakanEpisode = (r: EpisodeMentah): EpisodeRow => ({
   sep: teks(r.sep),
   dirujuk: Number(r.dirujuk ?? 0) === 1,
   lanjutRi: Number(r.lanjutRi ?? 0) === 1,
+  pascaRi: Number(r.pascaRi ?? 0) === 1,
+  suratDipakai: teks(r.suratDipakai),
+  sepAsalSurat: teks(r.sepAsalSurat),
 });
 
 /** Penjamin TERBARU episode (pola baku modul lain) — hanya BPJS (JENIS 2). */
@@ -91,7 +101,8 @@ export async function queryPulangRawatInap(from: string, toEksklusif: string): P
     `SELECT ${CAP} lpp.NOPEN AS nopen, lpp.KUNJUNGAN AS kunjungan,
        DATE_FORMAT(lpp.TANGGAL, '%Y-%m-%d') AS tanggal, TIME_FORMAT(lpp.TANGGAL, '%H:%i') AS jam,
        lpp.CARA AS cara, lpp.DOKTER AS dokterId, k.RUANGAN AS ruanganId, pp.NORM AS norm,
-       ${MS}.getNamaLengkap(pp.NORM) AS nama, pj.NOMOR AS sep, 0 AS dirujuk, 0 AS lanjutRi
+       ${MS}.getNamaLengkap(pp.NORM) AS nama, pj.NOMOR AS sep, 0 AS dirujuk, 0 AS lanjutRi,
+       0 AS pascaRi, NULL AS suratDipakai, NULL AS sepAsalSurat
      FROM ${LY}.pasien_pulang lpp
      JOIN ${PD}.kunjungan k ON k.NOMOR = lpp.KUNJUNGAN
      JOIN ${MS}.ruangan r ON r.ID = k.RUANGAN AND r.JENIS_KUNJUNGAN = 3
@@ -105,7 +116,12 @@ export async function queryPulangRawatInap(from: string, toEksklusif: string): P
 
 /**
  * Kunjungan BPJS poli rawat jalan (leg utama, bukan konsul `REF`) dengan tanggal
- * kunjungan di [from, toEksklusif) + penanda dirujuk / lanjut rawat inap.
+ * kunjungan di [from, toEksklusif) + penanda dirujuk / lanjut rawat inap / kontrol
+ * pasca rawat inap. Pasca RI = Surat Kontrol yang dipakai SEP kunjungan ini
+ * (`penjamin.NO_SURAT`) diterbitkan dari SEP rawat inap — lewat catatan lokal
+ * (`rencana_kontrol.nomor` → leg RI) atau cache BPJS (`jnsPelayanan` Rawat Inap).
+ * Diverifikasi 24 Nov 2026 = penanda VClaim `bpjs.kunjungan.noRujukan` → SEP RI
+ * (Okt 37/37), tetapi berindeks (± 10 ms vs ± 500 ms pindai penuh `bpjs.kunjungan`).
  */
 export async function queryKunjunganRawatJalan(from: string, toEksklusif: string): Promise<EpisodeRow[]> {
   const rows = await query<EpisodeMentah>(
@@ -117,7 +133,19 @@ export async function queryKunjunganRawatJalan(from: string, toEksklusif: string
         OR EXISTS (SELECT 1 FROM ${BP}.rujukan bj WHERE pj.NOMOR <> '' AND bj.noSep = pj.NOMOR)) AS dirujuk,
        (EXISTS (SELECT 1 FROM ${MR}.perencanaan_rawat_inap p WHERE p.KUNJUNGAN = k.NOMOR AND p.STATUS = 1)
         OR EXISTS (SELECT 1 FROM ${PD}.kunjungan k3 JOIN ${MS}.ruangan r3 ON r3.ID = k3.RUANGAN AND r3.JENIS_KUNJUNGAN = 3
-                   WHERE k3.NOPEN = k.NOPEN AND k3.STATUS IN (1, 2))) AS lanjutRi
+                   WHERE k3.NOPEN = k.NOPEN AND k3.STATUS IN (1, 2))) AS lanjutRi,
+       NULLIF(TRIM(pj.NO_SURAT), '') AS suratDipakai,
+       COALESCE(
+         (SELECT rk.nomor FROM ${BP}.rencana_kontrol rk WHERE pj.NO_SURAT <> '' AND rk.noSurat = pj.NO_SURAT AND rk.jnsKontrol = 2 LIMIT 1),
+         (SELECT m.noSepAsalKontrol FROM ${BP}.monitoring_rencana_kontrol m WHERE pj.NO_SURAT <> '' AND m.noSuratKontrol = pj.NO_SURAT AND m.jnsKontrol = '2' LIMIT 1)
+       ) AS sepAsalSurat,
+       (EXISTS (SELECT 1 FROM ${BP}.rencana_kontrol rk
+                JOIN ${PD}.penjamin pr ON pr.NOMOR = rk.nomor AND pr.JENIS = 2
+                JOIN ${PD}.kunjungan kr ON kr.NOPEN = pr.NOPEN
+                JOIN ${MS}.ruangan rr ON rr.ID = kr.RUANGAN AND rr.JENIS_KUNJUNGAN = 3
+                WHERE pj.NO_SURAT <> '' AND rk.noSurat = pj.NO_SURAT AND rk.jnsKontrol = 2)
+        OR EXISTS (SELECT 1 FROM ${BP}.monitoring_rencana_kontrol m
+                   WHERE pj.NO_SURAT <> '' AND m.noSuratKontrol = pj.NO_SURAT AND m.jnsKontrol = '2' AND m.jnsPelayanan = 'Rawat Inap')) AS pascaRi
      FROM ${PD}.kunjungan k FORCE INDEX (MASUK)
      JOIN ${MS}.ruangan r ON r.ID = k.RUANGAN AND r.JENIS = 5 AND r.JENIS_KUNJUNGAN = 1
      JOIN ${PD}.pendaftaran pp ON pp.NOMOR = k.NOPEN AND pp.STATUS IN (1, 2)

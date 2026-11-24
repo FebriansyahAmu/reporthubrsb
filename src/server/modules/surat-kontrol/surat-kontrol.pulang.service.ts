@@ -5,8 +5,8 @@ import { getRuanganResolver } from "@/server/modules/audit-rme/audit.resolver";
 import { ambilRencanaKontrolBpjs } from "./surat-kontrol.bpjs";
 import { MAKS_HARI_KE_DEPAN } from "./surat-kontrol.constants";
 import { tambahHari } from "./surat-kontrol.filter";
-import { nilaiEpisode, selisihHari, urutkanPulang } from "./surat-kontrol.pulang";
-import { CARA_PULANG, CARA_WAJIB_KONTROL, type LayananPulang } from "./surat-kontrol.pulang.constants";
+import { nilaiEpisode, selisihHari, tentukanWajib, urutkanPulang } from "./surat-kontrol.pulang";
+import { CARA_PULANG, type LayananPulang } from "./surat-kontrol.pulang.constants";
 import {
   queryCacheSuratPerNomor,
   queryCacheSuratPerSep,
@@ -201,14 +201,7 @@ export async function getAuditTerbitPulang(q: PulangQuery, now: Date = new Date(
     const surat = new Map<string, SuratPulang>();
     for (const s of [...(sep ? (perSep.get(sep) ?? []) : []), ...(perKunjungan.get(r.kunjungan) ?? [])]) surat.set(s.noSurat, s);
     const j = jadwalPerKunjungan.get(r.kunjungan);
-    const wajib = layanan === "RI" ? r.cara == null || r.cara === CARA_WAJIB_KONTROL : !r.dirujuk && !r.lanjutRi;
-    const alasanTidakWajib = wajib
-      ? null
-      : layanan === "RI"
-        ? (CARA_PULANG[r.cara ?? -1] ?? `Cara keluar #${r.cara}`)
-        : r.lanjutRi
-          ? "Lanjut rawat inap"
-          : "Dirujuk ke faskes lain";
+    const { wajib, alasan: alasanTidakWajib } = tentukanWajib(layanan, r);
     return nilaiEpisode(
       {
         key: `${layanan}-${r.kunjungan}`,
@@ -226,6 +219,7 @@ export async function getAuditTerbitPulang(q: PulangQuery, now: Date = new Date(
         caraLabel: r.cara != null ? (CARA_PULANG[r.cara] ?? `Cara keluar #${r.cara}`) : null,
         wajib,
         alasanTidakWajib,
+        kontrolPascaRi: layanan === "RJ" && r.pascaRi ? { suratDipakai: r.suratDipakai, sepRawatInap: r.sepAsalSurat } : null,
         surat: [...surat.values()],
         jadwalTanpaSurat: j && j.aktif && !j.referensi ? { tanggal: j.tanggal, jam: j.jam } : null,
       },

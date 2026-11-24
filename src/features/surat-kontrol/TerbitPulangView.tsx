@@ -539,6 +539,7 @@ function Kepatuhan({
   onLayanan: (l: LayananPulang) => void;
 }) {
   const tidakDinilai = r.perStatus.TIDAK_WAJIB + r.perStatus.TAK_TERVERIFIKASI;
+  const pascaRi = r.pascaRiTidakWajib;
   return (
     <Card className="min-w-0 p-4 sm:p-5">
       <section aria-labelledby="tp-kepatuhan-judul">
@@ -634,6 +635,7 @@ function Kepatuhan({
                     className={cn("rounded-sm font-medium underline-offset-2 hover:text-fg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring", status === k ? "text-brand underline" : "text-fg-muted")}
                   >
                     {formatNumber(r.perStatus[k])} {STATUS_PULANG[k].label.toLowerCase()}
+                    {k === "TIDAK_WAJIB" && pascaRi > 0 && ` (${formatNumber(pascaRi)} kontrol pasca rawat inap)`}
                   </button>
                 ) : null,
               )}
@@ -839,6 +841,11 @@ function BarisPulang({ e, aktif, hariIni, onPilih }: { e: EpisodePulang; aktif: 
               {acuan.poliTujuan ? ` · ${acuan.poliTujuan.nama ?? acuan.poliTujuan.kode}` : ""}
             </span>
             {e.surat.length > 1 && <span className="block text-[10px] text-fg-subtle">+{e.surat.length - 1} surat lain</span>}
+          </>
+        ) : e.kontrolPascaRi ? (
+          <>
+            <span className="block text-xs font-medium text-fg-muted">Tidak dapat terbit</span>
+            <span className="block max-w-48 truncate text-[11px] text-fg-subtle">kontrol pasca RI{e.kontrolPascaRi.suratDipakai ? ` · pakai ${e.kontrolPascaRi.suratDipakai}` : ""}</span>
           </>
         ) : belum ? (
           <>

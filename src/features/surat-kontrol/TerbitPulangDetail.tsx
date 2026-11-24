@@ -45,6 +45,13 @@ export function TerbitPulangDetail({ e, hariIni }: { e: EpisodePulang; hariIni: 
                 ["Layanan", LAYANAN_PULANG[e.layanan].label],
                 [e.layanan === "RI" ? "Ruangan" : "Poli", e.ruangan?.nama ?? null],
                 ...(e.layanan === "RI" ? [["Cara pulang", e.caraLabel] as [string, string | null]] : []),
+                ...(e.kontrolPascaRi
+                  ? [
+                      ["Jenis kunjungan", "Kontrol pasca rawat inap"] as [string, string | null],
+                      ["Surat dipakai", e.kontrolPascaRi.suratDipakai, true] as [string, string | null, boolean],
+                      ["SEP rawat inap", e.kontrolPascaRi.sepRawatInap, true] as [string, string | null, boolean],
+                    ]
+                  : []),
                 ["DPJP", e.dokter],
                 ["SEP", e.sep, true],
               ]}
@@ -128,7 +135,9 @@ function saran(e: EpisodePulang): string {
     case "TEPAT":
       return "Sudah sesuai aturan: Surat Kontrol terbit di hari pasien pulang.";
     case "TIDAK_WAJIB":
-      return `Tidak perlu tindakan — ${e.alasanTidakWajib ?? "pasien tidak wajib kontrol"}.`;
+      return e.kontrolPascaRi
+        ? "Kontrol pasca rawat inap: kunjungan ini memakai Surat Kontrol dari SEP rawat inap, sehingga BPJS tidak menerbitkan Surat Kontrol baru. Kontrol berikutnya memerlukan rujukan baru dari FKTP."
+        : `Tidak perlu tindakan — ${e.alasanTidakWajib ?? "pasien tidak wajib kontrol"}.`;
   }
 }
 

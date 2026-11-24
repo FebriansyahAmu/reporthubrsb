@@ -3,6 +3,8 @@
  * (layanan & ekspor) DAN klien (saringan instan) agar isi berkas = layar.
  */
 import {
+  CARA_PULANG,
+  CARA_WAJIB_KONTROL,
   STATUS_DINILAI,
   STATUS_PULANG,
   STATUS_PULANG_KEYS,
@@ -20,6 +22,28 @@ export function selisihHari(a: string, b: string): number {
 }
 
 export type EpisodeMasukan = Omit<EpisodePulang, "noSuratAcuan" | "selisihHari" | "hariSejakPulang" | "status">;
+
+export const ALASAN_PASCA_RI = "Kontrol pasca rawat inap";
+
+/**
+ * Wajib Surat Kontrol? RI: hanya cara keluar 1 (Diizinkan pulang; tak diketahui =
+ * wajib). RJ: wajib, KECUALI lanjut rawat inap, kontrol pasca rawat inap (BPJS
+ * tidak menerbitkan Surat Kontrol baru dari kunjungan ini — kontrol berikutnya
+ * perlu rujukan FKTP baru), atau dirujuk ke faskes lain.
+ */
+export function tentukanWajib(
+  layanan: LayananPulang,
+  f: { cara: number | null; dirujuk: boolean; lanjutRi: boolean; pascaRi: boolean },
+): { wajib: boolean; alasan: string | null } {
+  if (layanan === "RI") {
+    const wajib = f.cara == null || f.cara === CARA_WAJIB_KONTROL;
+    return { wajib, alasan: wajib ? null : (CARA_PULANG[f.cara ?? -1] ?? `Cara keluar #${f.cara}`) };
+  }
+  if (f.lanjutRi) return { wajib: false, alasan: "Lanjut rawat inap" };
+  if (f.pascaRi) return { wajib: false, alasan: ALASAN_PASCA_RI };
+  if (f.dirujuk) return { wajib: false, alasan: "Dirujuk ke faskes lain" };
+  return { wajib: true, alasan: null };
+}
 
 const urutSurat = (a: SuratPulang, b: SuratPulang) =>
   Number(b.aktif) - Number(a.aktif) ||
@@ -107,14 +131,18 @@ export type RingkasPulang = {
   kepatuhan: number | null;
   /** Belum terbit dengan tanggal pulang = hari ini (masih bisa diterbitkan tepat waktu). */
   belumHariIni: number;
+  /** Tidak wajib karena kontrol pasca rawat inap (Surat Kontrol baru tak dapat terbit). */
+  pascaRiTidakWajib: number;
 };
 
 export function ringkasPulang(eps: readonly EpisodePulang[], hariIni: string): RingkasPulang {
   const perStatus = Object.fromEntries(STATUS_PULANG_KEYS.map((k) => [k, 0])) as Record<StatusPulang, number>;
   let belumHariIni = 0;
+  let pascaRiTidakWajib = 0;
   for (const e of eps) {
     perStatus[e.status]++;
     if (e.status === "BELUM_TERBIT" && e.tglPulang === hariIni) belumHariIni++;
+    if (e.status === "TIDAK_WAJIB" && e.kontrolPascaRi) pascaRiTidakWajib++;
   }
   const dinilai = STATUS_DINILAI.reduce((n, k) => n + perStatus[k], 0);
   return {
@@ -123,6 +151,7 @@ export function ringkasPulang(eps: readonly EpisodePulang[], hariIni: string): R
     perStatus,
     kepatuhan: dinilai ? Math.round((perStatus.TEPAT / dinilai) * 1000) / 10 : null,
     belumHariIni,
+    pascaRiTidakWajib,
   };
 }
 

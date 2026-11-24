@@ -53,7 +53,7 @@ export const STATUS_PULANG = {
     pendek: "Tidak wajib",
     nada: "neutral",
     dinilai: false,
-    jelas: "Cara pulang tidak memerlukan Surat Kontrol (dirujuk, pulang paksa, meninggal, lanjut rawat inap, dll.) dan memang tidak ada surat.",
+    jelas: "Surat Kontrol tidak diperlukan atau tidak dapat diterbitkan (kontrol pasca rawat inap — kontrol berikutnya perlu rujukan FKTP baru; dirujuk; pulang paksa; meninggal; lanjut rawat inap; dll.) dan memang tidak ada surat.",
   },
 } as const satisfies Record<string, { label: string; pendek: string; nada: NadaPulang; dinilai: boolean; jelas: string }>;
 

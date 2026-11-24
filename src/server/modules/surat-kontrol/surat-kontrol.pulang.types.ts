@@ -42,8 +42,14 @@ export type EpisodePulang = {
   cara: number | null;
   caraLabel: string | null;
   wajib: boolean;
-  /** Mengapa tidak wajib (cara pulang / dirujuk / lanjut rawat inap). */
+  /** Mengapa tidak wajib (cara pulang / kontrol pasca RI / dirujuk / lanjut rawat inap). */
   alasanTidakWajib: string | null;
+  /**
+   * RJ: kunjungan ini KONTROL PASCA RAWAT INAP — SEP-nya memakai Surat Kontrol dari
+   * SEP rawat inap, sehingga BPJS tidak menerbitkan Surat Kontrol baru; kontrol
+   * berikutnya perlu rujukan baru dari FKTP.
+   */
+  kontrolPascaRi: { suratDipakai: string | null; sepRawatInap: string | null } | null;
   /** Semua surat tertaut, urut tanggal terbit. */
   surat: SuratPulang[];
   /** Surat acuan penilaian = surat aktif dengan tanggal terbit paling awal. */

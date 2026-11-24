@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ValidationError } from "@/server/lib/errors";
 import {
+  ALASAN_PASCA_RI,
+  tentukanWajib,
   nilaiEpisode,
   ringkasPulang,
   ringkasPulangPerHari,
@@ -44,9 +46,40 @@ const ep = (o: Partial<EpisodeMasukan> = {}): EpisodeMasukan => ({
   caraLabel: "Diizinkan pulang",
   wajib: true,
   alasanTidakWajib: null,
+  kontrolPascaRi: null,
   surat: [],
   jadwalTanpaSurat: null,
   ...o,
+});
+
+describe("tentukanWajib", () => {
+  const f = { cara: null as number | null, dirujuk: false, lanjutRi: false, pascaRi: false };
+  it("RI: hanya cara keluar 1 (atau tak diketahui) yang wajib; lainnya beralasan cara keluar", () => {
+    expect(tentukanWajib("RI", { ...f, cara: 1 })).toEqual({ wajib: true, alasan: null });
+    expect(tentukanWajib("RI", f)).toEqual({ wajib: true, alasan: null });
+    expect(tentukanWajib("RI", { ...f, cara: 2 })).toEqual({ wajib: false, alasan: "Pulang paksa (APS)" });
+    expect(tentukanWajib("RI", { ...f, cara: 6 }).alasan).toBe("Meninggal");
+    expect(tentukanWajib("RI", { ...f, cara: 99 }).alasan).toBe("Cara keluar #99");
+    // Penanda RJ tidak berlaku untuk RI.
+    expect(tentukanWajib("RI", { ...f, cara: 1, pascaRi: true, dirujuk: true }).wajib).toBe(true);
+  });
+  it("RJ: kontrol pasca rawat inap TIDAK wajib (Surat Kontrol baru perlu rujukan FKTP)", () => {
+    expect(tentukanWajib("RJ", { ...f, pascaRi: true })).toEqual({ wajib: false, alasan: ALASAN_PASCA_RI });
+  });
+  it("RJ: urutan alasan lanjut RI → pasca RI → dirujuk; tanpa penanda = wajib", () => {
+    expect(tentukanWajib("RJ", f)).toEqual({ wajib: true, alasan: null });
+    expect(tentukanWajib("RJ", { ...f, dirujuk: true }).alasan).toBe("Dirujuk ke faskes lain");
+    expect(tentukanWajib("RJ", { ...f, dirujuk: true, pascaRi: true }).alasan).toBe(ALASAN_PASCA_RI);
+    expect(tentukanWajib("RJ", { ...f, dirujuk: true, pascaRi: true, lanjutRi: true }).alasan).toBe("Lanjut rawat inap");
+  });
+  it("pasca RI tanpa surat → TIDAK_WAJIB & terhitung di ringkasan", () => {
+    const e = nilaiEpisode(
+      ep({ layanan: "RJ", key: "RJ-P", cara: null, wajib: false, alasanTidakWajib: ALASAN_PASCA_RI, kontrolPascaRi: { suratDipakai: "0491R0011126K000001", sepRawatInap: "0491R0011126V000001" } }),
+      HARI_INI,
+    );
+    expect(e.status).toBe("TIDAK_WAJIB");
+    expect(ringkasPulang([e], HARI_INI)).toMatchObject({ pascaRiTidakWajib: 1, dinilai: 0 });
+  });
 });
 
 describe("selisihHari", () => {

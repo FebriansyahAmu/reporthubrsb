@@ -140,9 +140,15 @@ Cakupan UI: tabel lebar penuh, drawer perbandingan dan navigasinya, saringan tem
 | Layanan | Episode | Tanggal pulang | Wajib Surat Kontrol |
 |---|---|---|---|
 | Rawat Inap | `layanan.pasien_pulang` aktif, kunjungan pulang di ruangan `JENIS_KUNJUNGAN = 3`, penjamin terbaru BPJS (`penjamin.JENIS = 2`) | `pasien_pulang.TANGGAL` | Cara keluar **1 Diizinkan pulang** (ref. 45). Pulang paksa, dirujuk, lari, pindah RS, meninggal, DOA = tidak wajib. |
-| Rawat Jalan | Kunjungan poli `JENIS_KUNJUNGAN = 1` (leg utama, `REF IS NULL`), penjamin BPJS | `DATE(kunjungan.MASUK)` | Ya, kecuali **dirujuk** (`pendaftaran.rujukan_keluar` / `bpjs.rujukan`) atau **lanjut rawat inap** (SPRI dari kunjungan / leg RI di NOPEN sama). |
+| Rawat Jalan | Kunjungan poli `JENIS_KUNJUNGAN = 1` (leg utama, `REF IS NULL`), penjamin BPJS | `DATE(kunjungan.MASUK)` | Ya, kecuali **lanjut rawat inap** (SPRI dari kunjungan / leg RI di NOPEN sama), **kontrol pasca rawat inap** (lihat di bawah), atau **dirujuk** (`pendaftaran.rujukan_keluar` / `bpjs.rujukan`). |
 
-Rawat jalan tidak punya catatan "rujuk balik ke FKTP" di SIMGOS (`bpjs.prb` kosong). Pasien rawat jalan yang memang dikembalikan ke FKTP tetap tampil sebagai **Belum terbit**, dan petugas memutuskannya dari daftar.
+**Kontrol pasca rawat inap.** Pasien pulang rawat inap diberi Surat Kontrol dari SEP rawat inapnya. Saat datang kontrol ke poli, SEP rawat jalannya memakai surat itu, dengan rujukan = SEP rawat inap. Dari kunjungan seperti ini **BPJS tidak menerbitkan Surat Kontrol baru**. Kontrol berikutnya memerlukan rujukan baru dari FKTP. Karena itu kunjungan ini berstatus **Tidak wajib kontrol** (alasan "Kontrol pasca rawat inap"), bukan Belum terbit.
+- **Deteksi:** `pendaftaran.penjamin.NO_SURAT` (surat yang dipakai) dirunut ke SEP asal lewat `bpjs.rencana_kontrol.nomor`. Bila SEP itu milik episode dengan leg rawat inap, atau cache BPJS mencatat `jnsPelayanan = 'Rawat Inap'`, kunjungan dianggap kontrol pasca rawat inap.
+- **Indeks:** jalur ini berindeks (± 10 ms). Penanda VClaim `bpjs.kunjungan.noRujukan` → SEP RI memberi hasil yang sama (Okt 37/37), tetapi memerlukan pindai penuh (± 500 ms).
+- **Tanpa SEP:** jalur ini juga menangkap kunjungan yang SEP-nya tidak tercatat di `penjamin`.
+- **Contoh:** NOPEN 2611200018, poli Interna. SEP V000262 memakai Surat Kontrol K000239 dari SEP rawat inap V000148 (NOPEN 2611120039).
+
+Rawat jalan tidak punya catatan "rujuk balik ke FKTP" di SIMGOS (`bpjs.prb` kosong). Pasien rawat jalan biasa yang memang dikembalikan ke FKTP tetap tampil sebagai **Belum terbit**, dan petugas memutuskannya dari daftar.
 
 ### Tanggal terbit & penautan surat
 
@@ -169,7 +175,7 @@ Rawat jalan tidak punya catatan "rujuk balik ke FKTP" di SIMGOS (`bpjs.prb` koso
 | Terbit setelah pulang | ✓ | tanggal terbit > tanggal pulang |
 | Belum terbit | ✓ | tanpa surat aktif, dan wajib kontrol. Disorot merah; ditandai bila sudah ada jadwal SIMRS tanpa nomor BPJS (belum di-bridging). |
 | Tanggal terbit belum terbaca | — | surat aktif tanpa tanggal terbit dari BPJS/cache |
-| Tidak wajib kontrol | — | tanpa surat dan tidak wajib (cara pulang / dirujuk / lanjut RI). Bila punya surat, tanggalnya tetap dinilai. |
+| Tidak wajib kontrol | — | tanpa surat dan tidak wajib (cara pulang / kontrol pasca rawat inap / dirujuk / lanjut RI). Bila punya surat, tanggalnya tetap dinilai. Ringkasan menyebut berapa yang merupakan kontrol pasca rawat inap. |
 
 **Kepatuhan** = terbit di hari pulang ÷ (empat status yang dinilai).
 
@@ -224,15 +230,14 @@ Meta-audit fail-closed tetap `audit-rme.surat-kontrol.ekspor`, dengan `metadata.
 
 | Uji | Hasil |
 |---|---|
-| Unit | 19 uji baru (`surat-kontrol.pulang.test.ts`: aturan status, acuan surat terawal, saringan, ringkasan, rentang, skema); seluruh suite 819 ✓ |
-| API vs oracle SQL independen | Okt 2026: 268/268 episode (RI 165, RJ 103) status sama; Nov 2026 (s.d. 24): 276/276 |
+| Unit | 23 uji baru (`surat-kontrol.pulang.test.ts`: aturan status, wajib/tidak wajib termasuk kontrol pasca RI, acuan surat terawal, saringan, ringkasan, rentang, skema); suite surat-kontrol 45 ✓ |
+| API vs oracle SQL independen | Okt 2026: 268/268 episode (RI 165, RJ 103) status sama; Nov 2026 (s.d. 24): 279/279. Kontrol pasca RI aplikasi = oracle VClaim (`noRujukan` → SEP RI, + surat → SEP RI untuk kunjungan tanpa SEP): Okt 37/37. Kasus contoh NOPEN 2611200018 → Tidak wajib, surat K000239 dari SEP RI V000148 |
 | Validasi & RBAC | 422 (rentang > 31 hari, tanggal tak sah, `segar` salah); 401 tanpa sesi; 403 modul lain; 403 ekspor tanpa `print`; halaman → `/403` |
 | Ekspor | isi lembar = baris layar (44 belum terbit Okt); 3 lembar; meta-audit tercatat tanpa PHI, kata kunci disamarkan |
 | UI Chrome headless | tab (aktivasi manual, garis bawah, `?tampilan=`), angka kepatuhan = API, sorotan & saringan belum terbit, layanan, ruangan, ↑/↓ + Enter → laci (urutan kejadian, Berikutnya, Escape), tab BPJS ↔ SIMRS (tabel semantik), 768/390/360 px (tabel bertumpuk, tanpa gulir-x, target sentuh ≥ 44 px), tanpa galat JS/CSP |
 
-Okt 2026: kepatuhan 60,6% (137 dari 226 dinilai):
-- 41 terbit **sebelum** pulang;
-- 4 terbit setelah pulang;
-- 44 belum terbit, sebagian besar rawat jalan.
+Setelah aturan kontrol pasca rawat inap:
+- **Okt 2026:** kepatuhan 72,5% (137 dari 189 dinilai). 41 terbit **sebelum** pulang, 4 terbit setelah pulang, 7 belum terbit. Sebelum aturan ini: 60,6% dengan 44 belum terbit, karena 37 kunjungan pasca RI ikut terhitung.
+- **Nov 2026 (s.d. 24):** kepatuhan 80,6% (162 dari 201). Belum terbit 6: 4 rawat inap, 2 rawat jalan. Kunjungan pasca RI ada 45.
 
 Respons API ± 0,5 dtk dari cache. Bila perlu melengkapi dari BPJS, ± 2–6 dtk. Surat yang tanggalnya tetap tak ditemukan baru dicari ulang setelah 30 menit.

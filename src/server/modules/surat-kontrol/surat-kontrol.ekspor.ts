@@ -205,6 +205,7 @@ const KOLOM_PULANG: ExcelColumn<EpisodePulang>[] = [
   { header: "DPJP", width: 26, value: (r) => r.dokter ?? "" },
   { header: "Cara Pulang", width: 20, value: (r) => r.caraLabel ?? "" },
   { header: "Wajib Kontrol", width: 24, value: (r) => (r.wajib ? "Ya" : `Tidak — ${r.alasanTidakWajib ?? ""}`) },
+  { header: "Kontrol Pasca RI: Surat Dipakai", width: 22, value: (r) => (r.kontrolPascaRi ? (r.kontrolPascaRi.suratDipakai ?? "Ya") : ""), text: true },
   { header: "No. Surat Kontrol", width: 22, value: (r) => r.noSuratAcuan ?? "", text: true },
   { header: "Tgl Terbit (BPJS)", width: 14, value: (r) => tglId(acuanSurat(r)?.tglTerbit), align: "center" },
   { header: "Selisih (hari)", width: 11, value: (r) => r.selisihHari ?? "", numFmt: "+0;-0;0", align: "center" },
