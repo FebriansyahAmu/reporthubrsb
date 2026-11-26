@@ -241,3 +241,106 @@ Setelah aturan kontrol pasca rawat inap:
 - **Nov 2026 (s.d. 24):** kepatuhan 80,6% (162 dari 201). Belum terbit 6: 4 rawat inap, 2 rawat jalan. Kunjungan pasca RI ada 45.
 
 Respons API ± 0,5 dtk dari cache. Bila perlu melengkapi dari BPJS, ± 2–6 dtk. Surat yang tanggalnya tetap tak ditemukan baru dicari ulang setelah 30 menit.
+
+## 11. Kontrol = SEP (26 Nov 2026)
+
+**Pertanyaan audit:** kapan surat yang **dipakai** sebuah SEP dientri di BPJS? Bila tanggal entri Surat Kontrol (`tglTerbitKontrol`) **sama** dengan tanggal SEP kunjungan kontrol, surat itu baru dibuat saat pasien datang kontrol. Contoh: pasien datang ke poli hari Kamis; rawat inap tidak menerbitkan Surat Kontrol saat pasien pulang; surat baru dibuat Kamis itu, bersamaan dengan SEP-nya. Tautan: `/audit-rme/surat-kontrol?tampilan=sep` (tab ketiga halaman Audit Surat Kontrol).
+
+### Kode jenis surat BPJS (`jnsKontrol`)
+
+| Kode | `namaJnsKontrol` | Dipakai oleh | Nomor asal |
+|---|---|---|---|
+| **2** | Surat Kontrol | SEP rawat jalan (kunjungan kontrol) | SEP kunjungan sebelumnya (`noSepAsalKontrol` / `rencana_kontrol.nomor`) |
+| **1** | SPRI | SEP rawat inap | No. kartu (`rencana_kontrol.nomor`). ⚠️ Untuk SPRI, `noSepAsalKontrol` menunjuk SEP rawat inap **pemakainya**, bukan asal — tidak dipakai sebagai "SEP asal". |
+
+Nomor surat kedua jenis berformat sama (19 karakter, huruf `K` di posisi 13); satu-satunya pembeda adalah `jnsKontrol`. Parameter `filter` pada webservice adalah jenis tanggal saringan VClaim: `2` = tanggal rencana (dipakai); `1` = tanggal entri **ditolak plugin SIMGOS (HTTP 500)**.
+
+### Populasi = daftar VClaim
+
+Satu baris = **satu surat** hasil webservice `plugins/bpjs/rencanaKontrol` (filter 2) untuk rentang **tanggal rencana** — sama dengan daftar Monitoring Rencana Kontrol VClaim (Nov 2026 s.d. 26: **451** surat = VClaim). Versi awal tab ini (SEP yang memakai surat menurut tanggal SEP) hanya 301, karena 150 Surat Kontrol yang **belum dipakai SEP** (`terbitSEP = Belum`) tidak ikut.
+
+| Nov 2026 (rencana 1–26) | Jumlah |
+|---|---|
+| SPRI dipakai SEP | 231 |
+| SPRI "sudah dipakai" menurut BPJS, SEP tak ada di SIMGOS | 1 |
+| Surat Kontrol dipakai SEP | 69 |
+| Surat Kontrol belum dipakai SEP | 150 |
+| **Total** | **451** |
+
+- **Sumber daftar:** webservice BPJS (live) lewat klien yang sama dengan tab BPJS ↔ SIMRS (cache 5 menit, maks. 2 panggilan bersamaan, segar ≥ 30 detik, **satu kali coba ulang** untuk 5xx/jaringan — plugin sesekali membalas 500 sesaat). Panggilan menulis cache `bpjs.monitoring_rencana_kontrol` — perilaku plugin yang sudah disetujui (§1). Bila webservice tetap gagal, daftar diambil dari cache itu menurut `tglRencanaKontrol` (hanya surat yang pernah diambil) dan layar menampilkan peringatan.
+- **SEP pemakai:** `bpjs.kunjungan.noSuratSKDP IN (…)`, `batalSEP = 0`, **`FORCE INDEX (noSuratSKDP)`** (tanpa itu optimizer memindai penuh: ± 5 dtk → ± 0,5–1 dtk). Surat dipakai > 1 SEP → SEP pertama; jumlahnya ditampilkan.
+- **Pasien:** dari SEP pemakai (`penjamin.NOMOR = noSEP`, JENIS 2, ID terbesar → `pendaftaran` → nama; ruangan = leg rawat inap atau `tujuan_pasien.RUANGAN`). Surat belum dipakai: lewat SEP asal (Surat Kontrol), selain itu nama dari BPJS.
+- **SEP asal Surat Kontrol:** `bpjs.kunjungan` lewat PRIMARY `(noKartu, noSEP)` — jenis pelayanan asal dan `tglPlg` (tanggal pulang RI; sama dengan `pasien_pulang`, 93/93).
+- **Catatan lokal** `bpjs.rencana_kontrol` (PRIMARY): penerbit (`user`) dan status hapus.
+
+### Status
+
+| Status | Aturan | Persentase |
+|---|---|---|
+| Terbit bersama SEP (**Surat = SEP**) | tanggal entri = tanggal SEP pemakai — temuan; Surat Kontrol disorot merah | dihitung |
+| Terbit setelah SEP | tanggal entri > tanggal SEP (surat dientri belakangan) | dihitung |
+| Terbit sebelum SEP | tanggal entri < tanggal SEP | dihitung |
+| Tanggal entri belum terbaca | dipakai SEP tetapi tanggal entri tak ada | — |
+| SEP tak tercatat di SIMGOS | BPJS `terbitSEP = Sudah`, tetapi SEP tak ada / batal di `bpjs.kunjungan` (mis. dibuat langsung di VClaim) | — |
+| Belum dipakai SEP | tanpa SEP pemakai (pasien belum/tidak datang pada rencana) | — |
+
+Persentase = surat = SEP ÷ surat yang sudah dipakai SEP dengan tanggal entri terbaca. Surat Kontrol = SEP dipecah menurut asal: **rawat inap** (tidak terbit saat pasien pulang) dan **rawat jalan**.
+
+### Tampilan
+
+- **Jenis surat** (kontrol segmen): **Surat Kontrol** (bawaan, kode 2) / **Kontrol + SPRI** (= jumlah VClaim) / **SPRI saja** (kode 1) / **Summary** (lihat di bawah).
+- **Saringan:** tanggal rencana (preset sama dengan §10, maks. 31 hari, tak melewati hari ini); cari nama, RM, NOPEN, no. kartu, SEP, SEP asal, nomor surat, dokter, ruangan, penerbit surat, pembuat SEP.
+- **Ringkasan:** angka surat = SEP, jumlah surat di VClaim · dipakai SEP · **belum dipakai SEP** (klik = saring), batang komposisi, tiga tombol status; "SEP tak tercatat" & "belum terbaca" sebagai tautan saring; pada "Kontrol + SPRI" baris per jenis (klik = tampilkan satu jenis).
+- **Sorotan:** "Kontrol = SEP" (asal RI/RJ, tombol tampilkan); pada "SPRI saja" berganti "SPRI = SEP" (+ SPRI dientri setelah SEP).
+- **Grafik** sebaran per tanggal rencana (sebelum / setelah / bersama SEP / belum dipakai; klik = saring tanggal) & **per ruangan/poli** (surat belum dipakai → poli tujuan surat).
+- **Daftar:** tabel semantik bertumpuk < 48rem; kolom SEP pemakai (atau "Belum dipakai"), Surat (jenis, tanggal entri, rencana), Entri vs SEP (jejak −3…+3), Asal surat, Status; ↑/↓ + Enter.
+- **Laci rincian:** Kunjungan asal / Pasien pulang RI → Surat dientri (penerbit SIMGOS, rencana, poli, dokter, sumber tanggal) → SEP dibuat, atau **Rencana kontrol** bila belum dipakai; saran tindak lanjut (mis. rencana sudah lewat N hari).
+
+### Summary (rekap format audit BPJS)
+
+Pilihan **Summary** menggabungkan Surat Kontrol & SPRI tanpa saringan layar (kolom cari disembunyikan):
+
+- **Angka utama:** surat di BPJS (VClaim, per jenis) · sudah dipakai SEP (+ belum dipakai, klik = daftar) · **Dibuat setelah selesai pelayanan** (% audit BPJS, per jenis) · **Surat = SEP** (per jenis, + > SEP).
+- **Rekap format audit BPJS** — tabel seperti tarikan audit BPJS: baris Surat Kontrol / SPRI / Total; kolom **Surkon < SEP**, **= SEP**, **> SEP**, **Grand total**, dan **% dibuat setelah selesai pelayanan** (= Surkon < SEP ÷ Grand total, 2 desimal; batang hijau ≥ 80%, kuning ≥ 50%, merah < 50%, angka selalu tampil). Angka diklik → daftar jenis & status itu.
+- **Pemakaian surat (VClaim):** batang 100% per jenis — sebelum / setelah / bersama SEP, belum terbaca, SEP tak tercatat, belum dipakai (legenda berangka, klik = daftar).
+- **Sebaran per tanggal SEP:** batang bertumpuk Surkon < / > / = SEP.
+- **Rekap per ruangan/poli SEP:** Surat Kontrol (< = >) dan SPRI (< = >), total, % — tabel bergulir dengan judul baris lengket.
+
+**Basis tanggal berbeda, sengaja:** angka VClaim & pemakaian surat memakai **tanggal rencana** (= daftar VClaim); rekap audit, grafik harian & per ruangan memakai **SEP tidak batal bertanggal SEP di rentang** (= tarikan audit BPJS). Server mengirim `rekap` (satu baris per SEP: tanggal SEP, jenis, status, layanan, ruangan — tanpa data pasien); SEP yang suratnya bertanggal rencana di luar rentang dilengkapi lewat `querySepRentang` (FORCE INDEX tglSEP) + cache per nomor.
+
+**Rekonsiliasi dengan tabel audit BPJS (1–25 Nov 2026, RSUD Bolaang Mongondow Timur):** BPJS 132 / 420 / 26 = 578 (22,84%); SIMGOS 66 / 210 / 13 = **289** (22,84%) — setiap angka BPJS tepat 2× (semua angka di tabel BPJS genap untuk semua faskes → kemungkinan duplikasi pada tarikan BPJS; persentase tidak terpengaruh). Per jenis: Surat Kontrol 63 / 0 / 0 (**100%**), SPRI 3 / 210 / 13 (1,33%) — skor rendah berasal dari SPRI. Daftar VClaim 1–25 Nov = **430** surat (288 dipakai SEP, 141 belum dipakai, 1 SEP tak tercatat) — angka berbeda karena VClaim menghitung surat terbit, audit BPJS menghitung SEP yang memakai surat.
+
+### Ekspor Excel
+
+`GET /api/audit-rme/surat-kontrol/sep/ekspor?from&to&spri=1&jenis=1|2&status&ruangan&tanggal&q` (izin `print`), isi = layar, satu baris per surat: lembar **Kontrol = SEP** (termasuk "Dipakai SEP (BPJS)", SEP pemakai, no. kartu), **Ringkasan** (total VClaim, dipakai, per status, per jenis, asal RI/RJ), **Per Ruangan**, **Rekap Audit BPJS** (Surkon < / = / > SEP, Grand Total, % per jenis + total; basis tanggal SEP, tanpa saringan layar) dan **Rekap per Ruangan**. Summary mengekspor `spri=1` tanpa saringan. Tanpa `spri=1` hanya Surat Kontrol (`jenis=1` tanpa `spri=1` = kosong). Meta-audit fail-closed `audit-rme.surat-kontrol.ekspor`, `metadata.tampilan = "kontrol-sama-sep"`, kata kunci disamarkan.
+
+### Berkas
+
+| Lapisan | Berkas |
+|---|---|
+| Konstanta & tipe | `surat-kontrol.sep.constants.ts`, `surat-kontrol.sep.types.ts` |
+| Penilaian, saringan, ringkasan (murni) | `surat-kontrol.sep.ts` (+ `.test.ts`) |
+| SIMGOS (SELECT saja) | `surat-kontrol.sep.dal.ts` |
+| Layanan | `surat-kontrol.sep.service.ts` (memakai `muatPoli` dari `surat-kontrol.pulang.service.ts`) |
+| Webservice | `surat-kontrol.bpjs.ts` (bersama; + satu kali coba ulang 5xx/jaringan) |
+| Skema | `surat-kontrol.schema.ts` (`sepQuerySchema`, `eksporSepQuerySchema`) |
+| Ekspor | `surat-kontrol.ekspor.ts` (`buatEksporKontrolSep`) |
+| API | `src/app/api/audit-rme/surat-kontrol/sep/route.ts`, `…/sep/ekspor/route.ts` |
+| UI | `KontrolSepView.tsx`, `KontrolSepSummary.tsx` (Summary), `KontrolSepDetail.tsx`, `sep.ui.tsx`, `rentang.ts` (preset & penjepit rentang bersama `TerbitPulangView`); tab ketiga di `SuratKontrolHalaman.tsx`; `page.tsx` menerima `?tampilan=sep` |
+
+### Validasi (26 Nov 2026, data nyata, dev :3000)
+
+| Uji | Hasil |
+|---|---|
+| Unit | `surat-kontrol.sep.test.ts` (status termasuk belum dipakai & SEP tak tercatat, saringan jenis/SPRI tak bocor, tanggal rencana, urutan, ringkasan, per hari, per ruangan, rekap audit BPJS, skema); seluruh suite 843 ✓ |
+| API vs webservice + oracle SQL independen | Okt 2026: **371/371** surat = webservice (nomor identik), status & jenis sama; Nov 2026 (s.d. 26): **451/451** (= VClaim). Belum dipakai Okt 136 = `terbitSEP Belum` 136 |
+| Validasi & RBAC | 422 (rentang > 31 hari, tanggal tak sah, `segar`/`spri`/`jenis`/`status` salah); 401 tanpa sesi; 403 modul lain; 403 ekspor tanpa `print`; halaman → `/403` |
+| Rekap audit BPJS (Summary) | 1–25 Nov: API `rekap` 289 SEP = 66 / 210 / 13 (Kontrol 63/0/0, SPRI 3/210/13) = tabel BPJS ÷ 2; lembar Excel "Rekap Audit BPJS" Total 66/210/13/289/22,84; daftar VClaim 430 = VClaim; uji unit rekap (persen 2 desimal, belum terbaca di luar total, per hari, per ruangan) |
+| Ekspor | Kontrol = SEP Okt 3; belum dipakai Okt 133; `spri=1` 159; SPRI saja 173; `jenis=1` tanpa `spri` 0; 3 lembar; meta-audit tanpa PHI |
+| UI | belum diuji otomatis (dev Turbopack basi: `ChunkLoadError` HMR); diuji manual oleh user |
+
+Hasil:
+- **Okt 2026 (rencana):** 371 surat. Surat Kontrol 198: **3 = SEP** (2 asal rawat inap, 1 asal rawat jalan), 62 sebelum SEP, 133 belum dipakai. SPRI 173: 156 = SEP, 12 dientri setelah SEP, 2 sebelum, 3 belum dipakai.
+- **Nov 2026 (rencana 1–26):** 451 surat. Surat Kontrol 219: **0 = SEP**, 69 sebelum SEP, 150 belum dipakai. SPRI 232: 215 = SEP, 13 setelah SEP, 3 sebelum, 1 SEP tak tercatat di SIMGOS.
+
+Kinerja: webservice ± 1,3 dtk (26 hari); kueri SIMGOS bila diukur langsung ± 1,5–2,5 dtk total. Di dev server (sedang basi) API 5–9 dtk; belum diukur di build produksi.

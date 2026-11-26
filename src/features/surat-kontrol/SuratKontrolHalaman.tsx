@@ -1,20 +1,27 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ArrowLeftRight, CalendarCheck2 } from "lucide-react";
+import { ArrowLeftRight, CalendarCheck2, IdCard } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { AuditSuratKontrolView } from "./AuditSuratKontrolView";
+import { KontrolSepView } from "./KontrolSepView";
 import { TerbitPulangView } from "./TerbitPulangView";
 
-export type TampilanSuratKontrol = "pulang" | "bpjs";
+export type TampilanSuratKontrol = "pulang" | "sep" | "bpjs";
 
 const TAB = [
   { key: "pulang", label: "Terbit saat pulang", ket: "Tanggal terbit vs tanggal pulang pasien BPJS", ikon: CalendarCheck2 },
+  { key: "sep", label: "Kontrol = SEP", ket: "Tanggal entri surat vs tanggal SEP pemakainya", ikon: IdCard },
   { key: "bpjs", label: "Jadwal BPJS ↔ SIMRS", ket: "Surat Kontrol & SPRI di BPJS vs jadwal SIMRS", ikon: ArrowLeftRight },
 ] as const;
 
+const LENCANA: Partial<Record<TampilanSuratKontrol, (n: number) => string>> = {
+  pulang: (n) => `${n} pasien belum terbit`,
+  sep: (n) => `${n} surat terbit bersama SEP`,
+};
+
 /**
- * Halaman Audit Surat Kontrol: dua tampilan dalam satu tablist. Seleksi lewat
+ * Halaman Audit Surat Kontrol: tiga tampilan dalam satu tablist. Seleksi lewat
  * AKTIVASI (panah memindah fokus, Enter/Spasi memilih) karena memilih tab
  * mengubah URL (`?tampilan=`) dan memuat data. Panel dipasang saat pertama
  * dibuka lalu disembunyikan (`hidden`) — saringan tetap saat berpindah tab.
@@ -23,6 +30,8 @@ export function SuratKontrolHalaman({ awal, bolehEkspor }: { awal: TampilanSurat
   const [tab, setTab] = useState<TampilanSuratKontrol>(awal);
   const [terpasang, setTerpasang] = useState<ReadonlySet<TampilanSuratKontrol>>(() => new Set([awal]));
   const [belum, setBelum] = useState<number | null>(null);
+  const [samaSep, setSamaSep] = useState<number | null>(null);
+  const lencana: Partial<Record<TampilanSuratKontrol, number | null>> = { pulang: belum, sep: samaSep };
   const tombol = useRef<Partial<Record<TampilanSuratKontrol, HTMLButtonElement | null>>>({});
 
   function pilih(t: TampilanSuratKontrol) {
@@ -32,6 +41,8 @@ export function SuratKontrolHalaman({ awal, bolehEkspor }: { awal: TampilanSurat
     if (t === "pulang") url.searchParams.delete("tampilan");
     else url.searchParams.set("tampilan", t);
     window.history.replaceState(window.history.state, "", url);
+    // Tablist menggulir di layar sempit: tampilkan tab terpilih tanpa menggulir halaman.
+    tombol.current[t]?.scrollIntoView({ block: "nearest", inline: "nearest", container: "nearest" } as ScrollIntoViewOptions);
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -78,14 +89,18 @@ export function SuratKontrolHalaman({ awal, bolehEkspor }: { awal: TampilanSurat
               <span className="min-w-0">
                 <span className="flex items-center gap-2 text-sm font-semibold whitespace-nowrap">
                   {t.label}
-                  {t.key === "pulang" && belum !== null && belum > 0 && (
-                    <>
-                      <span aria-hidden className="rounded-full bg-danger px-1.5 text-[11px] leading-[1.125rem] font-semibold text-white tabular">
-                        {belum}
-                      </span>
-                      <span className="sr-only">, {belum} pasien belum terbit</span>
-                    </>
-                  )}
+                  {(() => {
+                    const n = lencana[t.key];
+                    const teks = LENCANA[t.key];
+                    return n != null && n > 0 && teks ? (
+                      <>
+                        <span aria-hidden className="rounded-full bg-danger px-1.5 text-[11px] leading-[1.125rem] font-semibold text-white tabular">
+                          {n}
+                        </span>
+                        <span className="sr-only">, {teks(n)}</span>
+                      </>
+                    ) : null;
+                  })()}
                 </span>
                 <span className="hidden text-[11px] font-normal text-fg-subtle sm:block">{t.ket}</span>
               </span>
@@ -97,6 +112,11 @@ export function SuratKontrolHalaman({ awal, bolehEkspor }: { awal: TampilanSurat
       {terpasang.has("pulang") && (
         <div role="tabpanel" id="skt-panel-pulang" aria-labelledby="skt-tab-pulang" hidden={tab !== "pulang"}>
           <TerbitPulangView bolehEkspor={bolehEkspor} onBelumTerbit={setBelum} />
+        </div>
+      )}
+      {terpasang.has("sep") && (
+        <div role="tabpanel" id="skt-panel-sep" aria-labelledby="skt-tab-sep" hidden={tab !== "sep"}>
+          <KontrolSepView bolehEkspor={bolehEkspor} onTemuan={setSamaSep} />
         </div>
       )}
       {terpasang.has("bpjs") && (

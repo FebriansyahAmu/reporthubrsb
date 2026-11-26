@@ -50,7 +50,8 @@ const gCelah = globalThis as unknown as { __skPulangCelah?: Map<string, number> 
 const celahDicoba = (gCelah.__skPulangCelah ??= new Map());
 
 const poliCache = createTtlCache<Map<string, string | null>>("surat-kontrol-poli-bpjs", { ttlMs: 10 * 60_000, max: 1 });
-const muatPoli = () =>
+/** Nama poli BPJS (kode → nama), cache 10 mnt. Dipakai juga audit "Kontrol = SEP". */
+export const muatPoli = () =>
   poliCache.get("semua", async () => new Map((await queryPoliBpjsNama()).map((p) => [p.kode, p.nama]))).then((h) => h.value);
 
 /** SEP sah (penjamin.NOMOR kosong untuk sebagian episode). */

@@ -30,7 +30,6 @@ import { useAsyncData } from "@/lib/useAsyncData";
 import { useDebounce } from "@/lib/useDebounce";
 import { formatDate, formatNumber, tanggalHariIniWita } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { tambahHari } from "@/server/modules/surat-kontrol/surat-kontrol.filter";
 import {
   namaRuangan,
   ringkasPulang,
@@ -53,22 +52,12 @@ import {
 import type { AuditTerbitPulang, EpisodePulang } from "@/server/modules/surat-kontrol/surat-kontrol.pulang.types";
 import { SebaranHarianChart } from "./SebaranHarianChart";
 import { fetchTerbitPulang, unduhEksporTerbitPulang } from "./suratKontrol.client";
+import { awalBulan, jepitRentang, PRESET_RENTANG as PRESET } from "./rentang";
 import { TerbitPulangDetail } from "./TerbitPulangDetail";
 import { JejakTerbit, LencanaStatus, SERI_PULANG, persenId, teksSelisih, warnaStatus } from "./pulang.ui";
 
 const PAGE_SIZE = 25;
 type Urut = "prioritas" | "terbaru" | "selisih";
-
-const awalBulan = (iso: string) => `${iso.slice(0, 8)}01`;
-const akhirBulan = (iso: string) => new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)), 0)).toISOString().slice(0, 10);
-
-const PRESET = [
-  { key: "hari-ini", label: "Hari ini", rentang: (t: string) => [t, t] },
-  { key: "kemarin", label: "Kemarin", rentang: (t: string) => [tambahHari(t, -1), tambahHari(t, -1)] },
-  { key: "7-hari", label: "7 hari terakhir", rentang: (t: string) => [tambahHari(t, -6), t] },
-  { key: "bulan-ini", label: "Bulan ini", rentang: (t: string) => [awalBulan(t), t] },
-  { key: "bulan-lalu", label: "Bulan lalu", rentang: (t: string) => { const a = awalBulan(tambahHari(awalBulan(t), -1)); return [a, akhirBulan(a)]; } },
-] as const;
 
 const URUT_OPSI: SelectOption[] = [
   { value: "prioritas", label: "Prioritas (belum terbit dulu)" },
@@ -82,20 +71,7 @@ const LAYANAN_IKON: Record<LayananPulang, typeof BedDouble> = { RI: BedDouble, R
 const LABEL_TUMPUK =
   "@max-3xl:before:mb-0.5 @max-3xl:before:block @max-3xl:before:text-[11px] @max-3xl:before:font-medium @max-3xl:before:text-fg-subtle @max-3xl:before:content-[attr(data-label)]";
 
-/** Jaga [from, to] sah setelah satu ujung diubah: from ≤ to ≤ hari ini, lebar ≤ 31 hari. */
-function jepit(from: string, to: string, diubah: "from" | "to", hariIni: string): [string, string] {
-  const lebar = RENTANG_PULANG_MAKS_HARI - 1;
-  let f = from > hariIni ? hariIni : from;
-  let t = to > hariIni ? hariIni : to;
-  if (diubah === "from") {
-    if (t < f) t = f;
-    if (t > tambahHari(f, lebar)) t = tambahHari(f, lebar);
-  } else {
-    if (f > t) f = t;
-    if (f < tambahHari(t, -lebar)) f = tambahHari(t, -lebar);
-  }
-  return [f, t];
-}
+const jepit = (from: string, to: string, diubah: "from" | "to", hariIni: string) => jepitRentang(from, to, diubah, hariIni, RENTANG_PULANG_MAKS_HARI);
 
 /**
  * Audit "Terbit saat pulang": Surat Kontrol pasien BPJS harus terbit di BPJS

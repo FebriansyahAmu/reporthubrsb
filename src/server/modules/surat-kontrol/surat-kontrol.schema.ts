@@ -9,6 +9,7 @@ import {
   type LayananPulang,
   type StatusPulang,
 } from "./surat-kontrol.pulang.constants";
+import { STATUS_SEP_KEYS, type StatusSep } from "./surat-kontrol.sep.constants";
 
 const isoTanggal = z
   .string()
@@ -52,6 +53,25 @@ export const eksporPulangQuerySchema = pulangQuerySchema.omit({ segar: true }).e
   q: z.string().trim().max(80).optional(),
 });
 export type EksporPulangQuery = z.infer<typeof eksporPulangQuerySchema>;
+
+/**
+ * "Kontrol = SEP": rentang TANGGAL SEP — aturan sama dengan rentang pulang
+ * (bawaan awal bulan s.d. hari ini, maks. 31 hari, tak melewati hari ini).
+ */
+export const sepQuerySchema = pulangQuerySchema;
+export type SepQuery = PulangQuery;
+
+export const eksporSepQuerySchema = pulangQuerySchema.omit({ segar: true }).extend({
+  /** "1" = sertakan SPRI (bawaan: hanya Surat Kontrol). */
+  spri: z.literal("1").optional(),
+  /** Satu jenis surat (bermakna bila SPRI disertakan). */
+  jenis: z.enum(["1", "2"]).optional(),
+  status: z.enum(STATUS_SEP_KEYS as [StatusSep, ...StatusSep[]]).optional(),
+  ruangan: z.string().trim().max(120).optional(),
+  tanggal: isoTanggal.optional(),
+  q: z.string().trim().max(80).optional(),
+});
+export type EksporSepQuery = z.infer<typeof eksporSepQuerySchema>;
 
 /** Rentang tanggal pulang bawaan = awal bulan s.d. hari ini (WITA); maks. 31 hari, tak melewati hari ini. */
 export function tentukanRentangPulang(q: { from?: string; to?: string }, hariIni: string): { from: string; to: string } {

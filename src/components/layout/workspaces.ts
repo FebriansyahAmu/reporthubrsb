@@ -312,7 +312,7 @@ export const WORKSPACES: Workspace[] = [
         href: "/audit-rme/surat-kontrol",
         label: "Audit Surat Kontrol",
         icon: CalendarCheck,
-        description: "Surat Kontrol & SPRI BPJS vs jadwal SIMRS",
+        description: "Terbit saat pulang, Kontrol = SEP & jadwal BPJS vs SIMRS",
         moduleKey: "audit-rme.surat-kontrol",
       },
     ],
