@@ -94,15 +94,34 @@ async function ambil(from: string, to: string): Promise<BpjsSurat[]> {
   return [...per.values()];
 }
 
+/** Jeda sebelum satu kali coba ulang — plugin SIMGOS sesekali membalas 5xx sesaat (teramati 26 Nov 2026). */
+const JEDA_ULANG_MS = 1_500;
+
 async function ambilPotongan(from: string, to: string): Promise<BpjsSurat[]> {
   const base = getSimgosReportBase();
   if (!base) throw new Error("Webservice SIMGOS belum dikonfigurasi (SIMGOS_REPORT_URL / DATABASE_URL_SIMGOS).");
-  const sp = new URLSearchParams({ _dc: String(Date.now()), filter: "2", tglAwal: from, tglAkhir: to, page: "1", start: "0", limit: "5000" });
-  const res = await fetch(`${base}/plugins/bpjs/rencanaKontrol?${sp}`, {
-    headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-    cache: "no-store",
-  });
+  const minta = () => {
+    const sp = new URLSearchParams({ _dc: String(Date.now()), filter: "2", tglAwal: from, tglAkhir: to, page: "1", start: "0", limit: "5000" });
+    return fetch(`${base}/plugins/bpjs/rencanaKontrol?${sp}`, {
+      headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      cache: "no-store",
+    });
+  };
+  // Satu kali coba ulang untuk galat jaringan / 5xx (bukan untuk batas waktu — sudah 30 dtk).
+  let res: Response;
+  try {
+    res = await minta();
+    if (res.status >= 500) {
+      await res.body?.cancel().catch(() => {});
+      await new Promise((r) => setTimeout(r, JEDA_ULANG_MS));
+      res = await minta();
+    }
+  } catch (e) {
+    if (e instanceof Error && e.name === "TimeoutError") throw e;
+    await new Promise((r) => setTimeout(r, JEDA_ULANG_MS));
+    res = await minta();
+  }
   if (!res.ok) {
     // Galat dibungkus problem+json ({ title, detail }) — tampilkan detail BPJS bila ada.
     const detail = await res
