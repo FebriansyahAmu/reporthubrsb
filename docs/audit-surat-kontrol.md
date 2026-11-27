@@ -300,7 +300,7 @@ Persentase = surat = SEP ÷ surat yang sudah dipakai SEP dengan tanggal entri te
 
 Pilihan **Summary** menggabungkan Surat Kontrol & SPRI tanpa saringan layar (kolom cari disembunyikan):
 
-- **Angka utama:** surat di BPJS (VClaim, per jenis) · sudah dipakai SEP (+ belum dipakai, klik = daftar) · **Dibuat setelah selesai pelayanan** (% audit BPJS, per jenis) · **Surat = SEP** (per jenis, + > SEP).
+- **Angka utama:** surat di BPJS (VClaim, per jenis) · **Surat Kontrol dipakai SEP** ("63 dari 203", % dipakai, belum dipakai klik = daftar; SPRI cukup di rincian "225 dari 226 dipakai" karena SPRI dibuat bersama SEP rawat inap) · **Dibuat setelah selesai pelayanan** (% audit BPJS, per jenis) · **Surat = SEP** (per jenis, + > SEP).
 - **Rekap format audit BPJS** — tabel seperti tarikan audit BPJS: baris Surat Kontrol / SPRI / Total; kolom **Surkon < SEP**, **= SEP**, **> SEP**, **Grand total**, dan **% dibuat setelah selesai pelayanan** (= Surkon < SEP ÷ Grand total, 2 desimal; batang hijau ≥ 80%, kuning ≥ 50%, merah < 50%, angka selalu tampil). Angka diklik → daftar jenis & status itu.
 - **Pemakaian surat (VClaim):** batang 100% per jenis — sebelum / setelah / bersama SEP, belum terbaca, SEP tak tercatat, belum dipakai (legenda berangka, klik = daftar).
 - **Sebaran per tanggal SEP:** batang bertumpuk Surkon < / > / = SEP.
