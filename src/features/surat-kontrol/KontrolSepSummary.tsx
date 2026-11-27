@@ -66,15 +66,28 @@ export function KontrolSepSummary({ d, onBuka }: { d: AuditKontrolSep; onBuka: (
             Surat Kontrol <b className="font-semibold text-fg tabular">{formatNumber(surat[2].total)}</b> · SPRI{" "}
             <b className="font-semibold text-fg tabular">{formatNumber(surat[1].total)}</b>
           </Kpi>
+          {/* Fokus Surat Kontrol: SPRI hampir selalu dipakai (dibuat bersama SEP rawat inap) → cukup di rincian. */}
           <Kpi
-            judul="Sudah dipakai SEP"
-            nilai={formatNumber(semua.dipakai)}
-            ket={semua.total ? `${persenId(Math.round((semua.dipakai / semua.total) * 1000) / 10)} dari surat di BPJS` : undefined}
+            judul="Surat Kontrol dipakai SEP"
+            nilai={formatNumber(surat[2].dipakai)}
+            dari={formatNumber(surat[2].total)}
+            ket={surat[2].total ? `${persenId(Math.round((surat[2].dipakai / surat[2].total) * 1000) / 10)} sudah dipakai pasien untuk kontrol` : undefined}
           >
-            <button type="button" onClick={() => onBuka("kontrol", "BELUM_DIPAKAI")} className={cn("rounded-sm text-left underline-offset-2 hover:text-fg hover:underline", FOKUS)}>
-              <b className="font-semibold text-fg tabular">{formatNumber(semua.perStatus.BELUM_DIPAKAI)}</b> belum dipakai
-            </button>
-            {semua.perStatus.SEP_TAK_TERCATAT > 0 && <> · {formatNumber(semua.perStatus.SEP_TAK_TERCATAT)} SEP tak tercatat</>}
+            {surat[2].perStatus.BELUM_DIPAKAI > 0 ? (
+              <button type="button" onClick={() => onBuka("kontrol", "BELUM_DIPAKAI")} className={cn("relative rounded-sm text-left underline-offset-2 hover:text-fg hover:underline", FOKUS)}>
+                <b className="font-semibold text-fg tabular">{formatNumber(surat[2].perStatus.BELUM_DIPAKAI)}</b> belum dipakai
+                <span className="sr-only">: buka daftar Surat Kontrol yang belum dipakai SEP</span>
+              </button>
+            ) : (
+              "Semua sudah dipakai"
+            )}
+            {surat[2].perStatus.SEP_TAK_TERCATAT > 0 && <> · {formatNumber(surat[2].perStatus.SEP_TAK_TERCATAT)} SEP tak tercatat</>}
+            {surat[1].total > 0 && (
+              <>
+                {" · "}SPRI <b className="font-semibold text-fg tabular">{formatNumber(surat[1].dipakai)}</b> dari {formatNumber(surat[1].total)} dipakai
+                {surat[1].perStatus.SEP_TAK_TERCATAT > 0 && <> ({formatNumber(surat[1].perStatus.SEP_TAK_TERCATAT)} SEP tak tercatat)</>}
+              </>
+            )}
           </Kpi>
           <Kpi
             judul="Dibuat setelah selesai pelayanan"
@@ -283,11 +296,14 @@ export function KontrolSepSummary({ d, onBuka }: { d: AuditKontrolSep; onBuka: (
 }
 
 /** Tile angka utama (`<article>`: judul → angka → rincian). */
-function Kpi({ judul, nilai, ket, nada, children }: { judul: string; nilai: string; ket?: string; nada?: string; children?: React.ReactNode }) {
+function Kpi({ judul, nilai, dari, ket, nada, children }: { judul: string; nilai: string; dari?: string; ket?: string; nada?: string; children?: React.ReactNode }) {
   return (
     <article className="flex min-w-0 flex-col rounded-[var(--radius-lg)] border border-border bg-surface p-4 shadow-xs">
       <h3 className="text-xs font-medium text-fg-muted">{judul}</h3>
-      <p className={cn("mt-1 text-3xl font-semibold tracking-tight tabular", nada ?? "text-fg")}>{nilai}</p>
+      <p className={cn("mt-1 text-3xl font-semibold tracking-tight tabular", nada ?? "text-fg")}>
+        {nilai}
+        {dari && <span className="ml-1.5 text-sm font-medium tracking-normal text-fg-muted">dari {dari}</span>}
+      </p>
       {ket && <p className="text-[11px] text-fg-subtle">{ket}</p>}
       {children && <div className="mt-2 border-t border-border pt-2 text-xs text-fg-muted">{children}</div>}
     </article>
